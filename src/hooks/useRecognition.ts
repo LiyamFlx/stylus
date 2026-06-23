@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Stroke } from '../types';
-import { RecognitionError, recognizeText } from '../lib/recognition';
+import { RecognitionError } from '../lib/recognitionError';
 
 export type RecognitionStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -29,6 +29,9 @@ export function useRecognition(): UseRecognitionResult {
     setStatus('loading');
     setError(null);
     try {
+      // The OCR engine (Tesseract WASM) is heavy, so it's code-split and
+      // loaded on first recognition rather than at app startup.
+      const { recognizeText } = await import('../lib/recognition');
       const result = await recognizeText(strokes);
       if (id !== requestId.current) return; // superseded
       setText(result.text.trim());

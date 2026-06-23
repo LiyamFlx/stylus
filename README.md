@@ -10,8 +10,8 @@ stylus, or a finger). Open the page and start writing.
 
 Built with **React + TypeScript + Vite**, a native **Canvas 2D** drawing
 surface, the **Pointer Events API** for universal input (with pressure), and
-the browser's built-in **Handwriting Recognition API** for handwriting → text
-(on-device, no API key required).
+**Tesseract.js** (in-browser OCR) for handwriting → text — runs on every
+device, no API key required.
 
 ---
 
@@ -25,8 +25,8 @@ the browser's built-in **Handwriting Recognition API** for handwriting → text
 - ↩️ Stroke-based Undo / Redo (full history stack)
 
 **P1 — productivity**
-- 🔤 Handwriting → text via the browser's on-device Handwriting Recognition API
-  (no key, no cost — see [browser support](#handwriting-recognition) below)
+- 🔤 Handwriting → text via in-browser OCR (Tesseract.js) — no key, no cost,
+  works on every device incl. Safari & iPad (see [details](#handwriting-recognition))
 - 🎨 Pen toolbar: 3 thicknesses, 8 preset colors + a custom color picker
 - 📤 Export to **PNG** and **PDF** (`jsPDF`)
 - 💾 Auto-save to `localStorage` on every stroke; restored automatically on load
@@ -56,41 +56,30 @@ npm run preview   # serve the production build locally
 
 ## Handwriting recognition
 
-Handwriting → text uses the browser's built-in **[Handwriting Recognition
-API](https://developer.chrome.com/docs/web-platform/handwriting-recognition)**.
-It runs **on-device** — no API key, no account, no network call, no cost.
-Click the **T** button in the toolbar to recognize what you've written; the
-result appears in a panel at the bottom.
+Handwriting → text uses **[Tesseract.js](https://github.com/naptha/tesseract.js)**,
+a WebAssembly OCR engine that runs **entirely in the browser**. No API key, no
+account, no paid service. Click the **T** button in the toolbar to recognize
+what you've written; the result appears in a panel at the bottom.
 
-There is **nothing to configure** — it works out of the box where the browser
-supports it.
+**There is nothing to configure, and it works on every modern browser** —
+including Safari, iPad, and Chrome on macOS. The OCR language model (~a few MB)
+is downloaded once from a CDN on first use and cached by the browser afterward,
+so the first recognition is a little slower than subsequent ones.
 
-> [!IMPORTANT]
-> **Browser support is limited.** The Handwriting Recognition API ships in
-> Chromium-based browsers (**Chrome / Edge**) on **ChromeOS, Windows, and
-> Linux**. It is **not** available in:
-> - **Safari** (so not iPad / iPhone Safari),
-> - **Firefox**, or
-> - in most cases **Chrome on macOS**.
->
-> Everywhere it's unavailable, drawing / erasing / undo / export / auto-save
-> still work fully — only the **Recognize** button shows a clear
-> "not available in this browser" message instead of erroring. The check lives
-> in [`isRecognitionSupported()`](src/lib/recognition.ts).
+How it works: because Tesseract is OCR (it reads images, not pen strokes), the
+app rasterizes your ink into a clean, cropped, high-contrast bitmap (dark ink on
+white) and feeds that to the engine. See
+[`src/lib/recognition.ts`](src/lib/recognition.ts).
 
-### Want recognition everywhere (incl. iPad / Safari)?
-
-The browser API can't cover Safari/iOS. If you need cross-platform recognition,
-swap [`src/lib/recognition.ts`](src/lib/recognition.ts) for a cloud service —
-its public surface is just `recognizeText(strokes)` and `isRecognitionSupported()`,
-so only that one file changes. Good options:
-
-- **MyScript iink** — best accuracy for cursive & math (free dev tier,
-  paid above it): <https://developer.myscript.com/>
-- **Google Cloud Vision** / **Azure Ink Recognizer** — general handwriting.
-
-For any cloud provider, proxy the call through a small backend so the API
-secret never ships in the client bundle.
+> [!NOTE]
+> Accuracy is strongest on **neat / printed** handwriting. Very fast or messy
+> **cursive** is harder for OCR. If you later need top-tier cursive/math
+> accuracy, swap `src/lib/recognition.ts` for a cloud recognizer — its public
+> surface is just `recognizeText(strokes)` and `isRecognitionSupported()`, so
+> only that one file changes. Good options: **MyScript iink**
+> (<https://developer.myscript.com/>), **Google Cloud Vision**, or **Azure Ink
+> Recognizer**. For any cloud provider, proxy the call through a small backend
+> so the API secret never ships in the client bundle.
 
 ---
 
@@ -109,7 +98,8 @@ src/
     useLocalStorage.ts # versioned auto-save / restore
     useRecognition.ts  # async lifecycle for recognition calls
   lib/
-    recognition.ts   # browser Handwriting Recognition API client (no keys)
+    recognition.ts   # in-browser OCR (Tesseract.js) — rasterize ink + recognize
+    recognitionError.ts # error type (split out so it doesn't pull in the engine)
     export.ts        # PNG + PDF export (offscreen render, code-split)
     render.ts        # canvas path/pressure rendering shared by live + export
   types.ts           # Stroke / InkPoint model, presets
@@ -156,8 +146,9 @@ handwriting recognizer (which consumes per-point `{ x, y, t }`) with no rework.
   Pointer `getCoalescedEvents()` is used so fast strokes stay smooth.
 - **Eraser undo:** an erase drag mutates a private working copy and commits a
   single history entry on pointer-up, so one drag = one undo.
-- **Export bundle:** `jsPDF` is heavy, so `lib/export.ts` is dynamically
-  imported on first export — it stays out of the initial page load.
+- **Lazy heavy deps:** `jsPDF` (export) and `tesseract.js` (OCR) are both
+  dynamically imported on first use, so neither bloats the initial page load —
+  the canvas boots fast and the engines load only when you export or recognize.
 
 ---
 

@@ -1,186 +1,159 @@
+import Tesseract from 'tesseract.js';
 import type { Stroke } from '../types';
+import { RecognitionError } from './recognitionError';
 
 /**
- * Handwriting → text using the browser's built-in **Handwriting Recognition
- * API** (`navigator.createHandwritingRecognizer`). On-device, free, no API key.
+ * Handwriting → text using **Tesseract.js** — a WebAssembly OCR engine that
+ * runs entirely in the browser. No API key, no account, no backend, no network
+ * call to a paid service (model files are fetched once from a CDN and cached).
  *
- * https://developer.chrome.com/docs/web-platform/handwriting-recognition
+ * Works in every modern browser, including Safari / iPad — unlike the native
+ * Handwriting Recognition API it replaces.
  *
- * ⚠️  Availability is limited. As of writing, the API ships in Chromium-based
- * browsers (Chrome / Edge) on ChromeOS, Windows, and Linux. It is **not**
- * available in Safari (so not iPad/iOS Safari), not in Firefox, and often not
- * on macOS Chrome. We feature-detect and surface a clear message when it's
- * unavailable rather than failing silently.
+ * Because Tesseract is OCR, it reads a *rendered image* of the ink rather than
+ * the pen strokes. So we rasterize the strokes to a clean, high-contrast
+ * bitmap (dark ink on white, cropped to the writing, scaled up) which is what
+ * OCR engines recognize best. Accuracy is strongest on neat / printed
+ * handwriting; very fast cursive is harder. To swap in a cloud recognizer with
+ * better cursive accuracy later, only this file changes — its public surface is
+ * just `recognizeText()` and `isRecognitionSupported()`.
  */
 
-/* -------------------------------------------------------------------------- */
-/* Ambient types — the API isn't in TypeScript's DOM lib yet, so we declare    */
-/* the minimal surface we use, matching the WICG spec.                         */
-/* -------------------------------------------------------------------------- */
+const OCR_LANG = 'eng';
 
-interface HandwritingPoint {
-  x: number;
-  y: number;
-  t?: number;
-}
+/** Target height (px) the cropped ink is scaled to before OCR. */
+const TARGET_HEIGHT = 240;
+/** Whitespace padding around the ink in the rasterized image. */
+const PADDING = 32;
+/** Minimum line width so thin ink stays legible to the OCR engine. */
+const MIN_STROKE_WIDTH = 6;
 
-interface HandwritingStroke {
-  addPoint(point: HandwritingPoint): void;
-  getPoints(): HandwritingPoint[];
-  clear(): void;
-}
-
-interface HandwritingPrediction {
-  text: string;
-}
-
-interface HandwritingDrawing {
-  addStroke(stroke: HandwritingStroke): void;
-  getPrediction(): Promise<HandwritingPrediction[]>;
-  clear(): void;
-}
-
-interface HandwritingHints {
-  recognitionType?: 'text' | 'email' | 'number' | 'per-character';
-  inputType?: 'mouse' | 'stylus' | 'touch';
-  alternatives?: number;
-  textContext?: string;
-}
-
-interface HandwritingRecognizer {
-  startDrawing(hints?: HandwritingHints): HandwritingDrawing;
-  finish(): void;
-}
-
-interface HandwritingModelConstraints {
-  languages: string[];
-}
-
-interface HandwritingFeatureQuery {
-  languages: string[];
-  alternatives?: boolean;
-}
-
-interface HandwritingQueryResult {
-  textAlternatives?: boolean;
-  textSegmentation?: boolean;
-  hints?: {
-    alternatives?: boolean;
-    textContext?: boolean;
-    inputTypes?: string[];
-    recognitionTypes?: string[];
-  };
-}
-
-interface HandwritingNavigator {
-  createHandwritingRecognizer?: (
-    constraints: HandwritingModelConstraints,
-  ) => Promise<HandwritingRecognizer>;
-  queryHandwritingRecognizer?: (
-    query: HandwritingFeatureQuery,
-  ) => Promise<HandwritingQueryResult | null>;
-  // Older Chromium spelling — kept for compatibility.
-  queryHandwritingRecognizerSupport?: (
-    query: HandwritingFeatureQuery,
-  ) => Promise<HandwritingQueryResult | null>;
-}
-
-/* -------------------------------------------------------------------------- */
-
-const RECOGNITION_LANGUAGES = ['en'];
-
-export type RecognitionErrorCode =
-  | 'unsupported'
-  | 'empty'
-  | 'failed';
-
-export class RecognitionError extends Error {
-  constructor(message: string, readonly code: RecognitionErrorCode) {
-    super(message);
-    this.name = 'RecognitionError';
-  }
-}
+export type { RecognitionErrorCode } from './recognitionError';
+export { RecognitionError } from './recognitionError';
 
 export interface RecognitionResult {
   text: string;
 }
 
-function nav(): HandwritingNavigator {
-  return navigator as unknown as HandwritingNavigator;
+/**
+ * Tesseract runs everywhere we support, so recognition is always "available".
+ * Kept for API symmetry and so callers can branch without knowing the engine.
+ */
+export function isRecognitionSupported(): boolean {
+  return true;
 }
 
-/** True when the browser exposes the Handwriting Recognition API. */
-export function isRecognitionSupported(): boolean {
-  return typeof nav().createHandwritingRecognizer === 'function';
+interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** Axis-aligned bounding box of all ink, padded for stroke width. */
+function inkBounds(strokes: Stroke[]): Bounds | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const stroke of strokes) {
+    const half = Math.max(stroke.size, MIN_STROKE_WIDTH) / 2;
+    for (const p of stroke.points) {
+      minX = Math.min(minX, p.x - half);
+      minY = Math.min(minY, p.y - half);
+      maxX = Math.max(maxX, p.x + half);
+      maxY = Math.max(maxY, p.y + half);
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, minY, maxX, maxY };
 }
 
 /**
- * Recognize handwriting from the given strokes.
+ * Rasterize the strokes into a clean black-on-white bitmap, cropped to the ink
+ * and scaled so the writing is a consistent, OCR-friendly height. Returns a
+ * canvas ready to hand to Tesseract.
+ */
+function rasterizeForOCR(strokes: Stroke[], bounds: Bounds): HTMLCanvasElement {
+  const inkW = bounds.maxX - bounds.minX;
+  const inkH = bounds.maxY - bounds.minY;
+
+  // Scale so the ink height hits TARGET_HEIGHT (helps small writing); never
+  // upscale absurdly for already-large drawings.
+  const scale = Math.min(Math.max(TARGET_HEIGHT / inkH, 1), 4);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(inkW * scale + PADDING * 2);
+  canvas.height = Math.ceil(inkH * scale + PADDING * 2);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new RecognitionError('Could not prepare image for OCR.', 'failed');
+
+  // White background, dark ink — OCR engines expect dark text on light paper.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Map ink-space → image-space: translate the bounding-box origin to the
+  // padding offset, then scale.
+  ctx.translate(PADDING, PADDING);
+  ctx.scale(scale, scale);
+  ctx.translate(-bounds.minX, -bounds.minY);
+
+  ctx.strokeStyle = '#000000';
+  ctx.fillStyle = '#000000';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for (const stroke of strokes) {
+    const width = Math.max(stroke.size, MIN_STROKE_WIDTH);
+    const pts = stroke.points;
+    if (pts.length === 1) {
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      const prev = pts[i - 1];
+      const curr = pts[i];
+      const midX = (prev.x + curr.x) / 2;
+      const midY = (prev.y + curr.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    ctx.stroke();
+  }
+
+  return canvas;
+}
+
+/**
+ * Recognize handwriting from the given strokes via in-browser OCR.
  *
- * @throws {RecognitionError} when the API is unavailable, there's no ink, or
- *         recognition fails. Callers should surface `err.message`.
+ * @throws {RecognitionError} when there's no ink or OCR fails. Callers should
+ *         surface `err.message`.
  */
 export async function recognizeText(
   strokes: Stroke[],
 ): Promise<RecognitionResult> {
-  const n = nav();
-  if (typeof n.createHandwritingRecognizer !== 'function') {
-    throw new RecognitionError(
-      'Handwriting recognition isn’t available in this browser. Try Chrome or Edge on desktop (ChromeOS, Windows, or Linux).',
-      'unsupported',
-    );
-  }
   if (strokes.length === 0) {
     throw new RecognitionError('Nothing to recognize — the canvas is empty.', 'empty');
   }
 
-  let recognizer: HandwritingRecognizer;
-  try {
-    recognizer = await n.createHandwritingRecognizer({
-      languages: RECOGNITION_LANGUAGES,
-    });
-  } catch (err) {
-    // A platform may expose the method but have no model for the language.
-    throw new RecognitionError(
-      `Couldn’t start the handwriting recognizer: ${(err as Error).message}`,
-      'unsupported',
-    );
+  const bounds = inkBounds(strokes);
+  if (!bounds) {
+    throw new RecognitionError('Nothing to recognize — the canvas is empty.', 'empty');
   }
 
+  const image = rasterizeForOCR(strokes, bounds);
+
   try {
-    const drawing = recognizer.startDrawing({
-      recognitionType: 'text',
-      inputType: 'stylus',
-      alternatives: 0,
-    });
-
-    // Translate our InkPoint[] into the API's stroke/point objects. We rely on
-    // the global HandwritingStroke constructor exposed alongside the API.
-    const StrokeCtor = (
-      window as unknown as { HandwritingStroke?: new () => HandwritingStroke }
-    ).HandwritingStroke;
-    if (!StrokeCtor) {
-      throw new RecognitionError(
-        'Handwriting recognition is partially unavailable in this browser.',
-        'unsupported',
-      );
-    }
-
-    for (const stroke of strokes) {
-      const hwStroke = new StrokeCtor();
-      for (const p of stroke.points) {
-        hwStroke.addPoint({ x: p.x, y: p.y, t: Math.round(p.t) });
-      }
-      drawing.addStroke(hwStroke);
-    }
-
-    const predictions = await drawing.getPrediction();
-    recognizer.finish();
-
-    const text = predictions.length > 0 ? predictions[0].text : '';
-    return { text };
+    // `recognize` lazily downloads + caches the language model on first use.
+    const { data } = await Tesseract.recognize(image, OCR_LANG);
+    return { text: data.text.trim() };
   } catch (err) {
-    if (err instanceof RecognitionError) throw err;
     throw new RecognitionError(
       `Recognition failed: ${(err as Error).message}`,
       'failed',
