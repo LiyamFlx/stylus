@@ -1,3 +1,8 @@
+/* Self-hosted fonts matching the Scanmarker product family (Inter + JetBrains
+   Mono). Variable fonts → full weight range, no extra requests, no FOUT. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -17,7 +22,11 @@ body,
 body {
   background-color: #0a0a0a;
   color: #fafafa;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI',
+    Roboto, sans-serif;
+  font-feature-settings: 'cv11', 'ss01'; /* Inter: stylistic alts, matches SM */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   /* Prevent the page from ever scrolling — the canvas owns the viewport. */
   overflow: hidden;
   overscroll-behavior: none;

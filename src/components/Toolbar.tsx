@@ -60,8 +60,8 @@ function IconButton({
         'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-30',
         active
-          ? 'bg-white text-black'
-          : 'text-zinc-200 hover:bg-white/10 active:bg-white/20',
+          ? 'bg-brand-500 text-white shadow-soft hover:bg-brand-600'
+          : 'text-ink-700 hover:bg-white/[0.06] active:bg-white/10',
       ].join(' ')}
     >
       {children}
@@ -70,7 +70,7 @@ function IconButton({
 }
 
 function Divider() {
-  return <div className="mx-1 h-6 w-px self-center bg-white/15" aria-hidden />;
+  return <div className="mx-1 h-6 w-px self-center bg-border-strong" aria-hidden />;
 }
 
 /** The size selector: three dots of increasing radius. */
@@ -93,11 +93,16 @@ function SizePicker({
           onClick={() => onSizeChange(s)}
           className={[
             'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
-            size === s ? 'bg-white/15' : 'hover:bg-white/10',
+            size === s
+              ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
+              : 'hover:bg-white/[0.06]',
           ].join(' ')}
         >
           <span
-            className="rounded-full bg-current text-zinc-100"
+            className={[
+              'rounded-full',
+              size === s ? 'bg-brand-500' : 'bg-ink-700',
+            ].join(' ')}
             style={{ width: s + 2, height: s + 2 }}
           />
         </button>
@@ -128,8 +133,8 @@ function ColorPicker({
           className={[
             'h-6 w-6 rounded-full border transition-transform',
             color === c
-              ? 'scale-110 border-white ring-2 ring-white/40'
-              : 'border-white/20 hover:scale-105',
+              ? 'scale-110 border-bg ring-2 ring-brand-500'
+              : 'border-border-strong hover:scale-105',
           ].join(' ')}
           style={{ backgroundColor: c }}
         />
@@ -140,8 +145,8 @@ function ColorPicker({
         className={[
           'relative h-6 w-6 cursor-pointer overflow-hidden rounded-full border',
           !isPreset
-            ? 'scale-110 border-white ring-2 ring-white/40'
-            : 'border-white/20 hover:scale-105',
+            ? 'scale-110 border-bg ring-2 ring-brand-500'
+            : 'border-border-strong hover:scale-105',
         ].join(' ')}
         style={{
           background: !isPreset
@@ -238,24 +243,24 @@ export function Toolbar(props: ToolbarProps) {
   return (
     <>
       {/* Desktop / wide: single floating pill, horizontally centered. */}
-      <div className="pointer-events-none absolute inset-x-0 top-3 z-20 hidden justify-center sm:flex">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-panel px-2 py-1.5 shadow-2xl backdrop-blur-pill">
+      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 hidden justify-center sm:flex">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
           {controls}
         </div>
       </div>
 
       {/* Mobile: a menu button that expands into a wrapping tray. */}
-      <div className="absolute inset-x-0 top-3 z-20 flex flex-col items-center sm:hidden">
+      <div className="absolute inset-x-0 top-4 z-20 flex flex-col items-center sm:hidden">
         <button
           type="button"
           aria-label={mobileOpen ? 'Close tools' : 'Open tools'}
           onClick={() => setMobileOpen((o) => !o)}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-panel text-zinc-100 shadow-2xl backdrop-blur-pill"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-muted/80 text-ink-900 shadow-pop backdrop-blur-pill"
         >
           {mobileOpen ? <CloseIcon size={22} /> : <MenuIcon size={22} />}
         </button>
         {mobileOpen && (
-          <div className="mt-2 flex max-w-[92vw] flex-wrap items-center justify-center gap-1 rounded-3xl border border-white/10 bg-panel px-3 py-2 shadow-2xl backdrop-blur-pill">
+          <div className="mt-2 flex max-w-[92vw] flex-wrap items-center justify-center gap-1 rounded-panel border border-border bg-bg-muted/80 px-3 py-2 shadow-pop backdrop-blur-pill">
             {controls}
           </div>
         )}

@@ -4,9 +4,14 @@
 &nbsp;![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 &nbsp;![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
+**Write every thought. On every device.**
+
 A no-install, no-login digital ink canvas that works everywhere: desktop
 (mouse / trackpad) and touch devices (iPad, Android tablets, Apple Pencil, any
 stylus, or a finger). Open the page and start writing.
+
+Stylus is part of the **Scanmarker** product family and shares its visual
+identity — dark-first theme, Inter typography, and the `#e76f2c` brand accent.
 
 Built with **React + TypeScript + Vite**, a native **Canvas 2D** drawing
 surface, the **Pointer Events API** for universal input (with pressure), and
@@ -83,6 +88,30 @@ white) and feeds that to the engine. See
 
 ---
 
+## Design system
+
+Stylus matches the **Scanmarker** app's visual identity so it feels like a
+sibling tab in the same product. Tokens were extracted from the Scanmarker
+build (not guessed) and live in [`tailwind.config.js`](tailwind.config.js):
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `bg` | `#0a0a0a` | canvas / page background |
+| `bg-subtle` / `bg-muted` | `#111113` / `#18181b` | cards / elevated surfaces |
+| `border` / `border-strong` | `#27272a` / `#3f3f46` | dividers, surface borders |
+| `ink-900…400` | `#fafafa` → `#a1a1aa` | text, from primary to muted labels |
+| `brand-500` | `#e76f2c` | primary accent / active tool / CTA |
+| `brand-600` / `brand-700` | `#cc5b1f` / `#a6481b` | hover / eyebrow labels |
+
+- **Type:** Inter (UI/body) + JetBrains Mono, self-hosted via Fontsource — same
+  families Scanmarker ships. Headings heavy, body clean, labels muted/uppercase.
+- **Dark-first**, no light-mode toggle in the MVP (matches the family default).
+- **Icons:** outline style, 2px stroke (Lucide-equivalent).
+- **No gradients.** Branding: lowercase `stylus` wordmark, orange app mark,
+  "A Scanmarker product" footer.
+
+---
+
 ## Project structure
 
 ```
@@ -91,6 +120,7 @@ src/
     Canvas.tsx       # pure drawing surface — forwards a ref, emits pointer events
     Toolbar.tsx      # floating pill: tools / sizes / colors / undo-redo / export
     TextPanel.tsx    # handwriting-recognition output panel
+    Brand.tsx        # wordmark + subtitle header and "A Scanmarker product" footer
     icons.tsx        # inline SVG icon set
   hooks/
     useDrawing.ts    # all pointer logic, live rendering, eraser, history wiring

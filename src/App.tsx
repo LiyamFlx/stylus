@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
 import { TextPanel } from './components/TextPanel';
+import { BrandFooter, BrandHeader } from './components/Brand';
 import { useDrawing } from './hooks/useDrawing';
 import { useRecognition } from './hooks/useRecognition';
 import type { PenSize, Tool } from './types';
@@ -81,7 +82,7 @@ export default function App() {
   }, [drawing]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-canvas">
+    <div className="relative h-full w-full overflow-hidden bg-bg">
       <Canvas
         ref={drawing.canvasRef}
         tool={tool}
@@ -89,6 +90,9 @@ export default function App() {
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
       />
+
+      <BrandHeader />
+      <BrandFooter />
 
       <Toolbar
         tool={tool}
@@ -119,7 +123,7 @@ export default function App() {
 
       {/* Subtle hint shown only on a fresh, empty canvas. */}
       {drawing.isEmpty && (
-        <p className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center text-sm text-zinc-600">
+        <p className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center text-sm text-ink-400/60">
           Start writing or drawing — pen, finger, or stylus.
         </p>
       )}
