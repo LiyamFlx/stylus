@@ -43,6 +43,25 @@ export function isRecognitionSupported(): boolean {
 }
 
 /**
+ * Lazily create a single Tesseract worker and reuse it across recognitions.
+ * The one-shot `Tesseract.recognize` helper spins up and tears down a worker
+ * (and re-inits the language) on every call; a persistent worker makes repeat
+ * recognitions much faster. On init failure we drop the cached promise so the
+ * next call retries from scratch.
+ */
+let workerPromise: Promise<Tesseract.Worker> | null = null;
+
+function getWorker(): Promise<Tesseract.Worker> {
+  if (!workerPromise) {
+    workerPromise = Tesseract.createWorker(OCR_LANG).catch((err) => {
+      workerPromise = null;
+      throw err;
+    });
+  }
+  return workerPromise;
+}
+
+/**
  * Rasterize the strokes into a clean black-on-white bitmap, cropped to the ink
  * and scaled so the writing is a consistent, OCR-friendly height. Returns a
  * canvas ready to hand to Tesseract.
@@ -123,8 +142,10 @@ export async function recognizeText(
   const image = rasterizeForOCR(strokes, bounds);
 
   try {
-    // `recognize` lazily downloads + caches the language model on first use.
-    const { data } = await Tesseract.recognize(image, OCR_LANG);
+    // The worker lazily downloads + caches the language model on first use,
+    // then stays warm for subsequent recognitions.
+    const worker = await getWorker();
+    const { data } = await worker.recognize(image);
     return { text: data.text.trim() };
   } catch (err) {
     throw new RecognitionError(

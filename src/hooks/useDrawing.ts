@@ -312,7 +312,7 @@ export function useDrawing({
       history.set(next);
       strokesRef.current = next;
     },
-    [history],
+    [history, scheduleRender],
   );
 
   /* -------------------------- toolbar operations -------------------------- */
