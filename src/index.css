@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #0a0a0a;
+  color: #fafafa;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Prevent the page from ever scrolling — the canvas owns the viewport. */
+  overflow: hidden;
+  overscroll-behavior: none;
+  /* iOS Safari: avoid the rubber-band / double-tap-zoom while drawing. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The drawing surface must swallow all native touch gestures so a finger
+   drag draws ink instead of scrolling or zooming the page. */
+.ink-surface {
+  touch-action: none;
+}
