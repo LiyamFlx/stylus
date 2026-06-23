@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Stroke } from '../types';
-import { MyScriptError, recognizeText } from '../lib/myscript';
+import { RecognitionError, recognizeText } from '../lib/recognition';
 
 export type RecognitionStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -36,7 +36,7 @@ export function useRecognition(): UseRecognitionResult {
     } catch (err) {
       if (id !== requestId.current) return;
       const message =
-        err instanceof MyScriptError
+        err instanceof RecognitionError
           ? err.message
           : `Recognition failed: ${(err as Error).message}`;
       setError(message);

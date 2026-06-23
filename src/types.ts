@@ -3,8 +3,8 @@
  *
  * A drawing is an ordered list of {@link Stroke}s. Each stroke is a list of
  * {@link InkPoint}s captured from Pointer Events. We keep raw points (with
- * pressure + timestamp) so we can both render smoothly and ship them to
- * MyScript for handwriting recognition without re-deriving timing.
+ * pressure + timestamp) so we can both render smoothly and feed them to the
+ * browser's handwriting recognizer without re-deriving timing.
  */
 
 export type Tool = 'pen' | 'eraser';

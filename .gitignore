@@ -20,7 +20,8 @@ dist-ssr
 # Claude Code local settings
 .claude/
 
-# Env — DO NOT COMMIT real MyScript keys
+# Env — never commit secrets (e.g. keys for a future cloud recognizer)
 .env
 .env.local
 .env.*.local
+.vercel

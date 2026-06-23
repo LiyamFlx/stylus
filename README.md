@@ -10,7 +10,8 @@ stylus, or a finger). Open the page and start writing.
 
 Built with **React + TypeScript + Vite**, a native **Canvas 2D** drawing
 surface, the **Pointer Events API** for universal input (with pressure), and
-**MyScript iink** for handwriting → text.
+the browser's built-in **Handwriting Recognition API** for handwriting → text
+(on-device, no API key required).
 
 ---
 
@@ -24,7 +25,8 @@ surface, the **Pointer Events API** for universal input (with pressure), and
 - ↩️ Stroke-based Undo / Redo (full history stack)
 
 **P1 — productivity**
-- 🔤 Handwriting → text via the MyScript iink REST API
+- 🔤 Handwriting → text via the browser's on-device Handwriting Recognition API
+  (no key, no cost — see [browser support](#handwriting-recognition) below)
 - 🎨 Pen toolbar: 3 thicknesses, 8 preset colors + a custom color picker
 - 📤 Export to **PNG** and **PDF** (`jsPDF`)
 - 💾 Auto-save to `localStorage` on every stroke; restored automatically on load
@@ -52,43 +54,43 @@ npm run preview   # serve the production build locally
 
 ---
 
-## Where to add your MyScript API keys
+## Handwriting recognition
 
-Handwriting recognition calls the MyScript iink REST API, which requires
-credentials. Without them, drawing/erasing/export all work — only the
-**Recognize** button shows a "keys not configured" message.
+Handwriting → text uses the browser's built-in **[Handwriting Recognition
+API](https://developer.chrome.com/docs/web-platform/handwriting-recognition)**.
+It runs **on-device** — no API key, no account, no network call, no cost.
+Click the **T** button in the toolbar to recognize what you've written; the
+result appears in a panel at the bottom.
 
-1. Create a free developer account and get keys at
-   **<https://developer.myscript.com/>** (you need an **application key** and an
-   **HMAC key**).
+There is **nothing to configure** — it works out of the box where the browser
+supports it.
 
-2. Copy the example env file and fill in your values:
+> [!IMPORTANT]
+> **Browser support is limited.** The Handwriting Recognition API ships in
+> Chromium-based browsers (**Chrome / Edge**) on **ChromeOS, Windows, and
+> Linux**. It is **not** available in:
+> - **Safari** (so not iPad / iPhone Safari),
+> - **Firefox**, or
+> - in most cases **Chrome on macOS**.
+>
+> Everywhere it's unavailable, drawing / erasing / undo / export / auto-save
+> still work fully — only the **Recognize** button shows a clear
+> "not available in this browser" message instead of erroring. The check lives
+> in [`isRecognitionSupported()`](src/lib/recognition.ts).
 
-   ```bash
-   cp .env.example .env.local
-   ```
+### Want recognition everywhere (incl. iPad / Safari)?
 
-   ```dotenv
-   # .env.local
-   VITE_MYSCRIPT_APP_KEY=your-real-application-key
-   VITE_MYSCRIPT_HMAC_KEY=your-real-hmac-key
-   # optional — defaults to the public cloud:
-   VITE_MYSCRIPT_HOST=https://cloud.myscript.com
-   ```
+The browser API can't cover Safari/iOS. If you need cross-platform recognition,
+swap [`src/lib/recognition.ts`](src/lib/recognition.ts) for a cloud service —
+its public surface is just `recognizeText(strokes)` and `isRecognitionSupported()`,
+so only that one file changes. Good options:
 
-3. Restart `npm run dev` (Vite only reads env files at startup).
+- **MyScript iink** — best accuracy for cursive & math (free dev tier,
+  paid above it): <https://developer.myscript.com/>
+- **Google Cloud Vision** / **Azure Ink Recognizer** — general handwriting.
 
-The keys are consumed in **[`src/lib/myscript.ts`](src/lib/myscript.ts)**, which
-reads them from `import.meta.env.*`, signs each request with HMAC-SHA512 (per
-MyScript's auth scheme), and POSTs to `/api/v4.0/iink/batch`.
-
-> [!WARNING]
-> **Going to production:** Vite inlines `VITE_*` variables into the client
-> bundle, so the HMAC secret would be visible to anyone who opens devtools.
-> For production, move the signing + fetch into a small backend proxy and have
-> the browser call *your* endpoint instead. The request body built in
-> `myscript.ts` (`buildBody`) is identical — only the signing location changes.
-> Never commit real keys: `.env.local` is git-ignored.
+For any cloud provider, proxy the call through a small backend so the API
+secret never ships in the client bundle.
 
 ---
 
@@ -105,9 +107,9 @@ src/
     useDrawing.ts    # all pointer logic, live rendering, eraser, history wiring
     useHistory.ts    # generic stroke-based undo/redo stack
     useLocalStorage.ts # versioned auto-save / restore
-    useRecognition.ts  # async lifecycle for MyScript calls
+    useRecognition.ts  # async lifecycle for recognition calls
   lib/
-    myscript.ts      # iink REST client (HMAC auth) — keys injected here
+    recognition.ts   # browser Handwriting Recognition API client (no keys)
     export.ts        # PNG + PDF export (offscreen render, code-split)
     render.ts        # canvas path/pressure rendering shared by live + export
   types.ts           # Stroke / InkPoint model, presets
@@ -119,8 +121,8 @@ src/
 
 A drawing is `Stroke[]`. Each `Stroke` holds `InkPoint[]` with `x`, `y`,
 normalized `pressure` (0–1), and `t` (ms since the stroke began). Keeping raw
-timed points means the same data feeds both smooth rendering *and* MyScript
-recognition (which wants per-stroke `x[] / y[] / t[]` arrays) with no rework.
+timed points means the same data feeds both smooth rendering *and* the
+handwriting recognizer (which consumes per-point `{ x, y, t }`) with no rework.
 
 ---
 
