@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -11,5 +12,18 @@ export default defineConfig({
   build: {
     target: 'es2020',
     sourcemap: false,
+  },
+  test: {
+    // jsdom gives the DOM-dependent suites (localStorage, components) a browser
+    // environment; the pure-logic suites don't need it but it's harmless.
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.{test,spec}.{ts,tsx}', 'src/test/**', 'src/main.tsx'],
+    },
   },
 });
