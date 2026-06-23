@@ -28,3 +28,6 @@ jobs:
       # so a green build here means the project both type-checks and compiles.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test

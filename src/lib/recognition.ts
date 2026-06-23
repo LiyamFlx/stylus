@@ -1,6 +1,7 @@
 import Tesseract from 'tesseract.js';
 import type { Stroke } from '../types';
 import { RecognitionError } from './recognitionError';
+import { inkBounds, MIN_STROKE_WIDTH, type Bounds } from './geometry';
 
 /**
  * Handwriting → text using **Tesseract.js** — a WebAssembly OCR engine that
@@ -25,8 +26,6 @@ const OCR_LANG = 'eng';
 const TARGET_HEIGHT = 240;
 /** Whitespace padding around the ink in the rasterized image. */
 const PADDING = 32;
-/** Minimum line width so thin ink stays legible to the OCR engine. */
-const MIN_STROKE_WIDTH = 6;
 
 export type { RecognitionErrorCode } from './recognitionError';
 export { RecognitionError } from './recognitionError';
@@ -41,32 +40,6 @@ export interface RecognitionResult {
  */
 export function isRecognitionSupported(): boolean {
   return true;
-}
-
-interface Bounds {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-/** Axis-aligned bounding box of all ink, padded for stroke width. */
-function inkBounds(strokes: Stroke[]): Bounds | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const stroke of strokes) {
-    const half = Math.max(stroke.size, MIN_STROKE_WIDTH) / 2;
-    for (const p of stroke.points) {
-      minX = Math.min(minX, p.x - half);
-      minY = Math.min(minY, p.y - half);
-      maxX = Math.max(maxX, p.x + half);
-      maxY = Math.max(maxY, p.y + half);
-    }
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
 }
 
 /**

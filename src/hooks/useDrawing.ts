@@ -10,6 +10,7 @@ import type { InkPoint, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, renderAll } from '../lib/render';
+import { eraserRadius, hitsStroke } from '../lib/geometry';
 
 interface UseDrawingOptions {
   tool: Tool;
@@ -37,26 +38,6 @@ function createId(): string {
     return crypto.randomUUID();
   }
   return `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
-
-/** Shortest distance from point P to segment AB, for eraser hit-testing. */
-function distanceToSegment(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  const cx = ax + t * dx;
-  const cy = ay + t * dy;
-  return Math.hypot(px - cx, py - cy);
 }
 
 /**
@@ -391,28 +372,4 @@ export function useDrawing({
     clear,
     isEmpty,
   };
-}
-
-/* ------------------------------ free helpers ------------------------------ */
-
-/** Eraser contact radius scales with the selected size, with a usable floor. */
-function eraserRadius(size: number): number {
-  return Math.max(12, size * 3);
-}
-
-/** True if any segment of the stroke comes within `radius` of (x, y). */
-function hitsStroke(stroke: Stroke, x: number, y: number, radius: number): boolean {
-  const pts = stroke.points;
-  const threshold = radius + stroke.size / 2;
-  if (pts.length === 1) {
-    return Math.hypot(pts[0].x - x, pts[0].y - y) <= threshold;
-  }
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) <= threshold) {
-      return true;
-    }
-  }
-  return false;
 }
