@@ -1,13 +1,27 @@
-import { useCallback } from 'react';
-import type { Stroke } from '../types';
+import { useCallback, useEffect, useRef } from 'react';
+import type { InkPoint, Stroke } from '../types';
 
 const STORAGE_KEY = 'stylus.ink.v1';
+
+/** Coalesce bursts of saves (one per stroke) into a single write. */
+const SAVE_DEBOUNCE_MS = 400;
 
 /** Versioned payload so we can migrate the schema later without crashing. */
 interface PersistedDrawing {
   version: 1;
   strokes: Stroke[];
   savedAt: number;
+}
+
+function isPoint(value: unknown): value is InkPoint {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.x === 'number' &&
+    typeof p.y === 'number' &&
+    typeof p.pressure === 'number' &&
+    typeof p.t === 'number'
+  );
 }
 
 function isStroke(value: unknown): value is Stroke {
@@ -17,8 +31,23 @@ function isStroke(value: unknown): value is Stroke {
     typeof s.id === 'string' &&
     typeof s.color === 'string' &&
     typeof s.size === 'number' &&
-    Array.isArray(s.points)
+    Array.isArray(s.points) &&
+    s.points.every(isPoint)
   );
+}
+
+function writeNow(strokes: Stroke[]): void {
+  try {
+    const payload: PersistedDrawing = {
+      version: 1,
+      strokes,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    // Quota exceeded or storage disabled (private mode). Non-fatal.
+    console.warn('[stylus] auto-save failed', err);
+  }
 }
 
 /**
@@ -27,21 +56,35 @@ function isStroke(value: unknown): value is Stroke {
  * Persistence is plain JSON — strokes are already serializable. We validate
  * shape on load so a corrupt or stale payload degrades to "empty canvas"
  * rather than throwing during render.
+ *
+ * `save` is debounced so a fast scribble (many strokes) doesn't trigger a full
+ * `JSON.stringify` of the whole drawing on every commit. The latest pending
+ * write is flushed on `pagehide` and on unmount so nothing is lost when the tab
+ * closes inside the debounce window.
  */
 export function useLocalStorage() {
-  const save = useCallback((strokes: Stroke[]) => {
-    try {
-      const payload: PersistedDrawing = {
-        version: 1,
-        strokes,
-        savedAt: Date.now(),
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (err) {
-      // Quota exceeded or storage disabled (private mode). Non-fatal.
-      console.warn('[stylus] auto-save failed', err);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<Stroke[] | null>(null);
+
+  const flush = useCallback(() => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
     }
+    if (pending.current === null) return;
+    const strokes = pending.current;
+    pending.current = null;
+    writeNow(strokes);
   }, []);
+
+  const save = useCallback(
+    (strokes: Stroke[]) => {
+      pending.current = strokes;
+      if (timer.current !== null) return; // a flush is already scheduled
+      timer.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
+    },
+    [flush],
+  );
 
   const load = useCallback((): Stroke[] => {
     try {
@@ -65,6 +108,11 @@ export function useLocalStorage() {
   }, []);
 
   const clear = useCallback(() => {
+    pending.current = null;
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -72,5 +120,15 @@ export function useLocalStorage() {
     }
   }, []);
 
-  return { save, load, clear };
+  // Flush any pending write when the tab is hidden/closed or we unmount.
+  useEffect(() => {
+    const onHide = () => flush();
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      flush();
+    };
+  }, [flush]);
+
+  return { save, flush, load, clear };
 }

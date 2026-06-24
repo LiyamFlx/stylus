@@ -24,6 +24,15 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.{test,spec}.{ts,tsx}', 'src/test/**', 'src/main.tsx'],
+      // Guard the well-tested pure logic against regressions. The canvas-heavy
+      // gesture code in useDrawing is better covered by e2e and is left out of
+      // the gate intentionally.
+      thresholds: {
+        'src/lib/geometry.ts': { lines: 100, functions: 100 },
+        'src/hooks/useHistory.ts': { lines: 95, functions: 100 },
+        'src/hooks/useLocalStorage.ts': { lines: 90, functions: 90 },
+        'src/hooks/useRecognition.ts': { lines: 90, functions: 100 },
+      },
     },
   },
 });
