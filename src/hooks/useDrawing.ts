@@ -17,6 +17,8 @@ interface UseDrawingOptions {
   color: string;
   size: number;
   paper: PaperStyle;
+  /** localStorage key for this document's strokes. */
+  storageKey?: string;
 }
 
 export interface UseDrawingResult {
@@ -57,10 +59,11 @@ export function useDrawing({
   color,
   size,
   paper,
+  storageKey,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const history = useHistory<Stroke[]>([]);
-  const { save, load } = useLocalStorage();
+  const { save, load } = useLocalStorage(storageKey);
 
   // Latest committed strokes, mirrored in a ref for use inside event handlers
   // and rAF callbacks without re-binding them.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { InkPoint, Stroke } from '../types';
 
-const STORAGE_KEY = 'stylus.ink.v1';
+const DEFAULT_STORAGE_KEY = 'stylus.ink.v1';
 
 /** Coalesce bursts of saves (one per stroke) into a single write. */
 const SAVE_DEBOUNCE_MS = 400;
@@ -36,14 +36,14 @@ function isStroke(value: unknown): value is Stroke {
   );
 }
 
-function writeNow(strokes: Stroke[]): void {
+function writeNow(key: string, strokes: Stroke[]): void {
   try {
     const payload: PersistedDrawing = {
       version: 1,
       strokes,
       savedAt: Date.now(),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(key, JSON.stringify(payload));
   } catch (err) {
     // Quota exceeded or storage disabled (private mode). Non-fatal.
     console.warn('[stylus] auto-save failed', err);
@@ -62,9 +62,12 @@ function writeNow(strokes: Stroke[]): void {
  * write is flushed on `pagehide` and on unmount so nothing is lost when the tab
  * closes inside the debounce window.
  */
-export function useLocalStorage() {
+export function useLocalStorage(storageKey: string = DEFAULT_STORAGE_KEY) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Stroke[] | null>(null);
+  // Mirror the key so the stable callbacks always write to the latest one.
+  const keyRef = useRef(storageKey);
+  keyRef.current = storageKey;
 
   const flush = useCallback(() => {
     if (timer.current !== null) {
@@ -74,7 +77,7 @@ export function useLocalStorage() {
     if (pending.current === null) return;
     const strokes = pending.current;
     pending.current = null;
-    writeNow(strokes);
+    writeNow(keyRef.current, strokes);
   }, []);
 
   const save = useCallback(
@@ -88,7 +91,7 @@ export function useLocalStorage() {
 
   const load = useCallback((): Stroke[] => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(keyRef.current);
       if (!raw) return [];
       const parsed = JSON.parse(raw) as unknown;
       if (
@@ -114,7 +117,7 @@ export function useLocalStorage() {
       timer.current = null;
     }
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(keyRef.current);
     } catch {
       // ignore
     }

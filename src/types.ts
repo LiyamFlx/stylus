@@ -7,7 +7,7 @@
  * browser's handwriting recognizer without re-deriving timing.
  */
 
-export type Tool = 'pen' | 'eraser';
+export type Tool = 'pen' | 'eraser' | 'text';
 
 /** A single sampled point along a stroke. */
 export interface InkPoint {
@@ -19,6 +19,21 @@ export interface InkPoint {
   pressure: number;
   /** ms timestamp relative to stroke start (t[0] === 0). */
   t: number;
+}
+
+/** A typed text box placed on the canvas (via the on-screen keyboard). */
+export interface TextItem {
+  /** Stable id. */
+  id: string;
+  /** Top-left CSS px, relative to the canvas. */
+  x: number;
+  y: number;
+  /** The typed content (may be multi-line). */
+  text: string;
+  /** Hex color, matches the pen palette. */
+  color: string;
+  /** Font size in CSS px. */
+  size: number;
 }
 
 /** One continuous pointer-down → pointer-up gesture. */

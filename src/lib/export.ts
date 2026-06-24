@@ -1,6 +1,20 @@
 import { jsPDF } from 'jspdf';
-import type { PaperStyle, Stroke } from '../types';
+import type { PaperStyle, Stroke, TextItem } from '../types';
 import { renderAll } from './render';
+
+/** Draw the placed text boxes onto the export context. */
+function drawTexts(ctx: CanvasRenderingContext2D, texts: TextItem[]): void {
+  ctx.textBaseline = 'top';
+  for (const t of texts) {
+    if (!t.text) continue;
+    ctx.fillStyle = t.color;
+    ctx.font = `${t.size}px Inter, system-ui, sans-serif`;
+    const lineHeight = t.size * 1.2;
+    t.text.split('\n').forEach((line, i) => {
+      ctx.fillText(line, t.x, t.y + i * lineHeight);
+    });
+  }
+}
 
 /**
  * Export helpers for the current drawing.
@@ -19,13 +33,22 @@ interface ExportOptions {
   background?: string;
   /** Paper guide to bake into the export. Defaults to none. */
   paper?: PaperStyle;
+  /** Text boxes to bake into the export. */
+  texts?: TextItem[];
   /** Pixel-density multiplier for the rendered bitmap. */
   scale?: number;
 }
 
 function renderToCanvas(
   strokes: Stroke[],
-  { width, height, background = '#0a0a0a', paper = 'blank', scale = 2 }: ExportOptions,
+  {
+    width,
+    height,
+    background = '#0a0a0a',
+    paper = 'blank',
+    texts = [],
+    scale = 2,
+  }: ExportOptions,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(width * scale);
@@ -37,6 +60,7 @@ function renderToCanvas(
   // renderAll applies the opaque background (after its clear) and the paper
   // guide, then the strokes — so the export matches what's on screen.
   renderAll(ctx, strokes, width, height, { paper, background });
+  drawTexts(ctx, texts);
   return canvas;
 }
 
