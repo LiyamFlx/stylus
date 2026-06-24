@@ -1,7 +1,5 @@
-import type { InkPoint, Stroke } from '../types';
-import { isTextStroke } from '../types';
-import type { TextStroke } from '../types/extensions';
-import { FONT_FAMILY_CSS } from '../types/extensions';
+import type { InkPoint, PaperStyle, Stroke } from '../types';
+import { drawPaper } from './paper';
 
 /**
  * Canvas rendering helpers.
@@ -13,10 +11,6 @@ import { FONT_FAMILY_CSS } from '../types/extensions';
 
 /** Draw a single stroke onto a 2D context (already DPR-scaled). */
 export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
-  if (isTextStroke(stroke)) {
-    drawTextStroke(ctx, stroke);
-    return;
-  }
   const { points, color, size } = stroke;
   if (points.length === 0) return;
 
@@ -55,32 +49,33 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   ctx.globalAlpha = 1;
 }
 
-/**
- * Render a TextStroke. Coords are CSS px; the context is already DPR-scaled by
- * the caller, so we draw in CSS units (no extra dpr math here).
- */
-function drawTextStroke(ctx: CanvasRenderingContext2D, stroke: TextStroke): void {
-  const { x, y, content, styles } = stroke;
-  ctx.save();
-  ctx.font = `${styles.bold ? 700 : 400} ${styles.fontSize}px ${FONT_FAMILY_CSS[styles.fontFamily]}`;
-  ctx.fillStyle = styles.color;
-  ctx.textBaseline = 'top';
-  ctx.globalAlpha = 1;
-  const lineHeight = styles.fontSize * 1.4;
-  content.split('\n').forEach((line, i) => {
-    ctx.fillText(line, x, y + i * lineHeight);
-  });
-  ctx.restore();
+export interface RenderOptions {
+  /** Paper guide to draw beneath the ink. Defaults to `blank` (none). */
+  paper?: PaperStyle;
+  /** Opaque background fill. Omit for a transparent base (the on-screen canvas
+   *  sits over a CSS background); set it for exports so the bitmap isn't
+   *  transparent. */
+  background?: string;
 }
 
-/** Repaint the whole drawing. Clears first, then strokes in order. */
+/**
+ * Repaint the whole drawing: clear, optional opaque fill, paper guide, then
+ * strokes in order. The fill is applied *after* the clear so callers that want
+ * an opaque export background actually get one.
+ */
 export function renderAll(
   ctx: CanvasRenderingContext2D,
   strokes: Stroke[],
   width: number,
   height: number,
+  { paper = 'blank', background }: RenderOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
+  if (background) {
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, width, height);
+  }
+  drawPaper(ctx, paper, width, height);
   for (const stroke of strokes) {
     drawStroke(ctx, stroke);
   }

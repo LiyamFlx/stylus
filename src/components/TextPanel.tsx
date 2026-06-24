@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { RecognitionStatus } from '../hooks/useRecognition';
-import { CloseIcon, SpinnerIcon } from './icons';
+import { CheckIcon, CloseIcon, CopyIcon, SpinnerIcon } from './icons';
 
 interface TextPanelProps {
   open: boolean;
@@ -15,7 +16,29 @@ interface TextPanelProps {
  * pointer events to the canvas.
  */
 export function TextPanel({ open, status, text, error, onClose }: TextPanelProps) {
+  const [copied, setCopied] = useState(false);
+
+  // Clear the "Copied" confirmation shortly after it shows, and whenever the
+  // recognized text changes (a fresh result shouldn't look already-copied).
+  useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(id);
+  }, [copied]);
+  useEffect(() => setCopied(false), [text]);
+
   if (!open) return null;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      // Clipboard blocked (permissions / insecure context) — no-op.
+    }
+  };
+
+  const hasText = status === 'success' && text.length > 0;
 
   return (
     <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 sm:pb-4">
@@ -24,14 +47,27 @@ export function TextPanel({ open, status, text, error, onClose }: TextPanelProps
           <h2 className="text-[12px] font-semibold uppercase tracking-eyebrow text-brand-700">
             Recognized text
           </h2>
-          <button
-            type="button"
-            aria-label="Close panel"
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 transition-colors hover:bg-white/[0.06] hover:text-ink-700"
-          >
-            <CloseIcon size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {hasText && (
+              <button
+                type="button"
+                aria-label={copied ? 'Copied' : 'Copy text'}
+                onClick={handleCopy}
+                className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-ink-400 transition-colors hover:bg-white/[0.06] hover:text-ink-700"
+              >
+                {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Close panel"
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 transition-colors hover:bg-white/[0.06] hover:text-ink-700"
+            >
+              <CloseIcon size={16} />
+            </button>
+          </div>
         </div>
 
         {status === 'loading' && (

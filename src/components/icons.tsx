@@ -83,6 +83,75 @@ export const FileIcon = ({ size = 20, className }: IconProps) => (
   </svg>
 );
 
+export const PaperIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <path d="M8 8h8M8 12h8M8 16h8" />
+  </svg>
+);
+
+export const CopyIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V5a2 2 0 012-2h8" />
+  </svg>
+);
+
+export const CheckIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M20 6L9 17l-5-5" />
+  </svg>
+);
+
+export const TypeIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M4 7V4h16v3" />
+    <path d="M9 20h6" />
+    <path d="M12 4v16" />
+  </svg>
+);
+
+export const PlusIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
+export const EditIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </svg>
+);
+
+export const UserIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1" />
+  </svg>
+);
+
+export const KeyboardIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+  </svg>
+);
+
+export const BackspaceIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M21 5H8L2 12l6 7h13a1 1 0 001-1V6a1 1 0 00-1-1z" />
+    <path d="M17 9l-5 6M12 9l5 6" />
+  </svg>
+);
+
+export const DocumentIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <path d="M14 2v6h6M8 13h8M8 17h5" />
+  </svg>
+);
+
 export const MenuIcon = ({ size = 20, className }: IconProps) => (
   <svg {...svgProps(size, className)}>
     <path d="M3 12h18M3 6h18M3 18h18" />

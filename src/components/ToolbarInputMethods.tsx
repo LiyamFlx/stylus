@@ -1,26 +1,15 @@
-// ─── Toolbar.tsx PATCH ───────────────────────────────────────────────────────
-// Add these imports and the <InputMethodGroup /> component to your Toolbar.tsx.
-// Insert <InputMethodGroup /> in the toolbar pill between existing tools and
-// the convert/export buttons.
+// ─── Hardware input methods (Scanmarker scanner + Bluetooth stylus) ──────────
+// Rendered in the toolbar pill, after the core tools. Each button is hidden
+// when the underlying browser API is unsupported.
 //
 // Layout target:
-//   [pen][eraser][undo][redo] | [T][scanner][stylus] | [convert][export]
+//   [pen][eraser][text]…[undo][redo][clear] | [scanner][stylus] | [convert][export]
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { UseTextToolReturn } from '../hooks/useTextTool';
 import type { UseScanmarkerScannerReturn } from '../hooks/useScanmarkerScanner';
 import type { UseBluetoothStylusReturn } from '../hooks/useBluetoothStylus';
 
 // ─── Icon components (inline SVG, 20×20, 2px stroke, Lucide-style) ────────────
-
-function IconText(): React.ReactElement {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <path d="M4 5h12M10 5v10M7 15h6" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function IconScanner(): React.ReactElement {
   return (
@@ -107,41 +96,27 @@ function Divider(): React.ReactElement {
 // Drop this component into Toolbar.tsx and render it in the pill.
 
 interface InputMethodGroupProps {
-  textTool: UseTextToolReturn;
   scanner: UseScanmarkerScannerReturn;
   stylus: UseBluetoothStylusReturn;
 }
 
 export function InputMethodGroup({
-  textTool,
   scanner,
   stylus,
-}: InputMethodGroupProps): React.ReactElement {
+}: InputMethodGroupProps): React.ReactElement | null {
+  // Nothing to show if neither hardware API is available — render no dividers.
+  if (!scanner.isWebHIDAvailable && !stylus.isWebBluetoothAvailable) {
+    return null;
+  }
   return (
     <>
       <Divider />
 
-      {/* T — Text tool (always visible) */}
-      <ToolbarBtn
-        label="Text tool"
-        tooltip={textTool.isActive ? 'Click canvas to place text (Esc to cancel)' : 'Type text onto canvas (T)'}
-        active={textTool.isActive}
-        onClick={() => textTool.isActive ? textTool.deactivate() : textTool.activate()}
-      >
-        <IconText />
-      </ToolbarBtn>
-
       {/* Scanner — WebHID only; hidden if unsupported */}
-      {scanner.isWebHIDAvailable && (
-        <ScannerButton scanner={scanner} />
-      )}
+      {scanner.isWebHIDAvailable && <ScannerButton scanner={scanner} />}
 
       {/* Stylus — Web Bluetooth only; hidden if unsupported */}
-      {stylus.isWebBluetoothAvailable && (
-        <StylusButton stylus={stylus} />
-      )}
-
-      <Divider />
+      {stylus.isWebBluetoothAvailable && <StylusButton stylus={stylus} />}
     </>
   );
 }

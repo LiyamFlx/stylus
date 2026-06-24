@@ -1,7 +1,7 @@
 import Tesseract from 'tesseract.js';
-import type { InkStroke, Stroke } from '../types';
-import { isTextStroke } from '../types';
+import type { Stroke } from '../types';
 import { RecognitionError } from './recognitionError';
+import { inkBounds, MIN_STROKE_WIDTH, type Bounds } from './geometry';
 
 /**
  * Handwriting → text using **Tesseract.js** — a WebAssembly OCR engine that
@@ -26,8 +26,6 @@ const OCR_LANG = 'eng';
 const TARGET_HEIGHT = 240;
 /** Whitespace padding around the ink in the rasterized image. */
 const PADDING = 32;
-/** Minimum line width so thin ink stays legible to the OCR engine. */
-const MIN_STROKE_WIDTH = 6;
 
 export type { RecognitionErrorCode } from './recognitionError';
 export { RecognitionError } from './recognitionError';
@@ -44,30 +42,23 @@ export function isRecognitionSupported(): boolean {
   return true;
 }
 
-interface Bounds {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
+/**
+ * Lazily create a single Tesseract worker and reuse it across recognitions.
+ * The one-shot `Tesseract.recognize` helper spins up and tears down a worker
+ * (and re-inits the language) on every call; a persistent worker makes repeat
+ * recognitions much faster. On init failure we drop the cached promise so the
+ * next call retries from scratch.
+ */
+let workerPromise: Promise<Tesseract.Worker> | null = null;
 
-/** Axis-aligned bounding box of all ink, padded for stroke width. */
-function inkBounds(strokes: InkStroke[]): Bounds | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const stroke of strokes) {
-    const half = Math.max(stroke.size, MIN_STROKE_WIDTH) / 2;
-    for (const p of stroke.points) {
-      minX = Math.min(minX, p.x - half);
-      minY = Math.min(minY, p.y - half);
-      maxX = Math.max(maxX, p.x + half);
-      maxY = Math.max(maxY, p.y + half);
-    }
+function getWorker(): Promise<Tesseract.Worker> {
+  if (!workerPromise) {
+    workerPromise = Tesseract.createWorker(OCR_LANG).catch((err) => {
+      workerPromise = null;
+      throw err;
+    });
   }
-  if (!Number.isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
+  return workerPromise;
 }
 
 /**
@@ -75,7 +66,7 @@ function inkBounds(strokes: InkStroke[]): Bounds | null {
  * and scaled so the writing is a consistent, OCR-friendly height. Returns a
  * canvas ready to hand to Tesseract.
  */
-function rasterizeForOCR(strokes: InkStroke[], bounds: Bounds): HTMLCanvasElement {
+function rasterizeForOCR(strokes: Stroke[], bounds: Bounds): HTMLCanvasElement {
   const inkW = bounds.maxX - bounds.minX;
   const inkH = bounds.maxY - bounds.minY;
 
@@ -139,23 +130,22 @@ function rasterizeForOCR(strokes: InkStroke[], bounds: Bounds): HTMLCanvasElemen
 export async function recognizeText(
   strokes: Stroke[],
 ): Promise<RecognitionResult> {
-  // OCR only sees freehand ink; placed text strokes carry their own content
-  // and would corrupt the bitmap fed to Tesseract.
-  const ink = strokes.filter((s): s is InkStroke => !isTextStroke(s));
-  if (ink.length === 0) {
-    throw new RecognitionError('Nothing to recognize — write something first.', 'empty');
+  if (strokes.length === 0) {
+    throw new RecognitionError('Nothing to recognize — the canvas is empty.', 'empty');
   }
 
-  const bounds = inkBounds(ink);
+  const bounds = inkBounds(strokes);
   if (!bounds) {
-    throw new RecognitionError('Nothing to recognize — write something first.', 'empty');
+    throw new RecognitionError('Nothing to recognize — the canvas is empty.', 'empty');
   }
 
-  const image = rasterizeForOCR(ink, bounds);
+  const image = rasterizeForOCR(strokes, bounds);
 
   try {
-    // `recognize` lazily downloads + caches the language model on first use.
-    const { data } = await Tesseract.recognize(image, OCR_LANG);
+    // The worker lazily downloads + caches the language model on first use,
+    // then stays warm for subsequent recognitions.
+    const worker = await getWorker();
+    const { data } = await worker.recognize(image);
     return { text: data.text.trim() };
   } catch (err) {
     throw new RecognitionError(

@@ -7,8 +7,6 @@
  * browser's handwriting recognizer without re-deriving timing.
  */
 
-import type { TextStroke } from './types/extensions';
-
 export type Tool = 'pen' | 'eraser' | 'text';
 
 /** A single sampled point along a stroke. */
@@ -27,10 +25,23 @@ export interface InkPoint {
   t: number;
 }
 
+/** A typed text box placed on the canvas (via the on-screen keyboard). */
+export interface TextItem {
+  /** Stable id. */
+  id: string;
+  /** Top-left CSS px, relative to the canvas. */
+  x: number;
+  y: number;
+  /** The typed content (may be multi-line). */
+  text: string;
+  /** Hex color, matches the pen palette. */
+  color: string;
+  /** Font size in CSS px. */
+  size: number;
+}
+
 /** One continuous pointer-down → pointer-up gesture. */
-export interface InkStroke {
-  /** Discriminant. Optional/absent means ink (back-compat with saved drawings). */
-  type?: 'ink';
+export interface Stroke {
   /** Stable id, used for hit-testing / erasing. */
   id: string;
   /** Hex color, e.g. "#ffffff". */
@@ -40,17 +51,14 @@ export interface InkStroke {
   points: InkPoint[];
 }
 
-/** Any stroke on the canvas: freehand ink or placed text. */
-export type Stroke = InkStroke | TextStroke;
-
-/** Narrowing helper — true for placed-text strokes. */
-export function isTextStroke(s: Stroke): s is TextStroke {
-  return (s as TextStroke).type === 'text';
-}
-
 /** Pen sizes exposed in the toolbar (CSS px). */
 export const PEN_SIZES = [2, 4, 8] as const;
 export type PenSize = (typeof PEN_SIZES)[number];
+
+/** Paper guide drawn beneath the ink (and baked into exports). */
+export type PaperStyle = 'blank' | 'grid' | 'ruled' | 'dots';
+/** Cycle order for the toolbar paper button. */
+export const PAPER_STYLES = ['blank', 'grid', 'ruled', 'dots'] as const;
 
 /** Eight preset ink colors. White first since it's the dark-mode default. */
 export const PRESET_COLORS = [

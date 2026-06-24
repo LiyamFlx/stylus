@@ -6,24 +6,25 @@ import {
   useState,
 } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { InkPoint, InkStroke, Stroke, Tool } from '../types';
-import { isTextStroke } from '../types';
-import type { TextStroke } from '../types/extensions';
+import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, renderAll } from '../lib/render';
+import { eraserRadius, hitsStroke } from '../lib/geometry';
 
 interface UseDrawingOptions {
   tool: Tool;
   color: string;
   size: number;
+  paper: PaperStyle;
+  /** localStorage key for this document's strokes. */
+  storageKey?: string;
 }
 
 export interface UseDrawingResult {
   canvasRef: React.RefObject<HTMLCanvasElement>;
   strokes: Stroke[];
   /** Commit a finished stroke (e.g. placed text) as one undo step. */
-  addStroke: (stroke: Stroke) => void;
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
@@ -71,26 +72,6 @@ function createId(): string {
   return `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
-/** Shortest distance from point P to segment AB, for eraser hit-testing. */
-function distanceToSegment(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  const cx = ax + t * dx;
-  const cy = ay + t * dy;
-  return Math.hypot(px - cx, py - cy);
-}
-
 /**
  * Core drawing engine.
  *
@@ -106,10 +87,12 @@ export function useDrawing({
   tool,
   color,
   size,
+  paper,
+  storageKey,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const history = useHistory<Stroke[]>([]);
-  const { save, load } = useLocalStorage();
+  const { save, load } = useLocalStorage(storageKey);
 
   // Latest committed strokes, mirrored in a ref for use inside event handlers
   // and rAF callbacks without re-binding them.
@@ -117,15 +100,15 @@ export function useDrawing({
   strokesRef.current = history.present;
 
   // In-progress stroke and bookkeeping for the active pointer gesture.
-  const liveStrokeRef = useRef<InkStroke | null>(null);
+  const liveStrokeRef = useRef<Stroke | null>(null);
   const activePointerId = useRef<number | null>(null);
   const strokeStartTime = useRef<number>(0);
   const rafId = useRef<number | null>(null);
   const needsFullRepaint = useRef<boolean>(false);
 
   // Toolbar settings, mirrored so handlers read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size });
-  settingsRef.current = { tool, color, size };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper });
+  settingsRef.current = { tool, color, size, paper };
 
   const [isEmpty, setIsEmpty] = useState(true);
 
@@ -149,7 +132,9 @@ export function useDrawing({
     if (!ctx) return;
     // Reset transform then scale so 1 unit === 1 CSS px regardless of DPR.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    renderAll(ctx, strokesRef.current, clientWidth, clientHeight);
+    renderAll(ctx, strokesRef.current, clientWidth, clientHeight, {
+      paper: settingsRef.current.paper,
+    });
   }, []);
 
   useLayoutEffect(() => {
@@ -192,31 +177,21 @@ export function useDrawing({
       // committed strokes. The full-clear-and-repaint keeps anti-aliasing
       // clean and avoids double-darkening overlapping strokes.
       const base = eraseWorkingRef.current ?? strokesRef.current;
-      renderAll(ctx, base, canvas.clientWidth, canvas.clientHeight);
+      renderAll(ctx, base, canvas.clientWidth, canvas.clientHeight, {
+        paper: settingsRef.current.paper,
+      });
       // Draw the in-progress pen stroke on top of the committed layer.
       if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
     });
   }, []);
 
-  /* --------------------------- pointer helpers ---------------------------- */
+  // Repaint when the paper style changes so the new guide shows immediately.
+  useEffect(() => {
+    needsFullRepaint.current = true;
+    scheduleRender();
+  }, [paper, scheduleRender]);
 
-  const getPoint = useCallback(
-    (e: ReactPointerEvent<HTMLCanvasElement>): InkPoint => {
-      const canvas = canvasRef.current;
-      const rect = canvas?.getBoundingClientRect();
-      const x = e.clientX - (rect?.left ?? 0);
-      const y = e.clientY - (rect?.top ?? 0);
-      return buildPoint(
-        x,
-        y,
-        e.pointerType,
-        e.pressure,
-        e.tiltX ?? 0,
-        e.tiltY ?? 0,
-      );
-    },
-    [],
-  );
+  /* --------------------------- pointer helpers ---------------------------- */
 
   // Build an InkPoint, normalizing pressure and deriving width (pressure) and
   // opacity (tilt). Pens get dynamic width/opacity; mouse/touch get steady
@@ -248,6 +223,24 @@ export function useDrawing({
       };
     },
     [],
+  );
+
+  const getPoint = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>): InkPoint => {
+      const canvas = canvasRef.current;
+      const rect = canvas?.getBoundingClientRect();
+      const x = e.clientX - (rect?.left ?? 0);
+      const y = e.clientY - (rect?.top ?? 0);
+      return buildPoint(
+        x,
+        y,
+        e.pointerType,
+        e.pressure,
+        e.tiltX ?? 0,
+        e.tiltY ?? 0,
+      );
+    },
+    [buildPoint],
   );
 
   /* ------------------------------- erasing -------------------------------- */
@@ -314,7 +307,6 @@ export function useDrawing({
       }
 
       liveStrokeRef.current = {
-        type: 'ink',
         id: createId(),
         color: activeColor,
         size: activeSize,
@@ -418,7 +410,7 @@ export function useDrawing({
       history.set(next);
       strokesRef.current = next;
     },
-    [history],
+    [history, scheduleRender],
   );
 
   /* -------------------------- toolbar operations -------------------------- */
@@ -430,15 +422,6 @@ export function useDrawing({
   const redo = useCallback(() => {
     history.redo();
   }, [history]);
-
-  const addStroke = useCallback(
-    (stroke: Stroke) => {
-      const next = [...strokesRef.current, stroke];
-      history.set(next);
-      strokesRef.current = next;
-    },
-    [history],
-  );
 
   const clear = useCallback(() => {
     // Repaint + persistence handled by the history.present effect.
@@ -477,7 +460,6 @@ export function useDrawing({
   return {
     canvasRef,
     strokes: history.present,
-    addStroke,
     onPointerDown,
     onPointerMove,
     onPointerUp: endGesture,
@@ -488,56 +470,4 @@ export function useDrawing({
     clear,
     isEmpty,
   };
-}
-
-/* ------------------------------ free helpers ------------------------------ */
-
-/**
- * Hit-test a text stroke against an eraser blob. We approximate the text box:
- * width from the longest line, height from line count × line height. Generous
- * enough that touching the text removes it.
- */
-function hitsTextStroke(
-  stroke: TextStroke,
-  x: number,
-  y: number,
-  radius: number,
-): boolean {
-  const lines = stroke.content.split('\n');
-  const lineHeight = stroke.styles.fontSize * 1.4;
-  // Rough average glyph width ≈ 0.6em for a sans-serif.
-  const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
-  const w = longest * stroke.styles.fontSize * 0.6;
-  const h = lines.length * lineHeight;
-  return (
-    x >= stroke.x - radius &&
-    x <= stroke.x + w + radius &&
-    y >= stroke.y - radius &&
-    y <= stroke.y + h + radius
-  );
-}
-
-/** Eraser contact radius scales with the selected size, with a usable floor. */
-function eraserRadius(size: number): number {
-  return Math.max(12, size * 3);
-}
-
-/** True if any segment of the stroke comes within `radius` of (x, y). */
-function hitsStroke(stroke: Stroke, x: number, y: number, radius: number): boolean {
-  // Text strokes hit-test against their bounding box (handled in eraseAt's
-  // caller path); here we only deal with ink geometry.
-  if (isTextStroke(stroke)) return hitsTextStroke(stroke, x, y, radius);
-  const pts = stroke.points;
-  const threshold = radius + stroke.size / 2;
-  if (pts.length === 1) {
-    return Math.hypot(pts[0].x - x, pts[0].y - y) <= threshold;
-  }
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) <= threshold) {
-      return true;
-    }
-  }
-  return false;
 }

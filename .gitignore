@@ -11,6 +11,9 @@ dist-ssr
 # TypeScript incremental build info
 *.tsbuildinfo
 
+# Test coverage reports
+coverage
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
