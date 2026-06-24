@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Stroke } from '../types';
 import { RecognitionError } from '../lib/recognitionError';
+import { importChunk } from '../lib/chunkReload';
 
 export type RecognitionStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -30,8 +31,11 @@ export function useRecognition(): UseRecognitionResult {
     setError(null);
     try {
       // The OCR engine (Tesseract WASM) is heavy, so it's code-split and
-      // loaded on first recognition rather than at app startup.
-      const { recognizeText } = await import('../lib/recognition');
+      // loaded on first recognition rather than at app startup. importChunk
+      // recovers from a stale-deploy chunk 404 by reloading once.
+      const { recognizeText } = await importChunk(
+        () => import('../lib/recognition'),
+      );
       const result = await recognizeText(strokes);
       if (id !== requestId.current) return; // superseded
       setText(result.text.trim());

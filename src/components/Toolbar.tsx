@@ -4,6 +4,7 @@ import { PEN_SIZES, PRESET_COLORS } from '../types';
 import {
   PenIcon,
   EraserIcon,
+  TypeIcon,
   UndoIcon,
   RedoIcon,
   TrashIcon,
@@ -217,6 +218,13 @@ export function Toolbar(props: ToolbarProps) {
         onClick={() => onToolChange('eraser')}
       >
         <EraserIcon />
+      </IconButton>
+      <IconButton
+        label="Text"
+        active={tool === 'text'}
+        onClick={() => onToolChange('text')}
+      >
+        <TypeIcon />
       </IconButton>
 
       <Divider />
