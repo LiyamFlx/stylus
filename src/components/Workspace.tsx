@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
-import { TextPanel } from './TextPanel';
+import { StudioPanel } from './StudioPanel';
 import { TextLayer } from './TextLayer';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
 import { Toaster } from './Toaster';
@@ -303,11 +303,11 @@ export function Workspace({
         }
       />
 
-      <TextPanel
+      <StudioPanel
         open={panelOpen}
         status={recognition.status}
         text={recognition.text}
-        error={recognition.error}
+        recognitionError={recognition.error}
         onClose={handleClosePanel}
       />
 

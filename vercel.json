@@ -5,7 +5,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/((?!assets/|sw\\.js|registerSW\\.js|workbox-|manifest\\.webmanifest|favicon\\.svg).*)",
+      "source": "/((?!api/|assets/|sw\\.js|registerSW\\.js|workbox-|manifest\\.webmanifest|favicon\\.svg).*)",
       "destination": "/"
     }
   ],

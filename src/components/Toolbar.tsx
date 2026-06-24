@@ -8,7 +8,6 @@ import {
   UndoIcon,
   RedoIcon,
   TrashIcon,
-  TextIcon,
   ImageIcon,
   FileIcon,
   PaperIcon,
@@ -85,6 +84,57 @@ function IconButton({
 
 function Divider() {
   return <div className="mx-1 h-6 w-px self-center bg-border-strong" aria-hidden />;
+}
+
+/** Sparkle "Convert" button — runs OCR and opens the Stylus AI studio. */
+function ConvertButton({
+  disabled,
+  recognizing,
+  onClick,
+}: {
+  disabled: boolean;
+  recognizing: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title="Convert handwriting to text"
+      aria-label="Convert to text"
+      disabled={disabled}
+      onClick={onClick}
+      className={[
+        'flex h-9 items-center justify-center gap-1.5 rounded-full px-3 transition-colors',
+        'border border-brand-500/40 bg-brand-500/[0.14] text-brand-300',
+        'hover:bg-brand-500/25 disabled:cursor-not-allowed disabled:opacity-40',
+      ].join(' ')}
+    >
+      {recognizing ? <SpinnerIcon size={18} /> : <SparkleIcon />}
+      <span className="hidden text-[13px] font-semibold tracking-tight sm:inline">
+        Convert
+      </span>
+    </button>
+  );
+}
+
+/** Sparkle glyph for the Convert action. */
+function SparkleIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15l-1.7-4L6 9.3l4.3-1.7z" />
+      <path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z" />
+    </svg>
+  );
 }
 
 /** The size selector: three dots of increasing radius. */
@@ -259,13 +309,11 @@ export function Toolbar(props: ToolbarProps) {
       {inputMethodGroup}
 
       <Divider />
-      <IconButton
-        label="Recognize handwriting"
+      <ConvertButton
         disabled={isEmpty || recognizing}
+        recognizing={recognizing}
         onClick={onRecognize}
-      >
-        {recognizing ? <SpinnerIcon /> : <TextIcon />}
-      </IconButton>
+      />
       <IconButton label="Export PNG" disabled={isEmpty} onClick={onExportPNG}>
         <ImageIcon />
       </IconButton>
