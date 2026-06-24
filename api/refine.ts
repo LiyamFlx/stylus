@@ -26,7 +26,11 @@ const PROMPTS: Record<Action, (t: string) => string> = {
     `Rewrite the following note in a warm, friendly, casual tone. Return only the rewritten text.\n\n"""${t}"""`,
 };
 
-const MODEL = 'anthropic/claude-sonnet-4.6';
+// Haiku is covered by AI Gateway free-tier credits (the Sonnet/Opus tiers are
+// not) and is plenty for short note refinement — fast and inexpensive. Falls
+// back across a couple of Haiku generations if one is unavailable.
+const MODEL = 'anthropic/claude-haiku-4.5';
+const FALLBACK_MODELS = ['anthropic/claude-3.5-haiku'];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -55,7 +59,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       model: MODEL,
       prompt: build(source),
       providerOptions: {
-        gateway: { tags: ['feature:stylus-refine', `action:${action}`] },
+        gateway: {
+          models: FALLBACK_MODELS,
+          tags: ['feature:stylus-refine', `action:${action}`],
+        },
       },
     });
     res.status(200).json({ result: result.trim() });
