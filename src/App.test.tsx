@@ -64,4 +64,18 @@ describe('App keyboard shortcuts', () => {
     render(<App />);
     expect(screen.getByText(/start writing or drawing/i)).toBeInTheDocument();
   });
+
+  it('cycles the paper style blank → grid → ruled → dots → blank', () => {
+    render(<App />);
+    const paperBtn = () => screen.getAllByRole('button', { name: /^Paper:/ })[0];
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
+    fireEvent.click(paperBtn());
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Grid');
+    fireEvent.click(paperBtn());
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Ruled');
+    fireEvent.click(paperBtn());
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Dots');
+    fireEvent.click(paperBtn());
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
+  });
 });
