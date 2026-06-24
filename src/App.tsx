@@ -6,6 +6,7 @@ import { BrandFooter, BrandHeader } from './components/Brand';
 import { useDrawing } from './hooks/useDrawing';
 import { useRecognition } from './hooks/useRecognition';
 import { eraserRadius } from './lib/geometry';
+import { importChunk } from './lib/chunkReload';
 import type { PaperStyle, PenSize, Tool } from './types';
 import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from './types';
 
@@ -38,13 +39,14 @@ export default function App() {
   }, [drawing.canvasRef, paper]);
 
   // Export lib (jsPDF) is heavy, so it's code-split and loaded on first use.
+  // importChunk reloads once if a stale deploy 404s the chunk.
   const handleExportPNG = useCallback(async () => {
-    const { exportPNG } = await import('./lib/export');
+    const { exportPNG } = await importChunk(() => import('./lib/export'));
     exportPNG(drawing.strokes, exportOpts());
   }, [drawing.strokes, exportOpts]);
 
   const handleExportPDF = useCallback(async () => {
-    const { exportPDF } = await import('./lib/export');
+    const { exportPDF } = await importChunk(() => import('./lib/export'));
     exportPDF(drawing.strokes, exportOpts());
   }, [drawing.strokes, exportOpts]);
 
