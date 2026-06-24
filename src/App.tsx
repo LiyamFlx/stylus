@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
 import { TextPanel } from './components/TextPanel';
+import { TextBox } from './components/TextBox';
+import { Toaster } from './components/Toaster';
+import { InputMethodGroup } from './components/ToolbarInputMethods';
 import { BrandFooter, BrandHeader } from './components/Brand';
 import { useDrawing } from './hooks/useDrawing';
 import { useRecognition } from './hooks/useRecognition';
+import { useTextTool } from './hooks/useTextTool';
+import { useScanmarkerScanner } from './hooks/useScanmarkerScanner';
+import { useBluetoothStylus } from './hooks/useBluetoothStylus';
 import type { PenSize, Tool } from './types';
+import type { TextStroke, TextStyles } from './types/extensions';
 import { PEN_SIZES, PRESET_COLORS } from './types';
 
 export default function App() {
@@ -16,6 +24,89 @@ export default function App() {
 
   const drawing = useDrawing({ tool, color, size });
   const recognition = useRecognition();
+
+  /* ----------------------- text / scanner / stylus ----------------------- */
+
+  // Commit a placed-text stroke into the drawing's undo history.
+  const addTextStroke = useCallback(
+    (text: string, position: { x: number; y: number }, styles: TextStyles) => {
+      const stroke: TextStroke = {
+        type: 'text',
+        id:
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `t_${Date.now()}`,
+        x: position.x,
+        y: position.y,
+        content: text,
+        styles,
+        timestamp: Date.now(),
+      };
+      drawing.addStroke(stroke);
+    },
+    [drawing],
+  );
+
+  const textTool = useTextTool(addTextStroke);
+
+  // A scan drops its text onto the canvas, staggered so repeats don't stack.
+  const scanCount = useRef(0);
+  const handleScan = useCallback(
+    (scannedText: string) => {
+      const canvas = drawing.canvasRef.current;
+      const rect = canvas?.getBoundingClientRect();
+      const w = rect?.width ?? window.innerWidth;
+      const offset = (scanCount.current++ % 8) * 28;
+      addTextStroke(
+        scannedText,
+        { x: w / 2 - 100, y: 120 + offset },
+        { fontSize: 16, bold: false, color: '#fafafa', fontFamily: 'inter' },
+      );
+    },
+    [addTextStroke, drawing.canvasRef],
+  );
+
+  const scanner = useScanmarkerScanner(handleScan);
+  const stylus = useBluetoothStylus();
+
+  // Keep the toolbar's text button and the canvas cursor in sync with the
+  // text-tool lifecycle: activating routes `tool` to 'text' (useDrawing then
+  // ignores pointer-down so App can place the box instead).
+  const handleToolChange = useCallback(
+    (next: Tool) => {
+      if (next === 'text') {
+        textTool.activate();
+      } else {
+        textTool.deactivate();
+      }
+      setTool(next);
+    },
+    [textTool],
+  );
+
+  // Mirror the text tool back into `tool` so deactivating via Esc/commit
+  // restores the pen.
+  useEffect(() => {
+    if (!textTool.isActive && tool === 'text') setTool('pen');
+    if (textTool.isActive && tool !== 'text') setTool('text');
+  }, [textTool.isActive, tool]);
+
+  // When the text tool is active, a canvas tap places the text box instead of
+  // drawing. Otherwise defer to the drawing engine.
+  const handleCanvasPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>) => {
+      if (textTool.isActive) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        textTool.setPosition({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
+        return;
+      }
+      drawing.onPointerDown(e);
+    },
+    [textTool, drawing],
+  );
 
   /* --------------------------- export handlers ---------------------------- */
 
@@ -64,8 +155,12 @@ export default function App() {
       if (!meta) {
         if (typing) return;
         // Tool hotkeys.
-        if (e.key === 'e') setTool('eraser');
-        if (e.key === 'p' || e.key === 'b') setTool('pen');
+        if (e.key === 'e') handleToolChange('eraser');
+        if (e.key === 'p' || e.key === 'b') handleToolChange('pen');
+        if (e.key === 't' || e.key === 'T') {
+          e.preventDefault();
+          handleToolChange(textTool.isActive ? 'pen' : 'text');
+        }
         return;
       }
       const key = e.key.toLowerCase();
@@ -79,14 +174,14 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [drawing]);
+  }, [drawing, handleToolChange, textTool.isActive]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-bg">
       <Canvas
         ref={drawing.canvasRef}
         tool={tool}
-        onPointerDown={drawing.onPointerDown}
+        onPointerDown={handleCanvasPointerDown}
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
       />
@@ -102,7 +197,7 @@ export default function App() {
         canRedo={drawing.canRedo}
         isEmpty={drawing.isEmpty}
         recognizing={recognition.status === 'loading'}
-        onToolChange={setTool}
+        onToolChange={handleToolChange}
         onColorChange={setColor}
         onSizeChange={setSize}
         onUndo={drawing.undo}
@@ -111,6 +206,13 @@ export default function App() {
         onRecognize={handleRecognize}
         onExportPNG={handleExportPNG}
         onExportPDF={handleExportPDF}
+        inputMethodGroup={
+          <InputMethodGroup
+            textTool={textTool}
+            scanner={scanner}
+            stylus={stylus}
+          />
+        }
       />
 
       <TextPanel
@@ -120,6 +222,17 @@ export default function App() {
         error={recognition.error}
         onClose={handleClosePanel}
       />
+
+      {textTool.isActive && textTool.pendingPosition && (
+        <TextBox
+          position={textTool.pendingPosition}
+          initialStyles={textTool.styles}
+          onCommit={(text, styles) => textTool.commitText(text, styles)}
+          onCancel={textTool.deactivate}
+        />
+      )}
+
+      <Toaster />
 
       {/* Subtle hint shown only on a fresh, empty canvas. */}
       {drawing.isEmpty && (

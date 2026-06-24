@@ -13,8 +13,19 @@ interface PersistedDrawing {
 function isStroke(value: unknown): value is Stroke {
   if (typeof value !== 'object' || value === null) return false;
   const s = value as Record<string, unknown>;
+  if (typeof s.id !== 'string') return false;
+  // Placed-text stroke.
+  if (s.type === 'text') {
+    return (
+      typeof s.x === 'number' &&
+      typeof s.y === 'number' &&
+      typeof s.content === 'string' &&
+      typeof s.styles === 'object' &&
+      s.styles !== null
+    );
+  }
+  // Freehand ink stroke (type 'ink' or absent for back-compat).
   return (
-    typeof s.id === 'string' &&
     typeof s.color === 'string' &&
     typeof s.size === 'number' &&
     Array.isArray(s.points)

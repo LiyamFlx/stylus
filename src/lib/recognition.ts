@@ -1,5 +1,6 @@
 import Tesseract from 'tesseract.js';
-import type { Stroke } from '../types';
+import type { InkStroke, Stroke } from '../types';
+import { isTextStroke } from '../types';
 import { RecognitionError } from './recognitionError';
 
 /**
@@ -51,7 +52,7 @@ interface Bounds {
 }
 
 /** Axis-aligned bounding box of all ink, padded for stroke width. */
-function inkBounds(strokes: Stroke[]): Bounds | null {
+function inkBounds(strokes: InkStroke[]): Bounds | null {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -74,7 +75,7 @@ function inkBounds(strokes: Stroke[]): Bounds | null {
  * and scaled so the writing is a consistent, OCR-friendly height. Returns a
  * canvas ready to hand to Tesseract.
  */
-function rasterizeForOCR(strokes: Stroke[], bounds: Bounds): HTMLCanvasElement {
+function rasterizeForOCR(strokes: InkStroke[], bounds: Bounds): HTMLCanvasElement {
   const inkW = bounds.maxX - bounds.minX;
   const inkH = bounds.maxY - bounds.minY;
 
@@ -138,16 +139,19 @@ function rasterizeForOCR(strokes: Stroke[], bounds: Bounds): HTMLCanvasElement {
 export async function recognizeText(
   strokes: Stroke[],
 ): Promise<RecognitionResult> {
-  if (strokes.length === 0) {
-    throw new RecognitionError('Nothing to recognize — the canvas is empty.', 'empty');
+  // OCR only sees freehand ink; placed text strokes carry their own content
+  // and would corrupt the bitmap fed to Tesseract.
+  const ink = strokes.filter((s): s is InkStroke => !isTextStroke(s));
+  if (ink.length === 0) {
+    throw new RecognitionError('Nothing to recognize — write something first.', 'empty');
   }
 
-  const bounds = inkBounds(strokes);
+  const bounds = inkBounds(ink);
   if (!bounds) {
-    throw new RecognitionError('Nothing to recognize — the canvas is empty.', 'empty');
+    throw new RecognitionError('Nothing to recognize — write something first.', 'empty');
   }
 
-  const image = rasterizeForOCR(strokes, bounds);
+  const image = rasterizeForOCR(ink, bounds);
 
   try {
     // `recognize` lazily downloads + caches the language model on first use.

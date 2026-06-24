@@ -7,7 +7,9 @@
  * browser's handwriting recognizer without re-deriving timing.
  */
 
-export type Tool = 'pen' | 'eraser';
+import type { TextStroke } from './types/extensions';
+
+export type Tool = 'pen' | 'eraser' | 'text';
 
 /** A single sampled point along a stroke. */
 export interface InkPoint {
@@ -17,12 +19,18 @@ export interface InkPoint {
   y: number;
   /** Normalized pressure 0..1. Defaults to 0.5 when the device reports none. */
   pressure: number;
+  /** Effective line width in CSS px (pressure-derived). Optional for back-compat. */
+  width?: number;
+  /** Per-point opacity 0..1 (tilt-derived for pens). Optional for back-compat. */
+  opacity?: number;
   /** ms timestamp relative to stroke start (t[0] === 0). */
   t: number;
 }
 
 /** One continuous pointer-down → pointer-up gesture. */
-export interface Stroke {
+export interface InkStroke {
+  /** Discriminant. Optional/absent means ink (back-compat with saved drawings). */
+  type?: 'ink';
   /** Stable id, used for hit-testing / erasing. */
   id: string;
   /** Hex color, e.g. "#ffffff". */
@@ -30,6 +38,14 @@ export interface Stroke {
   /** Base line width in CSS px before pressure scaling. */
   size: number;
   points: InkPoint[];
+}
+
+/** Any stroke on the canvas: freehand ink or placed text. */
+export type Stroke = InkStroke | TextStroke;
+
+/** Narrowing helper — true for placed-text strokes. */
+export function isTextStroke(s: Stroke): s is TextStroke {
+  return (s as TextStroke).type === 'text';
 }
 
 /** Pen sizes exposed in the toolbar (CSS px). */

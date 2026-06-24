@@ -32,6 +32,8 @@ interface ToolbarProps {
   onRecognize: () => void;
   onExportPNG: () => void;
   onExportPDF: () => void;
+  /** Text / scanner / stylus input-method buttons, rendered in the pill. */
+  inputMethodGroup?: React.ReactNode;
 }
 
 /** A square icon button with active / disabled states. */
@@ -184,6 +186,7 @@ export function Toolbar(props: ToolbarProps) {
     onRecognize,
     onExportPNG,
     onExportPDF,
+    inputMethodGroup,
   } = props;
 
   // Mobile: the pill collapses to a single menu button that expands a tray.
@@ -222,6 +225,8 @@ export function Toolbar(props: ToolbarProps) {
       <IconButton label="Clear canvas" disabled={isEmpty} onClick={onClear}>
         <TrashIcon />
       </IconButton>
+
+      {inputMethodGroup}
 
       <Divider />
       <IconButton

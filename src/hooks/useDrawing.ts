@@ -6,7 +6,9 @@ import {
   useState,
 } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { InkPoint, Stroke, Tool } from '../types';
+import type { InkPoint, InkStroke, Stroke, Tool } from '../types';
+import { isTextStroke } from '../types';
+import type { TextStroke } from '../types/extensions';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, renderAll } from '../lib/render';
@@ -20,6 +22,8 @@ interface UseDrawingOptions {
 export interface UseDrawingResult {
   canvasRef: React.RefObject<HTMLCanvasElement>;
   strokes: Stroke[];
+  /** Commit a finished stroke (e.g. placed text) as one undo step. */
+  addStroke: (stroke: Stroke) => void;
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
@@ -29,6 +33,34 @@ export interface UseDrawingResult {
   canRedo: boolean;
   clear: () => void;
   isEmpty: boolean;
+}
+
+/**
+ * Palm rejection: once a pen is active, ignore touch input for a short window
+ * after the pen lifts so a resting palm can't draw stray strokes. Module scope
+ * is fine — there's only ever one canvas / drawing surface.
+ */
+const PALM_REJECTION_MS = 200;
+let lastPenLiftTime = 0;
+let activePenPointerType: string | null = null;
+
+function isPalmRejected(pointerType: string): boolean {
+  if (pointerType !== 'touch') return false;
+  return Date.now() - lastPenLiftTime < PALM_REJECTION_MS;
+}
+
+/** Pressure → line width with an ease-in curve. Pens only; others use base. */
+function pressureToWidth(pressure: number, baseWidth: number): number {
+  const p = Math.max(0.05, Math.min(1, pressure));
+  const minWidth = Math.max(1, baseWidth * 0.3);
+  const maxWidth = baseWidth * 3;
+  return minWidth + (maxWidth - minWidth) * (p * p);
+}
+
+/** Tilt → opacity for a pencil-on-its-side feel. 0° opaque, 60°+ → 40%. */
+function tiltToOpacity(tiltX: number, tiltY: number): number {
+  const magnitude = Math.sqrt(tiltX * tiltX + tiltY * tiltY);
+  return 1 - Math.min(magnitude / 60, 1) * 0.6;
 }
 
 function createId(): string {
@@ -85,7 +117,7 @@ export function useDrawing({
   strokesRef.current = history.present;
 
   // In-progress stroke and bookkeeping for the active pointer gesture.
-  const liveStrokeRef = useRef<Stroke | null>(null);
+  const liveStrokeRef = useRef<InkStroke | null>(null);
   const activePointerId = useRef<number | null>(null);
   const strokeStartTime = useRef<number>(0);
   const rafId = useRef<number | null>(null);
@@ -174,15 +206,44 @@ export function useDrawing({
       const rect = canvas?.getBoundingClientRect();
       const x = e.clientX - (rect?.left ?? 0);
       const y = e.clientY - (rect?.top ?? 0);
-      // Mouse reports pressure 0 while down; normalize that to a mid value so
-      // mouse strokes have a consistent width. Pen/touch report real 0..1.
-      const rawPressure = e.pressure;
+      return buildPoint(
+        x,
+        y,
+        e.pointerType,
+        e.pressure,
+        e.tiltX ?? 0,
+        e.tiltY ?? 0,
+      );
+    },
+    [],
+  );
+
+  // Build an InkPoint, normalizing pressure and deriving width (pressure) and
+  // opacity (tilt). Pens get dynamic width/opacity; mouse/touch get steady
+  // width at full opacity so they stay predictable.
+  const buildPoint = useCallback(
+    (
+      x: number,
+      y: number,
+      pointerType: string,
+      rawPressure: number,
+      tiltX: number,
+      tiltY: number,
+    ): InkPoint => {
       const pressure =
-        e.pointerType === 'mouse' || rawPressure === 0 ? 0.5 : rawPressure;
+        pointerType === 'mouse' || rawPressure === 0 ? 0.5 : rawPressure;
+      const baseSize = settingsRef.current.size;
+      const width =
+        pointerType === 'pen'
+          ? pressureToWidth(pressure, baseSize)
+          : baseSize * (0.4 + pressure * 1.2);
+      const opacity = pointerType === 'pen' ? tiltToOpacity(tiltX, tiltY) : 1;
       return {
         x,
         y,
         pressure,
+        width,
+        opacity,
         t: performance.now() - strokeStartTime.current,
       };
     },
@@ -218,6 +279,10 @@ export function useDrawing({
       // Only the primary button / first contact starts a stroke.
       if (e.button !== 0 && e.pointerType === 'mouse') return;
       if (activePointerId.current !== null) return;
+      // Reject a resting palm while/just-after a pen is in use.
+      if (isPalmRejected(e.pointerType)) return;
+
+      if (e.pointerType === 'pen') activePenPointerType = 'pen';
 
       e.currentTarget.setPointerCapture(e.pointerId);
       activePointerId.current = e.pointerId;
@@ -225,6 +290,19 @@ export function useDrawing({
 
       const { tool: activeTool, color: activeColor, size: activeSize } =
         settingsRef.current;
+
+      // Non-drawing tools (e.g. text) don't capture the pointer here — App
+      // handles placement. Release capture and bail.
+      if (activeTool !== 'pen' && activeTool !== 'eraser') {
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        activePointerId.current = null;
+        return;
+      }
+
       const point = getPoint(e);
 
       if (activeTool === 'eraser') {
@@ -236,6 +314,7 @@ export function useDrawing({
       }
 
       liveStrokeRef.current = {
+        type: 'ink',
         id: createId(),
         color: activeColor,
         size: activeSize,
@@ -249,6 +328,7 @@ export function useDrawing({
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (e.pointerId !== activePointerId.current) return;
+      if (isPalmRejected(e.pointerType)) return;
 
       const { tool: activeTool, size: activeSize } = settingsRef.current;
 
@@ -276,19 +356,20 @@ export function useDrawing({
         const rect = canvasRef.current?.getBoundingClientRect();
         const x = ev.clientX - (rect?.left ?? 0);
         const y = ev.clientY - (rect?.top ?? 0);
-        const rawPressure = ev.pressure;
-        const pressure =
-          ev.pointerType === 'mouse' || rawPressure === 0 ? 0.5 : rawPressure;
-        live.points.push({
-          x,
-          y,
-          pressure,
-          t: performance.now() - strokeStartTime.current,
-        });
+        live.points.push(
+          buildPoint(
+            x,
+            y,
+            ev.pointerType,
+            ev.pressure,
+            ev.tiltX ?? 0,
+            ev.tiltY ?? 0,
+          ),
+        );
       }
       scheduleRender();
     },
-    [eraseAt, scheduleRender],
+    [buildPoint, eraseAt, scheduleRender],
   );
 
   const endGesture = useCallback(
@@ -300,6 +381,12 @@ export function useDrawing({
         // capture may already be gone (e.g. pointercancel) — ignore.
       }
       activePointerId.current = null;
+
+      // Note when a pen lifts so the palm-rejection window can start.
+      if (e.pointerType === 'pen' && activePenPointerType === 'pen') {
+        lastPenLiftTime = Date.now();
+        activePenPointerType = null;
+      }
 
       const { tool: activeTool } = settingsRef.current;
 
@@ -344,6 +431,15 @@ export function useDrawing({
     history.redo();
   }, [history]);
 
+  const addStroke = useCallback(
+    (stroke: Stroke) => {
+      const next = [...strokesRef.current, stroke];
+      history.set(next);
+      strokesRef.current = next;
+    },
+    [history],
+  );
+
   const clear = useCallback(() => {
     // Repaint + persistence handled by the history.present effect.
     history.set([]);
@@ -381,6 +477,7 @@ export function useDrawing({
   return {
     canvasRef,
     strokes: history.present,
+    addStroke,
     onPointerDown,
     onPointerMove,
     onPointerUp: endGesture,
@@ -395,6 +492,31 @@ export function useDrawing({
 
 /* ------------------------------ free helpers ------------------------------ */
 
+/**
+ * Hit-test a text stroke against an eraser blob. We approximate the text box:
+ * width from the longest line, height from line count × line height. Generous
+ * enough that touching the text removes it.
+ */
+function hitsTextStroke(
+  stroke: TextStroke,
+  x: number,
+  y: number,
+  radius: number,
+): boolean {
+  const lines = stroke.content.split('\n');
+  const lineHeight = stroke.styles.fontSize * 1.4;
+  // Rough average glyph width ≈ 0.6em for a sans-serif.
+  const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const w = longest * stroke.styles.fontSize * 0.6;
+  const h = lines.length * lineHeight;
+  return (
+    x >= stroke.x - radius &&
+    x <= stroke.x + w + radius &&
+    y >= stroke.y - radius &&
+    y <= stroke.y + h + radius
+  );
+}
+
 /** Eraser contact radius scales with the selected size, with a usable floor. */
 function eraserRadius(size: number): number {
   return Math.max(12, size * 3);
@@ -402,6 +524,9 @@ function eraserRadius(size: number): number {
 
 /** True if any segment of the stroke comes within `radius` of (x, y). */
 function hitsStroke(stroke: Stroke, x: number, y: number, radius: number): boolean {
+  // Text strokes hit-test against their bounding box (handled in eraseAt's
+  // caller path); here we only deal with ink geometry.
+  if (isTextStroke(stroke)) return hitsTextStroke(stroke, x, y, radius);
   const pts = stroke.points;
   const threshold = radius + stroke.size / 2;
   if (pts.length === 1) {
