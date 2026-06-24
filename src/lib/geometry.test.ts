@@ -5,6 +5,8 @@ import {
   hitsStroke,
   inkBounds,
   MIN_STROKE_WIDTH,
+  pointInPolygon,
+  strokeInLasso,
 } from './geometry';
 import { stroke } from '../test/fixtures';
 
@@ -124,5 +126,93 @@ describe('inkBounds', () => {
       maxX: 43,
       maxY: 23,
     });
+  });
+});
+
+// ─── pointInPolygon ──────────────────────────────────────────────────────────
+
+describe('pointInPolygon', () => {
+  // Simple axis-aligned square: (0,0)→(10,0)→(10,10)→(0,10)
+  const square = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 10 },
+    { x: 0, y: 10 },
+  ];
+
+  it('returns true for a point clearly inside a convex polygon', () => {
+    expect(pointInPolygon(5, 5, square)).toBe(true);
+  });
+
+  it('returns false for a point clearly outside', () => {
+    expect(pointInPolygon(20, 20, square)).toBe(false);
+    expect(pointInPolygon(-1, 5, square)).toBe(false);
+  });
+
+  it('returns false for an empty path', () => {
+    expect(pointInPolygon(0, 0, [])).toBe(false);
+  });
+
+  it('returns false for a degenerate 1-point path', () => {
+    expect(pointInPolygon(0, 0, [{ x: 0, y: 0 }])).toBe(false);
+  });
+
+  it('returns false for a 2-point (line) path', () => {
+    expect(pointInPolygon(0, 0, [{ x: 0, y: 0 }, { x: 10, y: 0 }])).toBe(false);
+  });
+
+  it('works on a concave (L-shaped) polygon', () => {
+    // L-shape: outer 10×10 square with 5×5 top-right corner removed.
+    const lShape = [
+      { x: 0, y: 0 },
+      { x: 5, y: 0 },
+      { x: 5, y: 5 },
+      { x: 10, y: 5 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ];
+    expect(pointInPolygon(2, 8, lShape)).toBe(true);   // inside the L
+    expect(pointInPolygon(8, 2, lShape)).toBe(false);  // in the cut-out corner
+  });
+
+  it('correctly classifies a point at the centroid of a triangle', () => {
+    const triangle = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 5, y: 10 },
+    ];
+    expect(pointInPolygon(5, 3, triangle)).toBe(true);
+    expect(pointInPolygon(0, 5, triangle)).toBe(false);
+  });
+});
+
+// ─── strokeInLasso ───────────────────────────────────────────────────────────
+
+describe('strokeInLasso', () => {
+  const box = [
+    { x: 0, y: 0 },
+    { x: 20, y: 0 },
+    { x: 20, y: 20 },
+    { x: 0, y: 20 },
+  ];
+
+  it('returns false when lasso has fewer than 3 points', () => {
+    const s = stroke([[10, 10]]);
+    expect(strokeInLasso(s, [])).toBe(false);
+    expect(strokeInLasso(s, [{ x: 0, y: 0 }, { x: 10, y: 0 }])).toBe(false);
+  });
+
+  it('returns true when at least one stroke point is inside the lasso', () => {
+    const s = stroke([[10, 10], [50, 50]]); // second point is outside
+    expect(strokeInLasso(s, box)).toBe(true);
+  });
+
+  it('returns false when all stroke points are outside the lasso', () => {
+    const s = stroke([[30, 30], [40, 40]]);
+    expect(strokeInLasso(s, box)).toBe(false);
+  });
+
+  it('returns false for an empty stroke', () => {
+    expect(strokeInLasso(stroke([]), box)).toBe(false);
   });
 });

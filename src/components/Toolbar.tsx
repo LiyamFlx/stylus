@@ -12,6 +12,7 @@ import {
   FileIcon,
   PaperIcon,
   MenuIcon,
+  LassoIcon,
   CloseIcon,
   SpinnerIcon,
 } from './icons';
@@ -271,6 +272,13 @@ export function Toolbar(props: ToolbarProps) {
         onClick={() => onToolChange('eraser')}
       >
         <EraserIcon />
+      </IconButton>
+      <IconButton
+        label="Select"
+        active={tool === 'select'}
+        onClick={() => onToolChange('select')}
+      >
+        <LassoIcon />
       </IconButton>
       <IconButton
         label="Text"

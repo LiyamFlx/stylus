@@ -7,7 +7,7 @@
  * browser's handwriting recognizer without re-deriving timing.
  */
 
-export type Tool = 'pen' | 'eraser' | 'text';
+export type Tool = 'pen' | 'eraser' | 'text' | 'select';
 
 /** A single sampled point along a stroke. */
 export interface InkPoint {

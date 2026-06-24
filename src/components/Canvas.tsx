@@ -6,6 +6,8 @@ interface CanvasProps {
   tool: Tool;
   /** Eraser contact radius in CSS px, used to size the hover ring. */
   eraserRadius: number;
+  /** Resolved CSS cursor value — computed by the parent from tool + selection phase. */
+  cursor?: string;
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
@@ -22,13 +24,17 @@ interface CanvasProps {
  * pointer pipeline handles mouse, touch, pen and Apple Pencil identically.
  */
 export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(
-  ({ tool, eraserRadius, onPointerDown, onPointerMove, onPointerUp }, ref) => {
-    const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
-    const showRing = tool === 'eraser' && cursor !== null;
+  ({ tool, eraserRadius, cursor, onPointerDown, onPointerMove, onPointerUp }, ref) => {
+    const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+    const showRing = tool === 'eraser' && hoverPos !== null;
+
+    // Derive cursor: callers can override via the `cursor` prop; otherwise fall
+    // back to sensible per-tool defaults.
+    const resolvedCursor = cursor ?? (tool === 'eraser' ? 'none' : tool === 'select' ? 'default' : 'crosshair');
 
     const trackCursor = (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (tool === 'eraser') {
-        setCursor({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
+        setHoverPos({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
       }
       onPointerMove(e);
     };
@@ -38,12 +44,11 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(
         <canvas
           ref={ref}
           className="ink-surface absolute inset-0 h-full w-full"
-          // Hide the OS cursor for the eraser — the ring is the cursor.
-          style={{ cursor: tool === 'eraser' ? 'none' : 'crosshair' }}
+          style={{ cursor: resolvedCursor }}
           onPointerDown={onPointerDown}
           onPointerMove={trackCursor}
           onPointerUp={onPointerUp}
-          onPointerLeave={() => setCursor(null)}
+          onPointerLeave={() => setHoverPos(null)}
           // Treat cancellation (e.g. palm rejection, system gesture) like a
           // normal up so we never leave a dangling captured pointer. We do NOT
           // bind pointerleave for the gesture: with setPointerCapture active the
@@ -55,8 +60,8 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(
             aria-hidden
             className="pointer-events-none absolute z-10 rounded-full border border-ink-400/70 bg-ink-900/5"
             style={{
-              left: cursor.x - eraserRadius,
-              top: cursor.y - eraserRadius,
+              left: hoverPos.x - eraserRadius,
+              top: hoverPos.y - eraserRadius,
               width: eraserRadius * 2,
               height: eraserRadius * 2,
             }}

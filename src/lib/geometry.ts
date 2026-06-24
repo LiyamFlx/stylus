@@ -1,11 +1,11 @@
-import type { Stroke } from '../types';
+import type { InkPoint, Stroke } from '../types';
 
 /**
  * Pure geometry helpers for the drawing engine.
  *
  * These were extracted from {@link useDrawing} so they can be unit-tested in
- * isolation — they're the math behind eraser hit-testing and have no React,
- * DOM, or canvas dependencies.
+ * isolation — they're the math behind eraser hit-testing and selection, and
+ * have no React, DOM, or canvas dependencies.
  */
 
 /** Shortest distance from point P to segment AB, for eraser hit-testing. */
@@ -86,4 +86,80 @@ export function hitsStroke(
     }
   }
   return false;
+}
+
+/**
+ * Ray-casting point-in-polygon test.
+ * Returns true if (px, py) is strictly inside the closed polygon defined by
+ * `path`. Points exactly on an edge may return either true or false.
+ */
+export function pointInPolygon(
+  px: number,
+  py: number,
+  path: ReadonlyArray<{ x: number; y: number }>,
+): boolean {
+  let inside = false;
+  const n = path.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = path[i].x, yi = path[i].y;
+    const xj = path[j].x, yj = path[j].y;
+    const intersect =
+      yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * True if at least one point of the stroke lies inside the lasso polygon.
+ * Requires at least 3 lasso points to form a closed region.
+ */
+export function strokeInLasso(
+  stroke: Stroke,
+  lasso: ReadonlyArray<{ x: number; y: number }>,
+): boolean {
+  if (lasso.length < 3) return false;
+  for (const p of stroke.points) {
+    if (pointInPolygon(p.x, p.y, lasso)) return true;
+  }
+  return false;
+}
+
+/** Translate a Bounds rect by (dx, dy). */
+export function shiftBounds(b: Bounds, dx: number, dy: number): Bounds {
+  return { minX: b.minX + dx, minY: b.minY + dy, maxX: b.maxX + dx, maxY: b.maxY + dy };
+}
+
+/**
+ * True when (x, y) lies within the bounds rect expanded outward by `pad` px.
+ * `pad` should match the visual selection rect padding so the hit zone equals
+ * what the user sees.
+ */
+export function hitsSelectionBounds(
+  b: Bounds,
+  x: number,
+  y: number,
+  pad = 8,
+): boolean {
+  return x >= b.minX - pad && x <= b.maxX + pad && y >= b.minY - pad && y <= b.maxY + pad;
+}
+
+/**
+ * Return a new stroke array with (dx, dy) applied to all points of strokes
+ * whose id is in `ids`. Strokes not in `ids` are returned by reference
+ * (no allocation).
+ */
+export function applyMoveOffset(
+  strokes: Stroke[],
+  ids: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+): Stroke[] {
+  return strokes.map((s) => {
+    if (!ids.has(s.id)) return s;
+    return {
+      ...s,
+      points: s.points.map((p: InkPoint) => ({ ...p, x: p.x + dx, y: p.y + dy })),
+    };
+  });
 }

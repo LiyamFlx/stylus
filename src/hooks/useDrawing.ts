@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -9,8 +10,17 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
-import { drawStroke, renderAll } from '../lib/render';
-import { eraserRadius, hitsStroke } from '../lib/geometry';
+import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
+import type { Bounds } from '../lib/geometry';
+import {
+  applyMoveOffset,
+  eraserRadius,
+  hitsSelectionBounds,
+  hitsStroke,
+  inkBounds,
+  shiftBounds,
+  strokeInLasso,
+} from '../lib/geometry';
 
 interface UseDrawingOptions {
   tool: Tool;
@@ -21,10 +31,21 @@ interface UseDrawingOptions {
   storageKey?: string;
 }
 
+/** Selection phase for the lasso tool. */
+export type SelectPhase = 'idle' | 'lasso' | 'moving';
+
+export interface SelectionState {
+  phase: SelectPhase;
+  selectedIds: ReadonlySet<string>;
+  /** Bounds of selected strokes with any in-flight move offset applied. */
+  bounds: Bounds | null;
+  clearSelection: () => void;
+  deleteSelected: () => void;
+}
+
 export interface UseDrawingResult {
   canvasRef: React.RefObject<HTMLCanvasElement>;
   strokes: Stroke[];
-  /** Commit a finished stroke (e.g. placed text) as one undo step. */
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
@@ -34,12 +55,12 @@ export interface UseDrawingResult {
   canRedo: boolean;
   clear: () => void;
   isEmpty: boolean;
+  selection: SelectionState;
 }
 
 /**
  * Palm rejection: once a pen is active, ignore touch input for a short window
- * after the pen lifts so a resting palm can't draw stray strokes. Module scope
- * is fine — there's only ever one canvas / drawing surface.
+ * after the pen lifts so a resting palm can't draw stray strokes.
  */
 const PALM_REJECTION_MS = 200;
 let lastPenLiftTime = 0;
@@ -65,7 +86,6 @@ function tiltToOpacity(tiltX: number, tiltY: number): number {
 }
 
 function createId(): string {
-  // crypto.randomUUID is available in all modern browsers (HTTPS / localhost).
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
   }
@@ -78,10 +98,11 @@ function createId(): string {
  * Responsibilities:
  *  - Own the canvas element sizing (DPR-aware) and full repaints.
  *  - Translate Pointer Events into the stroke model (one code path for
- *    mouse / touch / pen — pressure read from the event when present).
+ *    mouse / touch / pen).
  *  - Live-render the in-progress stroke each rAF tick for low latency.
  *  - Commit finished strokes into undo/redo history and trigger auto-save.
  *  - Erase strokes on contact when the eraser tool is active.
+ *  - Lasso-select and move strokes when the select tool is active.
  */
 export function useDrawing({
   tool,
@@ -94,32 +115,61 @@ export function useDrawing({
   const history = useHistory<Stroke[]>([]);
   const { save, load } = useLocalStorage(storageKey);
 
-  // Latest committed strokes, mirrored in a ref for use inside event handlers
-  // and rAF callbacks without re-binding them.
+  // Latest committed strokes — mirrored in a ref for event handlers and rAF
+  // callbacks so they always read the current value without re-binding.
   const strokesRef = useRef<Stroke[]>(history.present);
   strokesRef.current = history.present;
 
-  // In-progress stroke and bookkeeping for the active pointer gesture.
+  // In-progress stroke + active-gesture bookkeeping.
   const liveStrokeRef = useRef<Stroke | null>(null);
   const activePointerId = useRef<number | null>(null);
   const strokeStartTime = useRef<number>(0);
   const rafId = useRef<number | null>(null);
-  const needsFullRepaint = useRef<boolean>(false);
 
-  // Toolbar settings, mirrored so handlers read fresh values.
+  // Toolbar settings mirrored so handlers always read fresh values.
   const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper });
   settingsRef.current = { tool, color, size, paper };
 
   const [isEmpty, setIsEmpty] = useState(true);
 
   // Erasing works on a private working copy during the drag so it never
-  // touches the undo history mid-gesture. On pointer-up we commit the result
-  // as a single history step (so one erase drag = one undo). `null` means no
-  // erase drag is active.
+  // touches undo history mid-gesture.
   const eraseWorkingRef = useRef<Stroke[] | null>(null);
   const erasedDuringDrag = useRef<boolean>(false);
 
-  /* ----------------------------- canvas sizing ---------------------------- */
+  // ─── Selection state ────────────────────────────────────────────────────────
+  // `phase` uses both a ref (for the rAF render loop) and useState (so the
+  // public SelectionState reflects current phase without stale reads).
+  const selectionPhaseRef = useRef<SelectPhase>('idle');
+  const [selectionPhase, setSelectionPhase] = useState<SelectPhase>('idle');
+
+  const lassoRef = useRef<{ x: number; y: number }[]>([]);
+
+  // selectedIds: ref is authoritative (read in rAF + event handlers); state
+  // is the React-visible copy kept in sync on every mutation.
+  const selectedIdsRef = useRef<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const moveOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const moveOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+
+  /** Bounds of selected strokes with the current move offset applied. */
+  const selectionBounds = useMemo((): Bounds | null => {
+    if (selectedIds.size === 0) return null;
+    const selected = strokesRef.current.filter((s) => selectedIds.has(s.id));
+    const b = inkBounds(selected);
+    if (!b) return null;
+    const { dx, dy } = moveOffsetRef.current;
+    return dx === 0 && dy === 0 ? b : shiftBounds(b, dx, dy);
+    // strokesRef.current changes identity when history.present changes, but
+    // useMemo won't see that — we re-derive inside scheduleRender (the single
+    // authoritative paint path) and also on selectedIds change which covers
+    // all commit points. The memo here is for the public `selection.bounds`
+    // return value consumed by external components.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, history.present]);
+
+  // ─── Canvas sizing ──────────────────────────────────────────────────────────
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -130,7 +180,6 @@ export function useDrawing({
     canvas.height = Math.round(clientHeight * dpr);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    // Reset transform then scale so 1 unit === 1 CSS px regardless of DPR.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     renderAll(ctx, strokesRef.current, clientWidth, clientHeight, {
       paper: settingsRef.current.paper,
@@ -143,7 +192,7 @@ export function useDrawing({
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [resizeCanvas]);
 
-  /* ------------------------- restore from storage ------------------------- */
+  // ─── Restore from storage ───────────────────────────────────────────────────
 
   useEffect(() => {
     const restored = load();
@@ -151,51 +200,73 @@ export function useDrawing({
       history.reset(restored);
       strokesRef.current = restored;
       setIsEmpty(false);
-      // Repaint once the ref + canvas are ready.
-      needsFullRepaint.current = true;
       scheduleRender();
     }
-    // Run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ------------------------------ rendering ------------------------------- */
+  // ─── Render loop ────────────────────────────────────────────────────────────
 
   const scheduleRender = useCallback(() => {
     if (rafId.current !== null) return;
     rafId.current = requestAnimationFrame(() => {
       rafId.current = null;
-      needsFullRepaint.current = false;
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // During an erase drag we render from the private working copy so the
-      // removed strokes disappear immediately without mutating history. Once
-      // the drag commits, eraseWorkingRef is cleared and we fall back to the
-      // committed strokes. The full-clear-and-repaint keeps anti-aliasing
-      // clean and avoids double-darkening overlapping strokes.
+      // During an erase drag render the working copy; otherwise committed.
       const base = eraseWorkingRef.current ?? strokesRef.current;
-      renderAll(ctx, base, canvas.clientWidth, canvas.clientHeight, {
+
+      // During a move, shift selected strokes visually without mutating history.
+      const { dx, dy } = moveOffsetRef.current;
+      const displayStrokes =
+        selectionPhaseRef.current === 'moving' && (dx !== 0 || dy !== 0)
+          ? applyMoveOffset(base, selectedIdsRef.current, dx, dy)
+          : base;
+
+      renderAll(ctx, displayStrokes, canvas.clientWidth, canvas.clientHeight, {
         paper: settingsRef.current.paper,
       });
-      // Draw the in-progress pen stroke on top of the committed layer.
+
+      // Live pen stroke on top.
       if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
+
+      // Selection overlays.
+      if (selectionPhaseRef.current === 'lasso') {
+        drawLasso(ctx, lassoRef.current);
+      }
+      if (selectedIdsRef.current.size > 0) {
+        // Recompute bounds here using the same offset as displayStrokes.
+        const selected = displayStrokes.filter((s) =>
+          selectedIdsRef.current.has(s.id),
+        );
+        const b = inkBounds(selected);
+        if (b) drawSelectionRect(ctx, b);
+      }
     });
   }, []);
 
-  // Repaint when the paper style changes so the new guide shows immediately.
+  // Repaint when the paper style changes.
   useEffect(() => {
-    needsFullRepaint.current = true;
     scheduleRender();
   }, [paper, scheduleRender]);
 
-  /* --------------------------- pointer helpers ---------------------------- */
+  // Clear selection when switching away from the select tool.
+  useEffect(() => {
+    if (tool !== 'select' && selectedIdsRef.current.size > 0) {
+      selectedIdsRef.current = new Set();
+      setSelectedIds(new Set());
+      lassoRef.current = [];
+      selectionPhaseRef.current = 'idle';
+      setSelectionPhase('idle');
+      scheduleRender();
+    }
+  }, [tool, scheduleRender]);
 
-  // Build an InkPoint, normalizing pressure and deriving width (pressure) and
-  // opacity (tilt). Pens get dynamic width/opacity; mouse/touch get steady
-  // width at full opacity so they stay predictable.
+  // ─── Pointer helpers ────────────────────────────────────────────────────────
+
   const buildPoint = useCallback(
     (
       x: number,
@@ -225,29 +296,28 @@ export function useDrawing({
     [],
   );
 
-  const getPoint = useCallback(
-    (e: ReactPointerEvent<HTMLCanvasElement>): InkPoint => {
-      const canvas = canvasRef.current;
-      const rect = canvas?.getBoundingClientRect();
-      const x = e.clientX - (rect?.left ?? 0);
-      const y = e.clientY - (rect?.top ?? 0);
-      return buildPoint(
-        x,
-        y,
-        e.pointerType,
-        e.pressure,
-        e.tiltX ?? 0,
-        e.tiltY ?? 0,
-      );
+  const getCanvasPoint = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      return {
+        x: e.clientX - (rect?.left ?? 0),
+        y: e.clientY - (rect?.top ?? 0),
+      };
     },
-    [buildPoint],
+    [],
   );
 
-  /* ------------------------------- erasing -------------------------------- */
+  const getPoint = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>): InkPoint => {
+      const { x, y } = getCanvasPoint(e);
+      return buildPoint(x, y, e.pointerType, e.pressure, e.tiltX ?? 0, e.tiltY ?? 0);
+    },
+    [buildPoint, getCanvasPoint],
+  );
+
+  // ─── Erasing ────────────────────────────────────────────────────────────────
 
   const eraseAt = useCallback((x: number, y: number, radius: number) => {
-    // Operate on the working copy (seeded on pointer-down). History is left
-    // untouched until the drag commits.
     const strokes = eraseWorkingRef.current ?? strokesRef.current;
     const survivors: Stroke[] = [];
     let removed = false;
@@ -265,14 +335,38 @@ export function useDrawing({
     }
   }, [scheduleRender]);
 
-  /* --------------------------- event handlers ----------------------------- */
+  // ─── Selection actions ──────────────────────────────────────────────────────
+
+  const clearSelection = useCallback(() => {
+    selectedIdsRef.current = new Set();
+    setSelectedIds(new Set());
+    lassoRef.current = [];
+    selectionPhaseRef.current = 'idle';
+    setSelectionPhase('idle');
+    moveOffsetRef.current = { dx: 0, dy: 0 };
+    moveOriginRef.current = null;
+    scheduleRender();
+  }, [scheduleRender]);
+
+  const deleteSelected = useCallback(() => {
+    const ids = selectedIdsRef.current;
+    if (ids.size === 0) return;
+    const next = strokesRef.current.filter((s) => !ids.has(s.id));
+    selectedIdsRef.current = new Set();
+    setSelectedIds(new Set());
+    selectionPhaseRef.current = 'idle';
+    setSelectionPhase('idle');
+    history.set(next);
+    strokesRef.current = next;
+    scheduleRender();
+  }, [history, scheduleRender]);
+
+  // ─── Pointer event handlers ─────────────────────────────────────────────────
 
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
-      // Only the primary button / first contact starts a stroke.
       if (e.button !== 0 && e.pointerType === 'mouse') return;
       if (activePointerId.current !== null) return;
-      // Reject a resting palm while/just-after a pen is in use.
       if (isPalmRejected(e.pointerType)) return;
 
       if (e.pointerType === 'pen') activePenPointerType = 'pen';
@@ -284,28 +378,51 @@ export function useDrawing({
       const { tool: activeTool, color: activeColor, size: activeSize } =
         settingsRef.current;
 
-      // Non-drawing tools (e.g. text) don't capture the pointer here — App
-      // handles placement. Release capture and bail.
-      if (activeTool !== 'pen' && activeTool !== 'eraser') {
-        try {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
+      // Non-drawing tools release the pointer immediately.
+      if (activeTool !== 'pen' && activeTool !== 'eraser' && activeTool !== 'select') {
+        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
         activePointerId.current = null;
         return;
       }
 
-      const point = getPoint(e);
+      const { x, y } = getCanvasPoint(e);
 
-      if (activeTool === 'eraser') {
-        erasedDuringDrag.current = false;
-        // Seed the working copy from the current committed strokes.
-        eraseWorkingRef.current = strokesRef.current;
-        eraseAt(point.x, point.y, eraserRadius(activeSize));
+      // ── select ──
+      if (activeTool === 'select') {
+        // Compute current bounds from committed strokes (no in-flight offset yet).
+        const ids = selectedIdsRef.current;
+        const currentBounds = ids.size > 0
+          ? inkBounds(strokesRef.current.filter((s) => ids.has(s.id)))
+          : null;
+
+        if (currentBounds && hitsSelectionBounds(currentBounds, x, y)) {
+          // Clicked inside selection → start moving.
+          selectionPhaseRef.current = 'moving';
+          setSelectionPhase('moving');
+          moveOriginRef.current = { x, y };
+          moveOffsetRef.current = { dx: 0, dy: 0 };
+        } else {
+          // Start fresh lasso, clear prior selection.
+          selectionPhaseRef.current = 'lasso';
+          setSelectionPhase('lasso');
+          lassoRef.current = [{ x, y }];
+          selectedIdsRef.current = new Set();
+          setSelectedIds(new Set());
+          scheduleRender();
+        }
         return;
       }
 
+      // ── eraser ──
+      if (activeTool === 'eraser') {
+        erasedDuringDrag.current = false;
+        eraseWorkingRef.current = strokesRef.current;
+        eraseAt(x, y, eraserRadius(activeSize));
+        return;
+      }
+
+      // ── pen ──
+      const point = getPoint(e);
       liveStrokeRef.current = {
         id: createId(),
         color: activeColor,
@@ -314,44 +431,67 @@ export function useDrawing({
       };
       scheduleRender();
     },
-    [eraseAt, getPoint, scheduleRender],
+    [eraseAt, getCanvasPoint, getPoint, scheduleRender],
   );
 
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (e.pointerId !== activePointerId.current) return;
-      if (isPalmRejected(e.pointerType)) return;
 
       const { tool: activeTool, size: activeSize } = settingsRef.current;
 
-      // Coalesced events give us every sample the OS captured between frames,
-      // which keeps fast strokes smooth instead of jagged.
+      // Coalesced events give us every OS sample between frames.
       const events =
         typeof e.nativeEvent.getCoalescedEvents === 'function'
           ? e.nativeEvent.getCoalescedEvents()
           : [];
       const samples = events.length > 0 ? events : [e.nativeEvent];
 
-      if (activeTool === 'eraser') {
-        for (const ev of samples) {
-          const rect = canvasRef.current?.getBoundingClientRect();
-          const x = ev.clientX - (rect?.left ?? 0);
-          const y = ev.clientY - (rect?.top ?? 0);
-          eraseAt(x, y, eraserRadius(activeSize));
+      // Fetch rect once outside the loop for all tools.
+      const rect = canvasRef.current?.getBoundingClientRect();
+
+      // ── select ──
+      if (activeTool === 'select') {
+        const phase = selectionPhaseRef.current;
+        if (phase === 'lasso') {
+          for (const ev of samples) {
+            lassoRef.current.push({
+              x: ev.clientX - (rect?.left ?? 0),
+              y: ev.clientY - (rect?.top ?? 0),
+            });
+          }
+          scheduleRender();
+        } else if (phase === 'moving' && moveOriginRef.current) {
+          const last = samples[samples.length - 1];
+          moveOffsetRef.current = {
+            dx: last.clientX - (rect?.left ?? 0) - moveOriginRef.current.x,
+            dy: last.clientY - (rect?.top ?? 0) - moveOriginRef.current.y,
+          };
+          scheduleRender();
         }
         return;
       }
 
+      // ── eraser ──
+      if (activeTool === 'eraser') {
+        for (const ev of samples) {
+          eraseAt(
+            ev.clientX - (rect?.left ?? 0),
+            ev.clientY - (rect?.top ?? 0),
+            eraserRadius(activeSize),
+          );
+        }
+        return;
+      }
+
+      // ── pen ──
       const live = liveStrokeRef.current;
       if (!live) return;
       for (const ev of samples) {
-        const rect = canvasRef.current?.getBoundingClientRect();
-        const x = ev.clientX - (rect?.left ?? 0);
-        const y = ev.clientY - (rect?.top ?? 0);
         live.points.push(
           buildPoint(
-            x,
-            y,
+            ev.clientX - (rect?.left ?? 0),
+            ev.clientY - (rect?.top ?? 0),
             ev.pointerType,
             ev.pressure,
             ev.tiltX ?? 0,
@@ -367,14 +507,9 @@ export function useDrawing({
   const endGesture = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (e.pointerId !== activePointerId.current) return;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // capture may already be gone (e.g. pointercancel) — ignore.
-      }
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
       activePointerId.current = null;
 
-      // Note when a pen lifts so the palm-rejection window can start.
       if (e.pointerType === 'pen' && activePenPointerType === 'pen') {
         lastPenLiftTime = Date.now();
         activePenPointerType = null;
@@ -382,63 +517,98 @@ export function useDrawing({
 
       const { tool: activeTool } = settingsRef.current;
 
-      if (activeTool === 'eraser') {
-        const working = eraseWorkingRef.current;
-        eraseWorkingRef.current = null;
-        if (erasedDuringDrag.current && working) {
-          // Commit a single undo step covering the whole erase drag. The
-          // history.present effect handles repaint + persistence.
-          erasedDuringDrag.current = false;
-          history.set(working);
-          strokesRef.current = working;
-        } else {
-          // Nothing erased (tapped empty space) — repaint to drop any hover
-          // artifacts and discard the working copy.
-          needsFullRepaint.current = true;
+      // ── select ──
+      if (activeTool === 'select') {
+        const phase = selectionPhaseRef.current;
+
+        if (phase === 'lasso') {
+          const lasso = lassoRef.current;
+          // Always clear prior selection when a lasso gesture ends, regardless
+          // of how many points were drawn or how many strokes matched.
+          const matched = new Set<string>();
+          if (lasso.length >= 3) {
+            for (const stroke of strokesRef.current) {
+              if (strokeInLasso(stroke, lasso)) matched.add(stroke.id);
+            }
+          }
+          selectedIdsRef.current = matched;
+          setSelectedIds(matched);
+          lassoRef.current = [];
+          selectionPhaseRef.current = 'idle';
+          setSelectionPhase('idle');
+          scheduleRender();
+
+        } else if (phase === 'moving') {
+          const { dx, dy } = moveOffsetRef.current;
+          if (dx !== 0 || dy !== 0) {
+            // Commit the offset to history as one undoable step.
+            const next = applyMoveOffset(
+              strokesRef.current,
+              selectedIdsRef.current,
+              dx,
+              dy,
+            );
+            history.set(next);
+            strokesRef.current = next;
+          }
+          moveOffsetRef.current = { dx: 0, dy: 0 };
+          moveOriginRef.current = null;
+          selectionPhaseRef.current = 'idle';
+          setSelectionPhase('idle');
           scheduleRender();
         }
         return;
       }
 
+      // ── eraser ──
+      if (activeTool === 'eraser') {
+        const working = eraseWorkingRef.current;
+        eraseWorkingRef.current = null;
+        if (erasedDuringDrag.current && working) {
+          erasedDuringDrag.current = false;
+          history.set(working);
+          strokesRef.current = working;
+        } else {
+          scheduleRender();
+        }
+        return;
+      }
+
+      // ── pen ──
       const live = liveStrokeRef.current;
       liveStrokeRef.current = null;
       if (!live || live.points.length === 0) return;
 
       const next = [...strokesRef.current, live];
-      // Persistence + repaint are handled centrally by the history.present
-      // effect below; we just commit the new snapshot here.
       history.set(next);
       strokesRef.current = next;
     },
     [history, scheduleRender],
   );
 
-  /* -------------------------- toolbar operations -------------------------- */
+  // ─── Toolbar operations ─────────────────────────────────────────────────────
 
-  const undo = useCallback(() => {
-    history.undo();
-  }, [history]);
-
-  const redo = useCallback(() => {
-    history.redo();
-  }, [history]);
+  const undo = useCallback(() => { history.undo(); }, [history]);
+  const redo = useCallback(() => { history.redo(); }, [history]);
 
   const clear = useCallback(() => {
-    // Repaint + persistence handled by the history.present effect.
+    selectedIdsRef.current = new Set();
+    setSelectedIds(new Set());
+    selectionPhaseRef.current = 'idle';
+    setSelectionPhase('idle');
+    lassoRef.current = [];
+    moveOffsetRef.current = { dx: 0, dy: 0 };
+    moveOriginRef.current = null;
     history.set([]);
     strokesRef.current = [];
   }, [history]);
 
-  // Whenever committed strokes change (undo/redo/clear/draw), repaint, resync
-  // the empty flag, and persist. Routing all persistence through this single
-  // effect means undo/redo are durable across reloads too — not just draws.
-  // We skip the very first run so the initial empty state can't clobber a
-  // restore that's still settling in.
+  // Whenever committed strokes change (draw/undo/redo/erase/move/delete/clear),
+  // repaint, resync empty flag, and persist to localStorage.
   const hydratedRef = useRef(false);
   useEffect(() => {
     strokesRef.current = history.present;
     setIsEmpty(history.present.length === 0);
-    needsFullRepaint.current = true;
     scheduleRender();
     if (hydratedRef.current) {
       save(history.present);
@@ -447,7 +617,7 @@ export function useDrawing({
     }
   }, [history.present, save, scheduleRender]);
 
-  // Cancel any pending rAF on unmount so we never paint into a dead canvas.
+  // Cancel any pending rAF on unmount.
   useEffect(() => {
     return () => {
       if (rafId.current !== null) {
@@ -469,5 +639,12 @@ export function useDrawing({
     canRedo: history.canRedo,
     clear,
     isEmpty,
+    selection: {
+      phase: selectionPhase,
+      selectedIds,
+      bounds: selectionBounds,
+      clearSelection,
+      deleteSelected,
+    },
   };
 }

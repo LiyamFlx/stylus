@@ -1,4 +1,5 @@
 import type { InkPoint, PaperStyle, Stroke } from '../types';
+import type { Bounds } from './geometry';
 import { drawPaper } from './paper';
 
 /**
@@ -79,6 +80,70 @@ export function renderAll(
   for (const stroke of strokes) {
     drawStroke(ctx, stroke);
   }
+}
+
+/**
+ * Draw the in-progress lasso path as a dashed blue line. Call after
+ * `renderAll` so it sits on top of the ink.
+ */
+export function drawLasso(
+  ctx: CanvasRenderingContext2D,
+  pts: ReadonlyArray<{ x: number; y: number }>,
+): void {
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.globalAlpha = 0.85;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Draw the dashed selection bounding box and corner handles around `bounds`.
+ * `pad` controls how much the rect extends beyond the ink bounds — must match
+ * the pad used in `hitsSelectionBounds` so the visual and hit zone agree.
+ */
+export function drawSelectionRect(
+  ctx: CanvasRenderingContext2D,
+  bounds: Bounds,
+  pad = 8,
+): void {
+  const x = bounds.minX - pad;
+  const y = bounds.minY - pad;
+  const w = bounds.maxX - bounds.minX + pad * 2;
+  const h = bounds.maxY - bounds.minY + pad * 2;
+
+  ctx.save();
+
+  // Dashed selection rect.
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.globalAlpha = 0.9;
+  ctx.strokeRect(x, y, w, h);
+
+  // Corner handles.
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 1;
+  const r = 4;
+  for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]] as const) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 /**

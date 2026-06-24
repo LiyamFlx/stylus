@@ -169,3 +169,12 @@ export const SpinnerIcon = ({ size = 20, className }: IconProps) => (
     <path d="M21 12a9 9 0 11-6.219-8.56" />
   </svg>
 );
+
+export const LassoIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M7 3C4 3 2 5 2 8c0 4 3 6 6 8 1 .6 2 1.3 2 2" />
+    <path d="M10 18c0 1.1 1.8 2 4 2s4-.9 4-2-1.8-2-4-2" />
+    <path d="M21 8c0-3-2-5-5-5-2 0-3.5 1-4.5 2.5" />
+    <path d="M12 10c-1 1.5-1.5 3-1 5" />
+  </svg>
+);

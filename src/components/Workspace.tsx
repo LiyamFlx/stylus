@@ -255,9 +255,20 @@ export function Workspace({
 
       if (!meta) {
         if (typing) return;
+        // Delete / Backspace removes selected strokes when the select tool is active.
+        if ((e.key === 'Delete' || e.key === 'Backspace') && tool === 'select') {
+          e.preventDefault();
+          drawing.selection.deleteSelected();
+          return;
+        }
+        if (e.key === 'Escape' && tool === 'select') {
+          drawing.selection.clearSelection();
+          return;
+        }
         if (e.key === 'e') onToolChange('eraser');
         if (e.key === 'p' || e.key === 'b') onToolChange('pen');
         if (e.key === 't') onToolChange('text');
+        if (e.key === 's') onToolChange('select');
         return;
       }
       const key = e.key.toLowerCase();
@@ -301,12 +312,25 @@ export function Workspace({
   const showKeyboard = tool === 'text';
   const isBlank = drawing.isEmpty && texts.length === 0;
 
+  // Cursor tracks both tool and selection phase so it's always accurate.
+  const canvasCursor = (() => {
+    if (tool === 'eraser') return 'none';
+    if (tool === 'select') {
+      if (drawing.selection.phase === 'moving') return 'grabbing';
+      if (drawing.selection.selectedIds.size > 0) return 'grab';
+      return 'crosshair'; // lasso phase or idle with no selection
+    }
+    if (tool === 'text') return 'text';
+    return 'crosshair';
+  })();
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-bg">
       <Canvas
         ref={drawing.canvasRef}
         tool={tool}
         eraserRadius={eraserRadius(size)}
+        cursor={canvasCursor}
         onPointerDown={drawing.onPointerDown}
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
