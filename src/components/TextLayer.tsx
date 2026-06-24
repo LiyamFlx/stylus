@@ -64,11 +64,13 @@ export function TextLayer({
   };
 
   return (
-    <div className="absolute inset-0 z-10">
+    // The layer itself must never swallow pointer events meant for the canvas
+    // beneath it (pen/eraser) — only its interactive children opt back in.
+    <div className="pointer-events-none absolute inset-0 z-10">
       {/* Placement catcher: only intercepts taps in text mode. */}
       {textMode && (
         <div
-          className="absolute inset-0"
+          className="pointer-events-auto absolute inset-0"
           style={{ cursor: 'text' }}
           onPointerDown={(e) => {
             // Tapping empty space places a new text box and deselects.
