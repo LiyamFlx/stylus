@@ -136,6 +136,33 @@ export function Workspace({
   const scanner = useScanmarkerScanner(handleScan);
   const stylus = useBluetoothStylus();
 
+  // Drop pasted clipboard text onto the canvas. If a text box is being edited,
+  // append into it; otherwise place a new finished box (staggered like scans).
+  const pasteText = useCallback(
+    (pasted: string) => {
+      const text = pasted.replace(/\r\n/g, '\n');
+      if (!text.trim()) return;
+      if (activeIdRef.current) {
+        editActive((t) => t + text);
+        return;
+      }
+      const canvas = drawing.canvasRef.current;
+      const w = canvas?.clientWidth ?? window.innerWidth;
+      const offset = (scanCount.current++ % 8) * 28;
+      const item: TextItem = {
+        id: textId(),
+        x: Math.max(16, w / 2 - 120),
+        y: 96 + offset,
+        text,
+        color,
+        size: Math.max(20, size * 4),
+      };
+      setTexts((t) => [...t, item]);
+      setActiveTextId(item.id);
+    },
+    [color, size, editActive, drawing.canvasRef],
+  );
+
   const moveText = useCallback((id: string, x: number, y: number) => {
     setTexts((t) => t.map((it) => (it.id === id ? { ...it, x, y } : it)));
   }, []);
@@ -245,6 +272,31 @@ export function Workspace({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [tool, editActive, finishText, onToolChange, drawing]);
+
+  // Paste clipboard text onto the canvas (Cmd/Ctrl+V, right-click → Paste).
+  // When the paste targets a real input/textarea/contenteditable (e.g. the AI
+  // studio editor), let the browser handle it natively.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const text = e.clipboardData?.getData('text/plain');
+      if (!text) return;
+      e.preventDefault();
+      // Pasting activates the text tool so the new box is editable.
+      if (tool !== 'text') onToolChange('text');
+      pasteText(text);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [tool, onToolChange, pasteText]);
 
   const showKeyboard = tool === 'text';
   const isBlank = drawing.isEmpty && texts.length === 0;
