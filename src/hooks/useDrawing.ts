@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { InkPoint, Stroke, Tool } from '../types';
+import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, renderAll } from '../lib/render';
@@ -16,6 +16,7 @@ interface UseDrawingOptions {
   tool: Tool;
   color: string;
   size: number;
+  paper: PaperStyle;
 }
 
 export interface UseDrawingResult {
@@ -55,6 +56,7 @@ export function useDrawing({
   tool,
   color,
   size,
+  paper,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const history = useHistory<Stroke[]>([]);
@@ -73,8 +75,8 @@ export function useDrawing({
   const needsFullRepaint = useRef<boolean>(false);
 
   // Toolbar settings, mirrored so handlers read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size });
-  settingsRef.current = { tool, color, size };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper });
+  settingsRef.current = { tool, color, size, paper };
 
   const [isEmpty, setIsEmpty] = useState(true);
 
@@ -98,7 +100,9 @@ export function useDrawing({
     if (!ctx) return;
     // Reset transform then scale so 1 unit === 1 CSS px regardless of DPR.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    renderAll(ctx, strokesRef.current, clientWidth, clientHeight);
+    renderAll(ctx, strokesRef.current, clientWidth, clientHeight, {
+      paper: settingsRef.current.paper,
+    });
   }, []);
 
   useLayoutEffect(() => {
@@ -141,11 +145,19 @@ export function useDrawing({
       // committed strokes. The full-clear-and-repaint keeps anti-aliasing
       // clean and avoids double-darkening overlapping strokes.
       const base = eraseWorkingRef.current ?? strokesRef.current;
-      renderAll(ctx, base, canvas.clientWidth, canvas.clientHeight);
+      renderAll(ctx, base, canvas.clientWidth, canvas.clientHeight, {
+        paper: settingsRef.current.paper,
+      });
       // Draw the in-progress pen stroke on top of the committed layer.
       if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
     });
   }, []);
+
+  // Repaint when the paper style changes so the new guide shows immediately.
+  useEffect(() => {
+    needsFullRepaint.current = true;
+    scheduleRender();
+  }, [paper, scheduleRender]);
 
   /* --------------------------- pointer helpers ---------------------------- */
 

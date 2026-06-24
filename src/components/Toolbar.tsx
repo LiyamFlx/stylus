@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { PenSize, Tool } from '../types';
+import type { PaperStyle, PenSize, Tool } from '../types';
 import { PEN_SIZES, PRESET_COLORS } from '../types';
 import {
   PenIcon,
@@ -10,15 +10,25 @@ import {
   TextIcon,
   ImageIcon,
   FileIcon,
+  PaperIcon,
   MenuIcon,
   CloseIcon,
   SpinnerIcon,
 } from './icons';
 
+/** Human-readable label for the current paper guide, used in the tooltip. */
+const PAPER_LABELS: Record<PaperStyle, string> = {
+  blank: 'Blank',
+  grid: 'Grid',
+  ruled: 'Ruled',
+  dots: 'Dots',
+};
+
 interface ToolbarProps {
   tool: Tool;
   color: string;
   size: number;
+  paper: PaperStyle;
   canUndo: boolean;
   canRedo: boolean;
   isEmpty: boolean;
@@ -26,6 +36,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onSizeChange: (size: PenSize) => void;
+  onPaperChange: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
@@ -171,6 +182,7 @@ export function Toolbar(props: ToolbarProps) {
     tool,
     color,
     size,
+    paper,
     canUndo,
     canRedo,
     isEmpty,
@@ -178,6 +190,7 @@ export function Toolbar(props: ToolbarProps) {
     onToolChange,
     onColorChange,
     onSizeChange,
+    onPaperChange,
     onUndo,
     onRedo,
     onClear,
@@ -211,6 +224,15 @@ export function Toolbar(props: ToolbarProps) {
 
       <Divider />
       <ColorPicker color={color} onColorChange={onColorChange} />
+
+      <Divider />
+      <IconButton
+        label={`Paper: ${PAPER_LABELS[paper]}`}
+        active={paper !== 'blank'}
+        onClick={onPaperChange}
+      >
+        <PaperIcon />
+      </IconButton>
 
       <Divider />
       <IconButton label="Undo" disabled={!canUndo} onClick={onUndo}>

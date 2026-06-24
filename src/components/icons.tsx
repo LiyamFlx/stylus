@@ -83,6 +83,26 @@ export const FileIcon = ({ size = 20, className }: IconProps) => (
   </svg>
 );
 
+export const PaperIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <path d="M8 8h8M8 12h8M8 16h8" />
+  </svg>
+);
+
+export const CopyIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V5a2 2 0 012-2h8" />
+  </svg>
+);
+
+export const CheckIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M20 6L9 17l-5-5" />
+  </svg>
+);
+
 export const MenuIcon = ({ size = 20, className }: IconProps) => (
   <svg {...svgProps(size, className)}>
     <path d="M3 12h18M3 6h18M3 18h18" />

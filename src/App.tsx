@@ -5,17 +5,26 @@ import { TextPanel } from './components/TextPanel';
 import { BrandFooter, BrandHeader } from './components/Brand';
 import { useDrawing } from './hooks/useDrawing';
 import { useRecognition } from './hooks/useRecognition';
-import type { PenSize, Tool } from './types';
-import { PEN_SIZES, PRESET_COLORS } from './types';
+import { eraserRadius } from './lib/geometry';
+import type { PaperStyle, PenSize, Tool } from './types';
+import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from './types';
 
 export default function App() {
   const [tool, setTool] = useState<Tool>('pen');
   const [color, setColor] = useState<string>(PRESET_COLORS[0]);
   const [size, setSize] = useState<PenSize>(PEN_SIZES[1]);
+  const [paper, setPaper] = useState<PaperStyle>('blank');
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const drawing = useDrawing({ tool, color, size });
+  const drawing = useDrawing({ tool, color, size, paper });
   const recognition = useRecognition();
+
+  const cyclePaper = useCallback(() => {
+    setPaper((p) => {
+      const i = PAPER_STYLES.indexOf(p);
+      return PAPER_STYLES[(i + 1) % PAPER_STYLES.length];
+    });
+  }, []);
 
   /* --------------------------- export handlers ---------------------------- */
 
@@ -24,8 +33,9 @@ export default function App() {
     return {
       width: canvas?.clientWidth ?? window.innerWidth,
       height: canvas?.clientHeight ?? window.innerHeight,
+      paper,
     };
-  }, [drawing.canvasRef]);
+  }, [drawing.canvasRef, paper]);
 
   // Export lib (jsPDF) is heavy, so it's code-split and loaded on first use.
   const handleExportPNG = useCallback(async () => {
@@ -86,6 +96,7 @@ export default function App() {
       <Canvas
         ref={drawing.canvasRef}
         tool={tool}
+        eraserRadius={eraserRadius(size)}
         onPointerDown={drawing.onPointerDown}
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
@@ -98,6 +109,7 @@ export default function App() {
         tool={tool}
         color={color}
         size={size}
+        paper={paper}
         canUndo={drawing.canUndo}
         canRedo={drawing.canRedo}
         isEmpty={drawing.isEmpty}
@@ -105,6 +117,7 @@ export default function App() {
         onToolChange={setTool}
         onColorChange={setColor}
         onSizeChange={setSize}
+        onPaperChange={cyclePaper}
         onUndo={drawing.undo}
         onRedo={drawing.redo}
         onClear={drawing.clear}
