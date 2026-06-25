@@ -20,6 +20,7 @@ export default function App() {
   const [profileName, setProfileName] = useState('You');
 
   const documents = useDocuments();
+  const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
 
   useEffect(() => {
     setProfileName(loadProfile().name);
@@ -49,6 +50,7 @@ export default function App() {
         <Workspace
           key={documents.currentId}
           documentId={documents.currentId}
+          documentName={currentDoc?.name ?? 'Untitled'}
           tool={tool}
           color={color}
           size={size}

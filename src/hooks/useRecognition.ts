@@ -10,6 +10,8 @@ export interface UseRecognitionResult {
   text: string;
   error: string | null;
   recognize: (strokes: Stroke[]) => Promise<void>;
+  /** Force an error state with a custom message (no OCR run). */
+  fail: (message: string) => void;
   reset: () => void;
 }
 
@@ -51,6 +53,13 @@ export function useRecognition(): UseRecognitionResult {
     }
   }, []);
 
+  const fail = useCallback((message: string) => {
+    requestId.current++; // supersede any in-flight recognition
+    setText('');
+    setError(message);
+    setStatus('error');
+  }, []);
+
   const reset = useCallback(() => {
     requestId.current++;
     setStatus('idle');
@@ -58,5 +67,5 @@ export function useRecognition(): UseRecognitionResult {
     setError(null);
   }, []);
 
-  return { status, text, error, recognize, reset };
+  return { status, text, error, recognize, fail, reset };
 }

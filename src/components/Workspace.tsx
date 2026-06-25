@@ -20,6 +20,7 @@ import { PAPER_STYLES } from '../types';
 
 interface WorkspaceProps {
   documentId: string;
+  documentName: string;
   tool: Tool;
   color: string;
   size: PenSize;
@@ -43,6 +44,7 @@ function textId(): string {
  */
 export function Workspace({
   documentId,
+  documentName,
   tool,
   color,
   size,
@@ -210,13 +212,38 @@ export function Workspace({
 
   const handleRecognize = useCallback(() => {
     setPanelOpen(true);
+    // Recognition OCRs ink strokes only. If there's no ink, give an accurate
+    // message instead of falsely claiming the canvas is empty when there are
+    // typed text boxes (which are already digital text).
+    if (drawing.strokes.length === 0) {
+      recognition.fail(
+        texts.some((t) => t.text.trim())
+          ? 'No handwriting to convert — typed text is already digital text.'
+          : 'Nothing to recognize — the canvas is empty.',
+      );
+      return;
+    }
     void recognition.recognize(drawing.strokes);
-  }, [drawing.strokes, recognition]);
+  }, [drawing.strokes, recognition, texts]);
+
+  const handleClear = useCallback(() => {
+    if (drawing.isEmpty && texts.length === 0) return;
+    if (window.confirm('Clear the whole canvas? Strokes and text will be removed.')) {
+      drawing.clear();
+      setTexts([]);
+    }
+  }, [drawing, texts.length]);
 
   const handleClosePanel = useCallback(() => {
     setPanelOpen(false);
     recognition.reset();
   }, [recognition]);
+
+  /* ------------------------------- zoom + pan ----------------------------- */
+  // Wheel/pinch zoom + pan are handled by a native listener in useDrawing; the
+  // controls below drive zoom from the toolbar cluster.
+
+  const { scale, zoomBy, reset: resetView } = drawing.view;
 
   /* --------------------------- keyboard shortcuts ------------------------- */
 
@@ -327,9 +354,11 @@ export function Workspace({
   return (
     <div className="relative h-full w-full overflow-hidden bg-bg">
       <Canvas
-        ref={drawing.canvasRef}
+        baseCanvasRef={drawing.canvasRef}
+        overlayCanvasRef={drawing.overlayRef}
         tool={tool}
         eraserRadius={eraserRadius(size)}
+        scale={drawing.view.scale}
         cursor={canvasCursor}
         onPointerDown={drawing.onPointerDown}
         onPointerMove={drawing.onPointerMove}
@@ -340,20 +369,33 @@ export function Workspace({
         items={texts}
         activeId={activeTextId}
         tool={tool}
+        view={drawing.view}
         onCreate={createText}
         onSelect={setActiveTextId}
         onMove={moveText}
       />
 
-      {/* Sidebar opener */}
-      <button
-        type="button"
-        aria-label="Open menu"
-        onClick={onOpenSidebar}
-        className="absolute left-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-muted/80 text-ink-900 shadow-pop backdrop-blur-pill"
-      >
-        <MenuIcon size={22} />
-      </button>
+      {/* Sidebar opener + current document name */}
+      <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          aria-label="Open menu"
+          title="Open menu"
+          onClick={onOpenSidebar}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-muted/80 text-ink-900 shadow-pop backdrop-blur-pill"
+        >
+          <MenuIcon size={22} />
+        </button>
+        <button
+          type="button"
+          title={documentName}
+          aria-label={`Current document: ${documentName} — open menu`}
+          onClick={onOpenSidebar}
+          className="hidden h-11 max-w-[40vw] items-center truncate rounded-full border border-border bg-bg-muted/80 px-4 text-sm font-medium text-ink-700 shadow-pop backdrop-blur-pill sm:flex"
+        >
+          <span className="truncate">{documentName}</span>
+        </button>
+      </div>
 
       <Toolbar
         tool={tool}
@@ -370,7 +412,7 @@ export function Workspace({
         onPaperChange={cyclePaper}
         onUndo={drawing.undo}
         onRedo={drawing.redo}
-        onClear={drawing.clear}
+        onClear={handleClear}
         onRecognize={handleRecognize}
         onExportPNG={handleExportPNG}
         onExportPDF={handleExportPDF}
@@ -410,6 +452,37 @@ export function Workspace({
           Tap anywhere to place text.
         </p>
       )}
+
+      {/* Zoom controls (desktop). */}
+      <div className="absolute bottom-4 right-4 z-20 hidden items-center gap-1 rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill sm:flex">
+        <button
+          type="button"
+          aria-label="Zoom out"
+          title="Zoom out"
+          onClick={() => zoomBy(1 / 1.2)}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 hover:bg-white/[0.06]"
+        >
+          <span className="text-lg leading-none">−</span>
+        </button>
+        <button
+          type="button"
+          aria-label="Reset zoom to 100%"
+          title="Reset zoom"
+          onClick={resetView}
+          className="min-w-[3.25rem] rounded-full px-1 text-center text-xs font-medium tabular-nums text-ink-700 hover:bg-white/[0.06]"
+        >
+          {Math.round(scale * 100)}%
+        </button>
+        <button
+          type="button"
+          aria-label="Zoom in"
+          title="Zoom in"
+          onClick={() => zoomBy(1.2)}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 hover:bg-white/[0.06]"
+        >
+          <span className="text-lg leading-none">+</span>
+        </button>
+      </div>
 
       <BrandFooter />
 

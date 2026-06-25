@@ -38,6 +38,41 @@ export interface Bounds {
   maxY: number;
 }
 
+/** View transform: world → screen is `screen = (world - pan) * scale`. */
+export interface ViewTransform {
+  scale: number;
+  panX: number;
+  panY: number;
+}
+
+export const IDENTITY_VIEW: ViewTransform = { scale: 1, panX: 0, panY: 0 };
+
+/** Allowed zoom range. */
+export const MIN_SCALE = 0.25;
+export const MAX_SCALE = 4;
+
+export function clampScale(scale: number): number {
+  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+}
+
+/** Convert a screen-space (canvas-relative) point to world space. */
+export function screenToWorld(
+  sx: number,
+  sy: number,
+  view: ViewTransform,
+): { x: number; y: number } {
+  return { x: sx / view.scale + view.panX, y: sy / view.scale + view.panY };
+}
+
+/** Convert a world-space point to screen space (canvas-relative). */
+export function worldToScreen(
+  wx: number,
+  wy: number,
+  view: ViewTransform,
+): { x: number; y: number } {
+  return { x: (wx - view.panX) * view.scale, y: (wy - view.panY) * view.scale };
+}
+
 /**
  * Axis-aligned bounding box of all ink, padded for stroke width. Returns `null`
  * when there are no points (an "empty" drawing), so callers can short-circuit.
