@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stylus — Feature List</title>
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#141414; --panel2:#1b1b1b;
+    --border:#2a2a2a; --border-strong:#3a3a3a;
+    --ink:#fafafa; --ink-dim:#a1a1aa; --ink-faint:#6b6b72;
+    --brand:#f97316; --brand-soft:rgba(249,115,22,.16);
+    --green:#22c55e; --green-soft:rgba(34,197,94,.14);
+    --amber:#f59e0b; --amber-soft:rgba(245,158,11,.14);
+    font-synthesis:none; -webkit-font-smoothing:antialiased;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#000;color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;line-height:1.55}
+  .wrap{max-width:1000px;margin:0 auto;padding:56px 24px 96px}
+
+  .hero{display:flex;align-items:center;gap:18px;margin-bottom:6px}
+  .logo{width:52px;height:52px;border-radius:14px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--brand),#fb923c);display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 24px rgba(249,115,22,.35)}
+  .logo svg{width:28px;height:28px;color:#fff}
+  h1{font-size:34px;letter-spacing:-.02em;margin:0}
+  .sub{color:var(--ink-dim);font-size:16px;margin:2px 0 0}
+  .lead{font-size:17px;color:var(--ink-dim);max-width:760px;margin:14px 0 30px}
+  .lead b{color:var(--ink)}
+
+  /* status counters */
+  .counts{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 44px}
+  .count{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:12px 16px}
+  .count .n{font-size:24px;font-weight:700}
+  .count .l{font-size:13px;color:var(--ink-dim)}
+  .count.done .n{color:var(--green)} .count.pend .n{color:var(--amber)}
+
+  section{margin:48px 0}
+  .sec-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+  .badge{font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;letter-spacing:.02em}
+  .badge.done{background:var(--green-soft);color:var(--green);border:1px solid rgba(34,197,94,.4)}
+  .badge.pend{background:var(--amber-soft);color:var(--amber);border:1px solid rgba(245,158,11,.4)}
+  h2{font-size:22px;letter-spacing:-.01em;margin:0}
+  .sec-desc{color:var(--ink-faint);font-size:14px;margin:6px 0 22px}
+
+  .group{margin:22px 0}
+  .group-title{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--brand);margin:0 0 12px}
+
+  .row{display:flex;gap:14px;align-items:flex-start;padding:13px 16px;background:var(--panel);
+    border:1px solid var(--border);border-radius:12px;margin-bottom:9px}
+  .row .ic{width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:var(--brand-soft);
+    display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:15px;margin-top:1px}
+  .row .body{flex:1;min-width:0}
+  .row .name{font-weight:600;font-size:15px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .row .desc{color:var(--ink-dim);font-size:13.5px;margin-top:2px}
+  .pill{font-size:11px;font-weight:600;border-radius:999px;padding:1px 9px}
+  .pill.ok{background:var(--green-soft);color:var(--green)}
+  .pill.wip{background:var(--amber-soft);color:var(--amber)}
+  .pill.no{background:rgba(120,120,130,.16);color:var(--ink-dim)}
+
+  .row.pending .ic{background:var(--amber-soft);color:var(--amber)}
+
+  footer{margin-top:72px;padding-top:22px;border-top:1px solid var(--border);color:var(--ink-faint);
+    font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  a{color:var(--brand);text-decoration:none}
+  .meta{color:var(--ink-faint);font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+    </div>
+    <div>
+      <h1>Stylus — Feature List</h1>
+      <p class="sub">Everything built &amp; working, plus what's still pending.</p>
+    </div>
+  </div>
+
+  <p class="lead">
+    A complete inventory of the <b>Stylus</b> digital-ink canvas. The list reflects the code on
+    <b>production</b> as of this build — verified against the repository, not estimated.
+  </p>
+
+  <div class="counts">
+    <div class="count done"><span class="n">25+</span><span class="l">features<br>shipped</span></div>
+    <div class="count pend"><span class="n">6</span><span class="l">pending /<br>known gaps</span></div>
+    <div class="count"><span class="n">119</span><span class="l">tests<br>passing</span></div>
+    <div class="count"><span class="n">100%</span><span class="l">on<br>production</span></div>
+  </div>
+
+  <!-- ================= BUILT ================= -->
+  <section>
+    <div class="sec-head"><span class="badge done">✓ BUILT &amp; WORKING</span><h2>Shipped features</h2></div>
+    <p class="sec-desc">All of the following are live, tested, and deployed.</p>
+
+    <!-- Drawing -->
+    <div class="group">
+      <p class="group-title">Drawing</p>
+      <div class="row"><div class="ic">✎</div><div class="body">
+        <div class="name">Pen tool <span class="pill ok">working</span></div>
+        <div class="desc">Pressure &amp; tilt-aware ink with smooth curves. One input pipeline for mouse, touch, stylus &amp; Apple Pencil, with palm rejection.</div></div></div>
+      <div class="row"><div class="ic">⌫</div><div class="body">
+        <div class="name">Eraser <span class="pill ok">working</span></div>
+        <div class="desc">Erases strokes on contact with a circular hover ring showing exactly what a tap will remove.</div></div></div>
+      <div class="row"><div class="ic">◌</div><div class="body">
+        <div class="name">Lasso select &amp; move <span class="pill ok">working</span></div>
+        <div class="desc">Draw a lasso to select strokes, then drag to move them or press Delete/Backspace to remove the group.</div></div></div>
+      <div class="row"><div class="ic">●</div><div class="body">
+        <div class="name">Pen sizes &amp; colours <span class="pill ok">working</span></div>
+        <div class="desc">Three stroke widths, 8 preset colours, and a custom colour wheel.</div></div></div>
+      <div class="row"><div class="ic">▦</div><div class="body">
+        <div class="name">Paper styles <span class="pill ok">working</span></div>
+        <div class="desc">Blank, Grid, Lined and Dot-grid backgrounds — cycle through with one button.</div></div></div>
+    </div>
+
+    <!-- Text -->
+    <div class="group">
+      <p class="group-title">Typed text</p>
+      <div class="row"><div class="ic">T</div><div class="body">
+        <div class="name">Text tool <span class="pill ok">working</span></div>
+        <div class="desc">Place, drag, and recolour editable text boxes anywhere on the canvas.</div></div></div>
+      <div class="row"><div class="ic">⌨</div><div class="body">
+        <div class="name">On-screen keyboard <span class="pill ok">working</span></div>
+        <div class="desc">A tablet-friendly virtual keyboard for typing without hardware; Done to finish.</div></div></div>
+      <div class="row"><div class="ic">⎘</div><div class="body">
+        <div class="name">Physical typing &amp; paste <span class="pill ok">working</span></div>
+        <div class="desc">Type with a real keyboard or paste clipboard text straight onto the canvas.</div></div></div>
+    </div>
+
+    <!-- AI -->
+    <div class="group">
+      <p class="group-title">Stylus AI</p>
+      <div class="row"><div class="ic">✦</div><div class="body">
+        <div class="name">On-device handwriting OCR <span class="pill ok">working</span></div>
+        <div class="desc">Recognises handwriting in the browser (Tesseract WASM) — nothing is uploaded.</div></div></div>
+      <div class="row"><div class="ic">✦</div><div class="body">
+        <div class="name">Claude refinement <span class="pill ok">working</span></div>
+        <div class="desc">Six one-tap actions via the Vercel AI Gateway: Polish, Fix grammar, Summarize, To-do list, Formal, Casual.</div></div></div>
+      <div class="row"><div class="ic">⧉</div><div class="body">
+        <div class="name">Copy / replace results <span class="pill ok">working</span></div>
+        <div class="desc">Copy the refined text, regenerate, or drop it back onto the canvas.</div></div></div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="group">
+      <p class="group-title">Canvas navigation</p>
+      <div class="row"><div class="ic">⤢</div><div class="body">
+        <div class="name">Zoom &amp; pan <span class="pill ok">working</span></div>
+        <div class="desc">Pinch or ⌘-scroll to zoom toward the cursor, scroll to pan, plus a −/100%/+ &amp; reset control cluster.</div></div></div>
+    </div>
+
+    <!-- History & data -->
+    <div class="group">
+      <p class="group-title">History &amp; data</p>
+      <div class="row"><div class="ic">⇄</div><div class="body">
+        <div class="name">Undo / Redo / Clear <span class="pill ok">working</span></div>
+        <div class="desc">Full history with keyboard shortcuts; Clear asks for confirmation before wiping ink &amp; text.</div></div></div>
+      <div class="row"><div class="ic">🗀</div><div class="body">
+        <div class="name">Multi-document sidebar <span class="pill ok">working</span></div>
+        <div class="desc">Create, switch, rename and delete unlimited notes from the sidebar.</div></div></div>
+      <div class="row"><div class="ic">⤓</div><div class="body">
+        <div class="name">Local-first storage <span class="pill ok">working</span></div>
+        <div class="desc">Every note is saved in the browser — no account, works offline, privacy-friendly.</div></div></div>
+    </div>
+
+    <!-- Export & hardware -->
+    <div class="group">
+      <p class="group-title">Export &amp; hardware</p>
+      <div class="row"><div class="ic">🖼</div><div class="body">
+        <div class="name">Export PNG &amp; PDF <span class="pill ok">working</span></div>
+        <div class="desc">Save your work as an image or a document.</div></div></div>
+      <div class="row"><div class="ic">⌁</div><div class="body">
+        <div class="name">Bluetooth stylus <span class="pill ok">working</span></div>
+        <div class="desc">Connect a Bluetooth stylus where the browser supports Web Bluetooth.</div></div></div>
+      <div class="row"><div class="ic">⎙</div><div class="body">
+        <div class="name">Scanmarker scanner <span class="pill ok">working</span></div>
+        <div class="desc">Connect a Scanmarker pen-scanner; scanned text drops onto the canvas as a text box.</div></div></div>
+    </div>
+
+    <!-- Quality -->
+    <div class="group">
+      <p class="group-title">Performance &amp; accessibility</p>
+      <div class="row"><div class="ic">⚡</div><div class="body">
+        <div class="name">Layered canvas rendering <span class="pill ok">working</span></div>
+        <div class="desc">A static layer for committed ink + a cheap overlay for the live stroke — drawing no longer re-renders the whole document each frame.</div></div></div>
+      <div class="row"><div class="ic">♿</div><div class="body">
+        <div class="name">Accessibility fixes <span class="pill ok">working</span></div>
+        <div class="desc">Proper &lt;main&gt; landmark, inert (non-focusable) closed sidebar, and pinch-zoom enabled.</div></div></div>
+      <div class="row"><div class="ic">✓</div><div class="body">
+        <div class="name">Test suite &amp; CI build <span class="pill ok">working</span></div>
+        <div class="desc">119 passing tests; clean typecheck, lint and production build.</div></div></div>
+    </div>
+  </section>
+
+  <!-- ================= PENDING ================= -->
+  <section>
+    <div class="sec-head"><span class="badge pend">⏳ PENDING / KNOWN GAPS</span><h2>Not done yet</h2></div>
+    <p class="sec-desc">Open items — by design, by limitation, or simply not built.</p>
+
+    <div class="row pending"><div class="ic">⚡</div><div class="body">
+      <div class="name">OCR off the main thread <span class="pill wip">to do</span></div>
+      <div class="desc">Drawing performance is fixed, but the <b>Convert</b> click still blocks ~3 s while the OCR engine runs synchronously. Moving Tesseract into a Web Worker would remove the freeze.</div></div></div>
+
+    <div class="row pending"><div class="ic">🔋</div><div class="body">
+      <div class="name">Scanmarker battery level <span class="pill no">limitation</span></div>
+      <div class="desc">WebHID doesn't expose the scanner's battery service, so the battery readout is a placeholder stub.</div></div></div>
+
+    <div class="row pending"><div class="ic">🎓</div><div class="body">
+      <div class="name">First-launch onboarding <span class="pill wip">to do</span></div>
+      <div class="desc">Currently light-touch (placeholder hints + tooltips only). No guided 3-step tutorial for new users.</div></div></div>
+
+    <div class="row pending"><div class="ic">☁</div><div class="body">
+      <div class="name">Cloud sync / accounts <span class="pill no">not planned</span></div>
+      <div class="desc">Storage is local-only by design. No login, no cross-device sync.</div></div></div>
+
+    <div class="row pending"><div class="ic">⤒</div><div class="body">
+      <div class="name">Image / PDF import <span class="pill wip">to do</span></div>
+      <div class="desc">Export works both ways out; there's no way to import an image or PDF onto the canvas.</div></div></div>
+
+    <div class="row pending"><div class="ic">🔒</div><div class="body">
+      <div class="name">Public access <span class="pill wip">setting</span></div>
+      <div class="desc">Production is behind Vercel Deployment Protection (login required). Making it public is a project setting, not a code change.</div></div></div>
+  </section>
+
+  <footer>
+    <span>Stylus — universal digital ink · A Scanmarker product</span>
+    <span>Live app: <a href="https://stylus-flxx.vercel.app">stylus-flxx.vercel.app</a></span>
+  </footer>
+</div>
+</body>
+</html>

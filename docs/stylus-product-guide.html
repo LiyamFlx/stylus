@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stylus — Product Guide</title>
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#141414; --panel2:#1b1b1b; --pill:#1d1d1f;
+    --border:#2a2a2a; --border-strong:#3a3a3a;
+    --ink:#fafafa; --ink-dim:#a1a1aa; --ink-faint:#6b6b72;
+    --brand:#f97316; --brand-soft:rgba(249,115,22,.16);
+    --callout:#f97316; --callout2:#38bdf8;
+    --radius:14px;
+    font-synthesis:none; -webkit-font-smoothing:antialiased;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:#000; color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:56px 24px 96px}
+
+  /* ---------- header ---------- */
+  .hero{display:flex;align-items:center;gap:18px;margin-bottom:8px}
+  .logo{
+    width:52px;height:52px;border-radius:14px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--brand),#fb923c);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 24px rgba(249,115,22,.35);
+  }
+  .logo svg{width:28px;height:28px;color:#fff}
+  h1{font-size:34px;letter-spacing:-.02em;margin:0}
+  .sub{color:var(--ink-dim);font-size:16px;margin:2px 0 0}
+  .tagline{color:var(--ink-faint);font-size:13px;margin-top:36px;text-transform:uppercase;letter-spacing:.12em}
+  .lead{font-size:18px;color:var(--ink-dim);max-width:760px;margin:14px 0 40px}
+  .lead b{color:var(--ink)}
+
+  /* ---------- section ---------- */
+  section{margin:72px 0}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  .sec-num{
+    font-size:13px;font-weight:700;color:var(--brand);
+    border:1px solid var(--brand);border-radius:999px;padding:2px 10px;flex:0 0 auto;
+  }
+  h2{font-size:24px;letter-spacing:-.01em;margin:0}
+  .sec-desc{color:var(--ink-dim);max-width:780px;margin:8px 0 26px}
+
+  /* ---------- mock frame ---------- */
+  .frame{
+    position:relative;background:var(--bg);
+    border:1px solid var(--border);border-radius:18px;overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.55);
+  }
+  .frame .canvas{position:relative;height:520px;width:100%}
+  .frame.tall .canvas{height:600px}
+
+  /* paper background dots for realism */
+  .dots{position:absolute;inset:0;
+    background-image:radial-gradient(rgba(255,255,255,.04) 1px,transparent 1px);
+    background-size:26px 26px;opacity:.5}
+
+  /* ---------- toolbar pill ---------- */
+  .toolbar{
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:6px;
+    background:rgba(28,28,30,.86);border:1px solid var(--border);
+    border-radius:999px;padding:7px 10px;backdrop-filter:blur(12px);
+    box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:3;
+  }
+  .tbtn{
+    width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;
+    color:var(--ink-dim);font-size:15px;position:relative
+  }
+  .tbtn svg{width:18px;height:18px}
+  .tbtn.active{background:var(--brand);color:#fff}
+  .sep{width:1px;height:22px;background:var(--border-strong);margin:0 3px}
+  .swatch{width:18px;height:18px;border-radius:999px;border:1px solid var(--border-strong)}
+  .swatch.sel{outline:2px solid var(--brand);outline-offset:2px}
+  .dot{width:8px;height:8px;border-radius:999px;background:#fff;opacity:.85}
+  .dot.lg{width:13px;height:13px}
+  .convert{
+    display:flex;align-items:center;gap:6px;background:var(--brand-soft);
+    border:1px solid rgba(249,115,22,.5);color:var(--brand);
+    font-weight:600;font-size:14px;border-radius:999px;padding:6px 14px;
+  }
+  .convert svg{width:15px;height:15px}
+
+  /* top-left pills */
+  .topleft{position:absolute;top:16px;left:16px;display:flex;gap:8px;z-index:3}
+  .pillbtn{
+    height:40px;border-radius:999px;border:1px solid var(--border);
+    background:rgba(28,28,30,.86);display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(12px);color:var(--ink);padding:0 14px;font-size:14px;font-weight:500
+  }
+  .pillbtn.icon{width:40px;padding:0}
+  .pillbtn svg{width:20px;height:20px}
+
+  /* zoom cluster */
+  .zoom{
+    position:absolute;bottom:16px;right:16px;display:flex;align-items:center;gap:4px;
+    background:rgba(28,28,30,.86);border:1px solid var(--border);border-radius:999px;
+    padding:6px 8px;backdrop-filter:blur(12px);z-index:3
+  }
+  .zoom .zb{width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;color:var(--ink-dim);font-size:17px}
+  .zoom .pct{min-width:48px;text-align:center;font-size:12px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+
+  .footer-brand{position:absolute;bottom:14px;left:18px;color:var(--ink-faint);font-size:11px;z-index:2}
+
+  /* handwriting sample */
+  .hand{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1}
+  .hand svg{width:62%;height:auto;color:#fff;opacity:.92}
+
+  /* ---------- sidebar mock ---------- */
+  .sidebar{position:absolute;top:0;left:0;bottom:0;width:330px;background:#121212;border-right:1px solid var(--border);z-index:4;display:flex;flex-direction:column}
+  .sb-prof{display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid var(--border)}
+  .sb-av{width:40px;height:40px;border-radius:999px;background:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px}
+  .sb-name{font-weight:600;flex:1}
+  .sb-x{color:var(--ink-faint)}
+  .sb-sec{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 6px}
+  .sb-sec .lbl{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--brand);text-transform:uppercase}
+  .sb-new{font-size:12px;color:var(--ink-dim)}
+  .sb-doc{display:flex;align-items:center;gap:10px;margin:2px 8px;padding:10px 12px;border-radius:10px;color:var(--ink-dim);font-size:14px}
+  .sb-doc svg{width:16px;height:16px}
+  .sb-doc.active{background:rgba(255,255,255,.07);color:var(--ink)}
+  .sb-doc.active svg{color:var(--brand)}
+  .sb-foot{margin-top:auto;padding:16px;color:var(--ink-faint);font-size:11px;border-top:1px solid var(--border)}
+
+  /* ---------- AI panel mock ---------- */
+  .aipanel{position:absolute;top:14px;right:14px;bottom:14px;width:400px;background:#161616;border:1px solid var(--border);border-radius:16px;z-index:4;padding:18px;display:flex;flex-direction:column;gap:14px}
+  .ai-head{display:flex;align-items:center;gap:8px}
+  .ai-badge{width:24px;height:24px;border-radius:7px;background:var(--brand-soft);border:1px solid rgba(249,115,22,.4);display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:12px}
+  .ai-title{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--brand)}
+  .ai-x{margin-left:auto;color:var(--ink-faint)}
+  .ai-label{font-size:11px;letter-spacing:.08em;color:var(--ink-faint);text-transform:uppercase;margin-top:4px}
+  .ai-box{background:#1c1c1c;border:1px solid var(--border);border-radius:10px;padding:14px;min-height:96px;font-size:16px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{border:1px solid var(--border-strong);border-radius:999px;padding:8px 14px;font-size:13px;color:var(--ink)}
+  .ai-note{font-size:12px;color:var(--ink-faint);display:flex;align-items:center;gap:6px}
+  .ai-note::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--brand)}
+
+  /* ---------- on-screen keyboard mock ---------- */
+  .kbd{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;width:760px;max-width:94%;background:#171717;border:1px solid var(--border);border-radius:16px;padding:12px;z-index:4}
+  .kbd-head{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.1em;color:var(--brand);font-weight:700;margin:2px 6px 10px}
+  .kbd-head .done{color:var(--ink-dim);font-weight:500;letter-spacing:0}
+  .krow{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+  .key{flex:1;min-width:0;background:#222;border:1px solid var(--border);border-radius:8px;padding:9px 0;text-align:center;font-size:13px;color:var(--ink)}
+  .key.wide{flex:2}
+  .place-hint{position:absolute;top:78px;left:50%;transform:translateX(-50%);color:var(--ink-faint);font-size:14px;z-index:2}
+
+  /* ---------- callouts ---------- */
+  .callout{position:absolute;z-index:6;max-width:215px;font-size:12.5px;line-height:1.4}
+  .callout .tag{display:inline-block;background:var(--callout);color:#1a1206;font-weight:700;border-radius:6px;padding:1px 7px;font-size:11px;margin-bottom:4px}
+  .callout .txt{background:rgba(10,10,10,.92);border:1px solid var(--border-strong);border-radius:10px;padding:8px 10px;color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  .callout.blue .tag{background:var(--callout2);color:#04222e}
+  /* connector line + arrowhead via svg overlay */
+  .arrows{position:absolute;inset:0;z-index:5;pointer-events:none}
+  .arrows path{stroke:var(--callout);stroke-width:1.6;fill:none}
+  .arrows path.blue{stroke:var(--callout2)}
+  .arrows circle{fill:var(--callout)}
+  .arrows circle.blue{fill:var(--callout2)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:18px;color:var(--ink-dim);font-size:13px}
+  .legend b{color:var(--ink)}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:8px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px}
+  .card h3{margin:0 0 6px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .card h3 .ic{width:26px;height:26px;border-radius:8px;background:var(--brand-soft);display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:14px}
+  .card p{margin:0;color:var(--ink-dim);font-size:13px}
+
+  footer{margin-top:80px;padding-top:24px;border-top:1px solid var(--border);color:var(--ink-faint);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  a{color:var(--brand);text-decoration:none}
+  @media (max-width:720px){
+    .callout{position:static;max-width:none;margin:8px 0}
+    .arrows{display:none}
+    .frame .canvas{height:auto;min-height:360px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+    </div>
+    <div>
+      <h1>Stylus</h1>
+      <p class="sub">A universal digital ink canvas — pen, stylus, or finger. No install, no login.</p>
+    </div>
+  </div>
+
+  <p class="lead">
+    Stylus is a <b>distraction-free writing & drawing canvas</b> that runs entirely in the browser on any device.
+    Write or sketch with a pen, finger, or stylus; type text; then turn your handwriting into editable text with
+    <b>on-device OCR</b> and polish it with <b>Claude AI</b>. Everything is <b>saved locally</b> — privacy-friendly,
+    works offline. This guide walks through every button and panel.
+  </p>
+
+  <!-- ============================================================= -->
+  <!-- 1. MAIN CANVAS + TOOLBAR -->
+  <!-- ============================================================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">1</span><h2>The canvas & toolbar</h2></div>
+    <p class="sec-desc">The whole screen is your canvas. A single floating toolbar holds every tool, ordered left→right:
+      drawing tools, stroke size, colours, paper style, history, hardware, and AI / export.</p>
+
+    <div class="frame">
+      <div class="canvas">
+        <div class="dots"></div>
+
+        <!-- handwriting sample -->
+        <div class="hand">
+          <svg viewBox="0 0 600 200" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M30 30 V150 H110"/>
+            <path d="M150 40 V150"/>
+            <path d="M210 40 L250 150 M290 40 L250 150"/>
+            <path d="M330 150 L360 40 L390 150 M340 110 H380"/>
+            <path d="M440 150 V40 L480 110 L520 40 V150"/>
+          </svg>
+        </div>
+
+        <!-- top-left: menu + doc name -->
+        <div class="topleft">
+          <div class="pillbtn icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div>
+          <div class="pillbtn">Untitled</div>
+        </div>
+
+        <!-- toolbar -->
+        <div class="toolbar">
+          <div class="tbtn active" title="Pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/></svg></div>
+          <div class="tbtn" title="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H7L3 16a2 2 0 010-3l9-9 8 8-7 8"/></svg></div>
+          <div class="tbtn" title="Lasso select"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"><ellipse cx="12" cy="10" rx="9" ry="6"/></svg></div>
+          <div class="tbtn" title="Text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M12 6v14"/></svg></div>
+          <div class="sep"></div>
+          <div class="tbtn"><span class="dot" style="width:5px;height:5px"></span></div>
+          <div class="tbtn"><span class="dot"></span></div>
+          <div class="tbtn"><span class="dot lg"></span></div>
+          <div class="sep"></div>
+          <div class="swatch sel" style="background:#fafafa"></div>
+          <div class="swatch" style="background:#ef4444"></div>
+          <div class="swatch" style="background:#f59e0b"></div>
+          <div class="swatch" style="background:#22c55e"></div>
+          <div class="swatch" style="background:#3b82f6"></div>
+          <div class="swatch" style="background:#a855f7"></div>
+          <div class="swatch" style="background:#ec4899"></div>
+          <div class="swatch" style="background:#000;border-color:#444"></div>
+          <div class="swatch" style="background:conic-gradient(red,#ff0,lime,cyan,blue,magenta,red)"></div>
+          <div class="sep"></div>
+          <div class="tbtn" title="Paper style"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div class="sep"></div>
+          <div class="tbtn" title="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 015 5v1"/></svg></div>
+          <div class="tbtn" title="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 00-5 5v1"/></svg></div>
+          <div class="tbtn" title="Clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></div>
+          <div class="sep"></div>
+          <div class="tbtn" title="Scanmarker scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5h4M21 7V5h-4M3 17v2h4M21 17v2h-4M3 12h18"/></svg></div>
+          <div class="tbtn" title="Bluetooth stylus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg></div>
+          <div class="sep"></div>
+          <div class="convert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/></svg>Convert</div>
+          <div class="tbtn" title="Export PNG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></div>
+          <div class="tbtn" title="Export PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg></div>
+        </div>
+
+        <!-- zoom -->
+        <div class="zoom"><div class="zb">−</div><div class="pct">100%</div><div class="zb">+</div></div>
+        <div class="footer-brand">A Scanmarker product</div>
+
+        <!-- arrows overlay -->
+        <svg class="arrows" viewBox="0 0 1000 520" preserveAspectRatio="none">
+          <path d="M70,120 C70,80 90,55 120,45"/><circle cx="120" cy="45" r="3"/>
+          <path d="M150,118 C170,90 200,70 235,52"/><circle cx="235" cy="52" r="3"/>
+          <path d="M520,250 C540,160 560,90 560,55"/><circle cx="560" cy="55" r="3"/>
+          <path d="M770,250 C770,150 740,90 705,55" class="blue"/><circle cx="705" cy="55" r="3" class="blue"/>
+          <path d="M250,400 C220,330 175,150 150,52"/><circle cx="150" cy="52" r="3"/>
+        </svg>
+
+        <!-- callouts -->
+        <div class="callout" style="left:8px;top:130px">
+          <span class="tag">Open menu</span>
+          <div class="txt">Opens the <b>Documents sidebar</b> — switch, create, rename or delete notes.</div>
+        </div>
+        <div class="callout" style="left:175px;top:160px">
+          <span class="tag">Document name</span>
+          <div class="txt">Shows the current note. Click it to open the sidebar too.</div>
+        </div>
+        <div class="callout" style="left:445px;top:120px">
+          <span class="tag">Drawing tools</span>
+          <div class="txt"><b>Pen</b>, <b>Eraser</b>, <b>Lasso-select</b> (move/delete strokes) and <b>Text</b>.</div>
+        </div>
+        <div class="callout blue" style="right:200px;top:120px">
+          <span class="tag">Size · Colours · Paper</span>
+          <div class="txt">Three pen widths, 8 presets + custom colour wheel, and Blank/Grid/Lined/Dot paper.</div>
+        </div>
+        <div class="callout" style="left:1px;top:420px">
+          <span class="tag">Handwriting</span>
+          <div class="txt">Smooth pressure-aware ink. Renders identically for mouse, finger, pen & Apple Pencil.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><b>Undo / Redo / Clear</b> — full history; Clear asks for confirmation.</span>
+      <span><b>Scanmarker / Bluetooth</b> — connect hardware pen & scanner (when supported).</span>
+      <span><b>Convert</b> — handwriting → text (next section).</span>
+      <span><b>Export</b> — save as PNG or PDF.</span>
+      <span><b>Zoom −/100%/+</b> — bottom-right; pinch or ⌘-scroll also zoom; scroll to pan.</span>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <!-- 2. STYLUS AI -->
+  <!-- ============================================================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">2</span><h2>Stylus AI — handwriting → text → polish</h2></div>
+    <p class="sec-desc">Press <b>Convert</b> and a panel slides in from the right. Stylus recognises your handwriting
+      <b>on-device</b> (no upload), shows it as editable text, then lets <b>Claude</b> refine it six ways.</p>
+
+    <div class="frame">
+      <div class="canvas">
+        <div class="dots"></div>
+        <div class="hand" style="justify-content:flex-start;padding-left:6%">
+          <svg viewBox="0 0 500 200" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="width:46%;opacity:.55">
+            <path d="M30 30 V150 H110"/><path d="M150 40 V150"/>
+            <path d="M210 40 L250 150 M290 40 L250 150"/><path d="M330 150 L360 40 L390 150 M340 110 H380"/>
+          </svg>
+        </div>
+        <div class="topleft"><div class="pillbtn icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div><div class="pillbtn">Untitled</div></div>
+
+        <!-- AI panel -->
+        <div class="aipanel">
+          <div class="ai-head">
+            <div class="ai-badge">✦</div><div class="ai-title">STYLUS AI</div><div class="ai-x">✕</div>
+          </div>
+          <div class="ai-label">Recognized text</div>
+          <div class="ai-box">Meeting notes — ship the v2 canvas, review perf, follow up Tue.</div>
+          <div class="ai-label">Refine with Claude</div>
+          <div class="chips">
+            <div class="chip">Polish</div><div class="chip">Fix grammar</div><div class="chip">Summarize</div>
+            <div class="chip">To-do list</div><div class="chip">Formal</div><div class="chip">Casual</div>
+          </div>
+          <div class="ai-note">Powered by Claude · runs on every device</div>
+        </div>
+
+        <svg class="arrows" viewBox="0 0 1000 520" preserveAspectRatio="none">
+          <path d="M470,150 C560,140 600,150 640,150"/><circle cx="640" cy="150" r="3"/>
+          <path d="M470,300 C560,300 600,300 640,300"/><circle cx="640" cy="300" r="3"/>
+          <path d="M470,420 C560,420 600,420 640,420"/><circle cx="640" cy="420" r="3"/>
+        </svg>
+
+        <div class="callout" style="left:140px;top:118px">
+          <span class="tag">Recognized text</span>
+          <div class="txt">Your handwriting, OCR'd <b>on-device</b> & fully editable before refining.</div>
+        </div>
+        <div class="callout" style="left:140px;top:268px">
+          <span class="tag">Refine with Claude</span>
+          <div class="txt">One tap to <b>Polish, Fix grammar, Summarize, make a To-do list, Formal or Casual</b>.</div>
+        </div>
+        <div class="callout" style="left:140px;top:392px">
+          <span class="tag">Copy · Replace</span>
+          <div class="txt">Copy the result, regenerate, or drop it back onto the canvas as text.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <!-- 3. SIDEBAR -->
+  <!-- ============================================================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">3</span><h2>Documents sidebar</h2></div>
+    <p class="sec-desc">Open from the top-left menu (or the document-name pill). Manage as many notes as you like —
+      all stored locally on the device.</p>
+
+    <div class="frame">
+      <div class="canvas">
+        <div class="dots"></div>
+        <div class="sidebar">
+          <div class="sb-prof"><div class="sb-av">YO</div><div class="sb-name">You</div><div class="sb-x">✕</div></div>
+          <div class="sb-sec"><span class="lbl">Documents</span><span class="sb-new">+ New</span></div>
+          <div class="sb-doc active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>Untitled</div>
+          <div class="sb-doc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>My notes</div>
+          <div class="sb-doc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>Project plan</div>
+          <div class="sb-foot">Stylus — universal digital ink. Saved locally on this device.</div>
+        </div>
+
+        <svg class="arrows" viewBox="0 0 1000 520" preserveAspectRatio="none">
+          <path d="M560,70 C480,60 430,55 360,42"/><circle cx="360" cy="42" r="3"/>
+          <path d="M620,150 C520,140 470,130 380,120"/><circle cx="380" cy="120" r="3"/>
+          <path d="M620,300 C500,250 420,200 340,165"/><circle cx="340" cy="165" r="3"/>
+          <path d="M620,470 C500,480 420,490 340,490" class="blue"/><circle cx="340" cy="490" r="3" class="blue"/>
+        </svg>
+
+        <div class="callout" style="left:540px;top:55px">
+          <span class="tag">Profile</span>
+          <div class="txt">Your name & avatar — used as the document author. Editable inline.</div>
+        </div>
+        <div class="callout" style="left:600px;top:130px">
+          <span class="tag">New / switch</span>
+          <div class="txt"><b>+ New</b> starts a fresh note; tap any item to switch to it instantly.</div>
+        </div>
+        <div class="callout" style="left:600px;top:280px">
+          <span class="tag">Rename · Delete</span>
+          <div class="txt">Hover a note for rename & delete (delete asks to confirm).</div>
+        </div>
+        <div class="callout blue" style="left:600px;top:450px">
+          <span class="tag">Saved locally</span>
+          <div class="txt">No account, no upload — every note lives in this browser. Works offline.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <!-- 4. TEXT TOOL + KEYBOARD -->
+  <!-- ============================================================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">4</span><h2>Typed text & on-screen keyboard</h2></div>
+    <p class="sec-desc">The <b>Text</b> tool places typed text boxes anywhere. A tablet-friendly keyboard appears so you can
+      type without a physical keyboard; you can also paste text or feed it from a Scanmarker scanner.</p>
+
+    <div class="frame tall">
+      <div class="canvas">
+        <div class="dots"></div>
+        <div class="topleft"><div class="pillbtn icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div><div class="pillbtn">Untitled</div></div>
+
+        <div class="toolbar">
+          <div class="tbtn" title="Pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/></svg></div>
+          <div class="tbtn" title="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H7L3 16a2 2 0 010-3l9-9 8 8-7 8"/></svg></div>
+          <div class="tbtn" title="Lasso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"><ellipse cx="12" cy="10" rx="9" ry="6"/></svg></div>
+          <div class="tbtn active" title="Text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M12 6v14"/></svg></div>
+          <div class="sep"></div>
+          <div class="swatch sel" style="background:#fafafa"></div><div class="swatch" style="background:#ef4444"></div><div class="swatch" style="background:#22c55e"></div><div class="swatch" style="background:#3b82f6"></div>
+          <div class="sep"></div>
+          <div class="convert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9z"/></svg>Convert</div>
+        </div>
+
+        <div class="place-hint">Tap anywhere to place text.</div>
+
+        <!-- keyboard -->
+        <div class="kbd">
+          <div class="kbd-head"><span>KEYBOARD</span><span class="done">Done</span></div>
+          <div class="krow"><div class="key">1</div><div class="key">2</div><div class="key">3</div><div class="key">4</div><div class="key">5</div><div class="key">6</div><div class="key">7</div><div class="key">8</div><div class="key">9</div><div class="key">0</div></div>
+          <div class="krow"><div class="key">q</div><div class="key">w</div><div class="key">e</div><div class="key">r</div><div class="key">t</div><div class="key">y</div><div class="key">u</div><div class="key">i</div><div class="key">o</div><div class="key">p</div></div>
+          <div class="krow" style="padding:0 5%"><div class="key">a</div><div class="key">s</div><div class="key">d</div><div class="key">f</div><div class="key">g</div><div class="key">h</div><div class="key">j</div><div class="key">k</div><div class="key">l</div></div>
+          <div class="krow"><div class="key">⇧</div><div class="key">z</div><div class="key">x</div><div class="key">c</div><div class="key">v</div><div class="key">b</div><div class="key">n</div><div class="key">m</div><div class="key">⌫</div></div>
+          <div class="krow"><div class="key">.</div><div class="key">,</div><div class="key">?</div><div class="key">!</div><div class="key">'</div><div class="key wide">space</div><div class="key wide">return</div></div>
+        </div>
+
+        <svg class="arrows" viewBox="0 0 1000 600" preserveAspectRatio="none">
+          <path d="M380,60 C376,68 372,76 372,82"/><circle cx="372" cy="82" r="3"/>
+          <path d="M760,300 C600,320 520,360 500,440"/><circle cx="500" cy="440" r="3"/>
+        </svg>
+
+        <div class="callout" style="left:330px;top:8px">
+          <span class="tag">Text tool</span>
+          <div class="txt">Active here — tap the canvas to drop an editable text box anywhere.</div>
+        </div>
+        <div class="callout" style="left:730px;top:270px">
+          <span class="tag">On-screen keyboard</span>
+          <div class="txt">Type without hardware. Press <b>Done</b> to finish. Boxes can be dragged & recoloured; paste also works.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <!-- CAPABILITIES GRID -->
+  <!-- ============================================================= -->
+  <section>
+    <div class="sec-head"><span class="sec-num">★</span><h2>Capabilities at a glance</h2></div>
+    <div class="grid">
+      <div class="card"><h3><span class="ic">✎</span>Natural drawing</h3><p>Pressure & tilt-aware ink with smooth curves. One pipeline for mouse, touch, pen and Apple Pencil; palm-rejection built in.</p></div>
+      <div class="card"><h3><span class="ic">⌫</span>Eraser & lasso</h3><p>Erase strokes on contact, or lasso-select to move and delete groups of strokes.</p></div>
+      <div class="card"><h3><span class="ic">T</span>Typed text</h3><p>Place, drag and colour text boxes; type via the on-screen keyboard, a physical keyboard, or paste.</p></div>
+      <div class="card"><h3><span class="ic">▦</span>Paper styles</h3><p>Blank, Grid, Lined and Dot-grid backgrounds — cycle with one button.</p></div>
+      <div class="card"><h3><span class="ic">✦</span>AI handwriting → text</h3><p>On-device OCR turns ink into editable text, then Claude polishes it six ways.</p></div>
+      <div class="card"><h3><span class="ic">⤢</span>Zoom & pan</h3><p>Pinch / ⌘-scroll to zoom toward the cursor, scroll to pan, and a −/+/reset control cluster.</p></div>
+      <div class="card"><h3><span class="ic">⇄</span>Undo / Redo / Clear</h3><p>Full history with keyboard shortcuts; Clear confirms before wiping the canvas.</p></div>
+      <div class="card"><h3><span class="ic">⤓</span>Export</h3><p>Save your work as a PNG image or a PDF document.</p></div>
+      <div class="card"><h3><span class="ic">⧉</span>Multi-document</h3><p>Unlimited local notes with rename & delete — all saved in-browser, no login.</p></div>
+      <div class="card"><h3><span class="ic">⌨</span>Hardware</h3><p>Connect a Bluetooth stylus and a Scanmarker scanner (where the browser supports it).</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Stylus — universal digital ink · A Scanmarker product</span>
+    <span>Live app: <a href="https://stylus-flxx.vercel.app">stylus-flxx.vercel.app</a></span>
+  </footer>
+
+</div>
+</body>
+</html>
