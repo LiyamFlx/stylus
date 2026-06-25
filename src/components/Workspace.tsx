@@ -352,7 +352,7 @@ export function Workspace({
   })();
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-bg">
+    <main className="relative h-full w-full overflow-hidden bg-bg">
       <Canvas
         baseCanvasRef={drawing.canvasRef}
         overlayCanvasRef={drawing.overlayRef}
@@ -487,6 +487,6 @@ export function Workspace({
       <BrandFooter />
 
       <Toaster />
-    </div>
+    </main>
   );
 }

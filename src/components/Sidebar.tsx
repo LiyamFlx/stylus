@@ -64,7 +64,11 @@ export function Sidebar({
 
       <aside
         aria-label="Sidebar"
-        aria-hidden={!open}
+        // `inert` (not just aria-hidden) removes the off-screen sidebar from
+        // both the a11y tree and the tab order when closed, so its buttons
+        // aren't focusable behind the canvas. Spread so the attribute is fully
+        // present/absent (React 18's JSX types don't include `inert`).
+        {...(!open ? { inert: '' } : {})}
         className={[
           'absolute inset-y-0 left-0 z-40 flex w-[84vw] max-w-xs flex-col',
           'border-r border-border bg-bg-subtle shadow-pop transition-transform duration-200',
