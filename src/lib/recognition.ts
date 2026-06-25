@@ -1,7 +1,7 @@
-import Tesseract from 'tesseract.js';
+import Tesseract, { PSM } from 'tesseract.js';
 import type { Stroke } from '../types';
 import { RecognitionError } from './recognitionError';
-import { inkBounds, MIN_STROKE_WIDTH, type Bounds } from './geometry';
+import { inkBounds, type Bounds } from './geometry';
 
 /**
  * Handwriting → text using **Tesseract.js** — a WebAssembly OCR engine that
@@ -25,7 +25,15 @@ const OCR_LANG = 'eng';
 /** Target height (px) the cropped ink is scaled to before OCR. */
 const TARGET_HEIGHT = 240;
 /** Whitespace padding around the ink in the rasterized image. */
-const PADDING = 32;
+const PADDING = 40;
+/**
+ * Minimum rendered ink thickness (in the *scaled* OCR image). Handwriting OCR
+ * wants solid, bold glyphs — thin lines get lost during binarization. This is
+ * deliberately larger than the on-screen MIN_STROKE_WIDTH.
+ */
+const OCR_MIN_STROKE = 10;
+/** Luma threshold (0–255) for binarizing the rasterized ink to pure B/W. */
+const BINARIZE_THRESHOLD = 200;
 
 export type { RecognitionErrorCode } from './recognitionError';
 export { RecognitionError } from './recognitionError';
@@ -53,10 +61,20 @@ let workerPromise: Promise<Tesseract.Worker> | null = null;
 
 function getWorker(): Promise<Tesseract.Worker> {
   if (!workerPromise) {
-    workerPromise = Tesseract.createWorker(OCR_LANG).catch((err) => {
-      workerPromise = null;
-      throw err;
-    });
+    workerPromise = Tesseract.createWorker(OCR_LANG)
+      .then(async (worker) => {
+        // Treat the canvas as a single block of text (a word or a few lines)
+        // rather than a full multi-column page — the default PSM assumes page
+        // layout and badly mis-segments a lone word on a big empty canvas.
+        await worker.setParameters({
+          tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        });
+        return worker;
+      })
+      .catch((err) => {
+        workerPromise = null;
+        throw err;
+      });
   }
   return workerPromise;
 }
@@ -96,7 +114,10 @@ function rasterizeForOCR(strokes: Stroke[], bounds: Bounds): HTMLCanvasElement {
   ctx.lineJoin = 'round';
 
   for (const stroke of strokes) {
-    const width = Math.max(stroke.size, MIN_STROKE_WIDTH);
+    // Bold, uniform glyphs read best. Render in *image* pixels (divide by scale
+    // because the context is already scaled) so thickness is consistent
+    // regardless of how much the ink was scaled up.
+    const width = Math.max(stroke.size, OCR_MIN_STROKE / scale);
     const pts = stroke.points;
     if (pts.length === 1) {
       ctx.beginPath();
@@ -118,7 +139,30 @@ function rasterizeForOCR(strokes: Stroke[], bounds: Bounds): HTMLCanvasElement {
     ctx.stroke();
   }
 
+  binarize(ctx, canvas.width, canvas.height);
   return canvas;
+}
+
+/**
+ * Threshold the rasterized image to pure black-on-white. Anti-aliased grey
+ * edges (from round caps / smoothed curves) blur the glyph boundaries the OCR
+ * binarizer keys off; snapping every pixel to black or white sharpens them.
+ */
+function binarize(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): void {
+  const img = ctx.getImageData(0, 0, width, height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // Perceptual luma; ink is black so dark pixels → 0, paper → 255.
+    const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const v = luma < BINARIZE_THRESHOLD ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 /**
@@ -146,11 +190,25 @@ export async function recognizeText(
     // then stays warm for subsequent recognitions.
     const worker = await getWorker();
     const { data } = await worker.recognize(image);
-    return { text: data.text.trim() };
+    return { text: cleanup(data.text) };
   } catch (err) {
     throw new RecognitionError(
       `Recognition failed: ${(err as Error).message}`,
       'failed',
     );
   }
+}
+
+/**
+ * Tidy Tesseract's raw output: collapse the runs of blank lines and stray
+ * spaces it tends to emit, and drop a trailing form-feed, without disturbing
+ * intentional line breaks.
+ */
+function cleanup(raw: string): string {
+  return raw
+    .replace(/\f/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
