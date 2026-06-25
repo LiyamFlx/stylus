@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { DocMeta } from '../lib/documents';
 import { initials } from '../lib/profile';
+import { ConfirmDialog, PromptDialog } from './Dialog';
 import {
   CloseIcon,
   DocumentIcon,
@@ -39,16 +41,12 @@ export function Sidebar({
 }: SidebarProps) {
   const sorted = [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
 
-  const handleRename = (doc: DocMeta) => {
-    const name = window.prompt('Rename document', doc.name);
-    if (name !== null && name.trim()) onRenameDoc(doc.id, name);
-  };
+  // Documents targeted by the rename / delete dialogs (null = closed).
+  const [renaming, setRenaming] = useState<DocMeta | null>(null);
+  const [deleting, setDeleting] = useState<DocMeta | null>(null);
 
-  const handleDelete = (doc: DocMeta) => {
-    if (window.confirm(`Delete “${doc.name}”? This can't be undone.`)) {
-      onDeleteDoc(doc.id);
-    }
-  };
+  const handleRename = (doc: DocMeta) => setRenaming(doc);
+  const handleDelete = (doc: DocMeta) => setDeleting(doc);
 
   return (
     <>
@@ -166,6 +164,31 @@ export function Sidebar({
           Stylus — universal digital ink. Saved locally on this device.
         </div>
       </aside>
+
+      <PromptDialog
+        open={renaming !== null}
+        title="Rename document"
+        initialValue={renaming?.name ?? ''}
+        confirmLabel="Rename"
+        onConfirm={(name) => {
+          if (renaming) onRenameDoc(renaming.id, name);
+          setRenaming(null);
+        }}
+        onCancel={() => setRenaming(null)}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete document?"
+        message={`“${deleting?.name ?? ''}” will be permanently deleted. This can't be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (deleting) onDeleteDoc(deleting.id);
+          setDeleting(null);
+        }}
+        onCancel={() => setDeleting(null)}
+      />
     </>
   );
 }
