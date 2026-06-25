@@ -1,14 +1,44 @@
 import { describe, it, expect } from 'vitest';
 import {
+  clampScale,
   distanceToSegment,
   eraserRadius,
   hitsStroke,
   inkBounds,
+  MAX_SCALE,
+  MIN_SCALE,
   MIN_STROKE_WIDTH,
   pointInPolygon,
+  screenToWorld,
   strokeInLasso,
+  worldToScreen,
 } from './geometry';
 import { stroke } from '../test/fixtures';
+
+describe('view transforms', () => {
+  it('screenToWorld is the inverse of the world view at default', () => {
+    expect(screenToWorld(100, 50, { scale: 1, panX: 0, panY: 0 })).toEqual({ x: 100, y: 50 });
+  });
+
+  it('screenToWorld accounts for pan and zoom', () => {
+    // At scale 2 with pan (10, 20): world = screen/2 + pan.
+    expect(screenToWorld(40, 60, { scale: 2, panX: 10, panY: 20 })).toEqual({ x: 30, y: 50 });
+  });
+
+  it('worldToScreen round-trips with screenToWorld', () => {
+    const view = { scale: 1.5, panX: 12, panY: -8 };
+    const w = screenToWorld(123, 456, view);
+    const s = worldToScreen(w.x, w.y, view);
+    expect(s.x).toBeCloseTo(123);
+    expect(s.y).toBeCloseTo(456);
+  });
+
+  it('clampScale keeps scale within bounds', () => {
+    expect(clampScale(0.01)).toBe(MIN_SCALE);
+    expect(clampScale(100)).toBe(MAX_SCALE);
+    expect(clampScale(2)).toBe(2);
+  });
+});
 
 describe('distanceToSegment', () => {
   it('returns the perpendicular distance when the foot lands inside the segment', () => {

@@ -14,13 +14,17 @@ import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/rend
 import type { Bounds } from '../lib/geometry';
 import {
   applyMoveOffset,
+  clampScale,
   eraserRadius,
   hitsSelectionBounds,
   hitsStroke,
+  IDENTITY_VIEW,
   inkBounds,
+  screenToWorld,
   shiftBounds,
   strokeInLasso,
 } from '../lib/geometry';
+import type { ViewTransform } from '../lib/geometry';
 
 interface UseDrawingOptions {
   tool: Tool;
@@ -43,8 +47,24 @@ export interface SelectionState {
   deleteSelected: () => void;
 }
 
+/** Canvas view (zoom + pan) plus the controls to mutate it. */
+export interface ViewState {
+  scale: number;
+  panX: number;
+  panY: number;
+  /** Zoom by a multiplicative factor, anchored at a screen point (defaults to center). */
+  zoomBy: (factor: number, screenX?: number, screenY?: number) => void;
+  /** Pan by a screen-pixel delta. */
+  panBy: (dxScreen: number, dyScreen: number) => void;
+  /** Reset to 100% / origin. */
+  reset: () => void;
+}
+
 export interface UseDrawingResult {
+  /** Bottom canvas (committed strokes + paper). Used by callers for sizing. */
   canvasRef: React.RefObject<HTMLCanvasElement>;
+  /** Top canvas (live stroke + lasso + selection); also the interactive surface. */
+  overlayRef: React.RefObject<HTMLCanvasElement>;
   strokes: Stroke[];
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
@@ -56,6 +76,7 @@ export interface UseDrawingResult {
   clear: () => void;
   isEmpty: boolean;
   selection: SelectionState;
+  view: ViewState;
 }
 
 /**
@@ -112,7 +133,13 @@ export function useDrawing({
   storageKey,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const history = useHistory<Stroke[]>([]);
+
+  // ─── View (zoom + pan) ────────────────────────────────────────────────────────
+  // Ref is authoritative for the render/input hot paths; state drives the UI.
+  const viewRef = useRef<ViewTransform>(IDENTITY_VIEW);
+  const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW);
   const { save, load } = useLocalStorage(storageKey);
 
   // Latest committed strokes — mirrored in a ref for event handlers and rAF
@@ -124,7 +151,8 @@ export function useDrawing({
   const liveStrokeRef = useRef<Stroke | null>(null);
   const activePointerId = useRef<number | null>(null);
   const strokeStartTime = useRef<number>(0);
-  const rafId = useRef<number | null>(null);
+  const staticRafId = useRef<number | null>(null);
+  const overlayRafId = useRef<number | null>(null);
 
   // Toolbar settings mirrored so handlers always read fresh values.
   const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper });
@@ -169,28 +197,128 @@ export function useDrawing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIds, history.present]);
 
-  // ─── Canvas sizing ──────────────────────────────────────────────────────────
+  // ─── Canvas sizing + transforms ──────────────────────────────────────────────
+
+  /**
+   * Compose DPR scaling with the world view (zoom + pan) onto a context:
+   * `screen = (world - pan) * scale`, then DPR for device pixels. Callers must
+   * `clearRect` in *device* space (before this is applied) to wipe the whole
+   * surface regardless of pan/zoom.
+   */
+  const applyTransform = useCallback((ctx: CanvasRenderingContext2D, dpr: number) => {
+    const { scale, panX, panY } = viewRef.current;
+    const s = dpr * scale;
+    ctx.setTransform(s, 0, 0, s, -panX * s, -panY * s);
+  }, []);
+
+  /** Clear a canvas in device space (ignores the current transform). */
+  const clearDevice = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }, []);
+
+  const sizeCanvas = useCallback((canvas: HTMLCanvasElement, dpr: number) => {
+    canvas.width = Math.round(canvas.clientWidth * dpr);
+    canvas.height = Math.round(canvas.clientHeight * dpr);
+  }, []);
+
+  // Paint committed strokes + paper onto the static (bottom) canvas.
+  const paintStatic = useCallback(
+    (source?: Stroke[]) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      clearDevice(ctx, canvas);
+      applyTransform(ctx, dpr);
+      renderAll(ctx, source ?? strokesRef.current, canvas.clientWidth, canvas.clientHeight, {
+        paper: settingsRef.current.paper,
+      });
+    },
+    [applyTransform, clearDevice],
+  );
 
   const resizeCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const base = canvasRef.current;
+    const overlay = overlayRef.current;
+    if (!base) return;
     const dpr = window.devicePixelRatio || 1;
-    const { clientWidth, clientHeight } = canvas;
-    canvas.width = Math.round(clientWidth * dpr);
-    canvas.height = Math.round(clientHeight * dpr);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    renderAll(ctx, strokesRef.current, clientWidth, clientHeight, {
-      paper: settingsRef.current.paper,
-    });
-  }, []);
+    sizeCanvas(base, dpr);
+    if (overlay) sizeCanvas(overlay, dpr);
+    paintStatic();
+    // Clear the overlay; it repaints on the next pointer/selection change.
+    if (overlay) {
+      const octx = overlay.getContext('2d');
+      if (octx) clearDevice(octx, overlay);
+    }
+  }, [sizeCanvas, paintStatic, clearDevice]);
 
   useLayoutEffect(() => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [resizeCanvas]);
+
+  // ─── Render loop ────────────────────────────────────────────────────────────
+
+  /**
+   * Repaint the static (committed) layer on the next frame. Coalesced so many
+   * triggers per frame collapse into one paint. During an erase drag the
+   * working copy is shown; during a move, the offset is applied to the static
+   * layer (move/erase are bounded, lower-frequency gestures).
+   */
+  const scheduleStaticRender = useCallback(() => {
+    if (staticRafId.current !== null) return;
+    staticRafId.current = requestAnimationFrame(() => {
+      staticRafId.current = null;
+      const base = eraseWorkingRef.current ?? strokesRef.current;
+      const { dx, dy } = moveOffsetRef.current;
+      const source =
+        selectionPhaseRef.current === 'moving' && (dx !== 0 || dy !== 0)
+          ? applyMoveOffset(base, selectedIdsRef.current, dx, dy)
+          : base;
+      paintStatic(source);
+    });
+  }, [paintStatic]);
+
+  /**
+   * Repaint the overlay (live stroke + lasso + selection rect) on the next
+   * frame. This is the hot path during drawing — it never touches committed ink.
+   */
+  const scheduleOverlayRender = useCallback(() => {
+    if (overlayRafId.current !== null) return;
+    overlayRafId.current = requestAnimationFrame(() => {
+      overlayRafId.current = null;
+      const canvas = overlayRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      clearDevice(ctx, canvas);
+      applyTransform(ctx, dpr);
+
+      if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
+
+      if (selectionPhaseRef.current === 'lasso') {
+        drawLasso(ctx, lassoRef.current);
+      }
+      if (selectedIdsRef.current.size > 0) {
+        // Selection bounds follow the in-flight move offset (matches static layer).
+        const { dx, dy } = moveOffsetRef.current;
+        const base = eraseWorkingRef.current ?? strokesRef.current;
+        const display =
+          selectionPhaseRef.current === 'moving' && (dx !== 0 || dy !== 0)
+            ? applyMoveOffset(base, selectedIdsRef.current, dx, dy)
+            : base;
+        const selected = display.filter((s) => selectedIdsRef.current.has(s.id));
+        const b = inkBounds(selected);
+        if (b) drawSelectionRect(ctx, b);
+      }
+    });
+  }, [applyTransform, clearDevice]);
 
   // ─── Restore from storage ───────────────────────────────────────────────────
 
@@ -200,58 +328,15 @@ export function useDrawing({
       history.reset(restored);
       strokesRef.current = restored;
       setIsEmpty(false);
-      scheduleRender();
+      scheduleStaticRender();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Render loop ────────────────────────────────────────────────────────────
-
-  const scheduleRender = useCallback(() => {
-    if (rafId.current !== null) return;
-    rafId.current = requestAnimationFrame(() => {
-      rafId.current = null;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // During an erase drag render the working copy; otherwise committed.
-      const base = eraseWorkingRef.current ?? strokesRef.current;
-
-      // During a move, shift selected strokes visually without mutating history.
-      const { dx, dy } = moveOffsetRef.current;
-      const displayStrokes =
-        selectionPhaseRef.current === 'moving' && (dx !== 0 || dy !== 0)
-          ? applyMoveOffset(base, selectedIdsRef.current, dx, dy)
-          : base;
-
-      renderAll(ctx, displayStrokes, canvas.clientWidth, canvas.clientHeight, {
-        paper: settingsRef.current.paper,
-      });
-
-      // Live pen stroke on top.
-      if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
-
-      // Selection overlays.
-      if (selectionPhaseRef.current === 'lasso') {
-        drawLasso(ctx, lassoRef.current);
-      }
-      if (selectedIdsRef.current.size > 0) {
-        // Recompute bounds here using the same offset as displayStrokes.
-        const selected = displayStrokes.filter((s) =>
-          selectedIdsRef.current.has(s.id),
-        );
-        const b = inkBounds(selected);
-        if (b) drawSelectionRect(ctx, b);
-      }
-    });
-  }, []);
-
-  // Repaint when the paper style changes.
+  // Repaint the static layer when the paper style changes.
   useEffect(() => {
-    scheduleRender();
-  }, [paper, scheduleRender]);
+    scheduleStaticRender();
+  }, [paper, scheduleStaticRender]);
 
   // Clear selection when switching away from the select tool.
   useEffect(() => {
@@ -261,9 +346,9 @@ export function useDrawing({
       lassoRef.current = [];
       selectionPhaseRef.current = 'idle';
       setSelectionPhase('idle');
-      scheduleRender();
+      scheduleOverlayRender();
     }
-  }, [tool, scheduleRender]);
+  }, [tool, scheduleOverlayRender]);
 
   // ─── Pointer helpers ────────────────────────────────────────────────────────
 
@@ -296,15 +381,18 @@ export function useDrawing({
     [],
   );
 
+  /** Map raw client coordinates to world space, accounting for pan + zoom. */
+  const clientToWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = overlayRef.current?.getBoundingClientRect();
+    const sx = clientX - (rect?.left ?? 0);
+    const sy = clientY - (rect?.top ?? 0);
+    return screenToWorld(sx, sy, viewRef.current);
+  }, []);
+
   const getCanvasPoint = useCallback(
-    (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      return {
-        x: e.clientX - (rect?.left ?? 0),
-        y: e.clientY - (rect?.top ?? 0),
-      };
-    },
-    [],
+    (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } =>
+      clientToWorld(e.clientX, e.clientY),
+    [clientToWorld],
   );
 
   const getPoint = useCallback(
@@ -331,9 +419,9 @@ export function useDrawing({
     if (removed) {
       eraseWorkingRef.current = survivors;
       erasedDuringDrag.current = true;
-      scheduleRender();
+      scheduleStaticRender();
     }
-  }, [scheduleRender]);
+  }, [scheduleStaticRender]);
 
   // ─── Selection actions ──────────────────────────────────────────────────────
 
@@ -345,8 +433,8 @@ export function useDrawing({
     setSelectionPhase('idle');
     moveOffsetRef.current = { dx: 0, dy: 0 };
     moveOriginRef.current = null;
-    scheduleRender();
-  }, [scheduleRender]);
+    scheduleOverlayRender();
+  }, [scheduleOverlayRender]);
 
   const deleteSelected = useCallback(() => {
     const ids = selectedIdsRef.current;
@@ -358,8 +446,10 @@ export function useDrawing({
     setSelectionPhase('idle');
     history.set(next);
     strokesRef.current = next;
-    scheduleRender();
-  }, [history, scheduleRender]);
+    // Committed ink changed → static repaints via the history effect; clear the
+    // now-stale selection rect off the overlay immediately.
+    scheduleOverlayRender();
+  }, [history, scheduleOverlayRender]);
 
   // ─── Pointer event handlers ─────────────────────────────────────────────────
 
@@ -408,7 +498,7 @@ export function useDrawing({
           lassoRef.current = [{ x, y }];
           selectedIdsRef.current = new Set();
           setSelectedIds(new Set());
-          scheduleRender();
+          scheduleOverlayRender();
         }
         return;
       }
@@ -429,9 +519,9 @@ export function useDrawing({
         size: activeSize,
         points: [point],
       };
-      scheduleRender();
+      scheduleOverlayRender();
     },
-    [eraseAt, getCanvasPoint, getPoint, scheduleRender],
+    [eraseAt, getCanvasPoint, getPoint, scheduleOverlayRender],
   );
 
   const onPointerMove = useCallback(
@@ -447,27 +537,24 @@ export function useDrawing({
           : [];
       const samples = events.length > 0 ? events : [e.nativeEvent];
 
-      // Fetch rect once outside the loop for all tools.
-      const rect = canvasRef.current?.getBoundingClientRect();
-
       // ── select ──
       if (activeTool === 'select') {
         const phase = selectionPhaseRef.current;
         if (phase === 'lasso') {
           for (const ev of samples) {
-            lassoRef.current.push({
-              x: ev.clientX - (rect?.left ?? 0),
-              y: ev.clientY - (rect?.top ?? 0),
-            });
+            lassoRef.current.push(clientToWorld(ev.clientX, ev.clientY));
           }
-          scheduleRender();
+          scheduleOverlayRender();
         } else if (phase === 'moving' && moveOriginRef.current) {
           const last = samples[samples.length - 1];
+          const w = clientToWorld(last.clientX, last.clientY);
           moveOffsetRef.current = {
-            dx: last.clientX - (rect?.left ?? 0) - moveOriginRef.current.x,
-            dy: last.clientY - (rect?.top ?? 0) - moveOriginRef.current.y,
+            dx: w.x - moveOriginRef.current.x,
+            dy: w.y - moveOriginRef.current.y,
           };
-          scheduleRender();
+          // Moving shifts committed strokes visually (static) + the rect (overlay).
+          scheduleStaticRender();
+          scheduleOverlayRender();
         }
         return;
       }
@@ -475,11 +562,8 @@ export function useDrawing({
       // ── eraser ──
       if (activeTool === 'eraser') {
         for (const ev of samples) {
-          eraseAt(
-            ev.clientX - (rect?.left ?? 0),
-            ev.clientY - (rect?.top ?? 0),
-            eraserRadius(activeSize),
-          );
+          const w = clientToWorld(ev.clientX, ev.clientY);
+          eraseAt(w.x, w.y, eraserRadius(activeSize));
         }
         return;
       }
@@ -488,20 +572,14 @@ export function useDrawing({
       const live = liveStrokeRef.current;
       if (!live) return;
       for (const ev of samples) {
+        const w = clientToWorld(ev.clientX, ev.clientY);
         live.points.push(
-          buildPoint(
-            ev.clientX - (rect?.left ?? 0),
-            ev.clientY - (rect?.top ?? 0),
-            ev.pointerType,
-            ev.pressure,
-            ev.tiltX ?? 0,
-            ev.tiltY ?? 0,
-          ),
+          buildPoint(w.x, w.y, ev.pointerType, ev.pressure, ev.tiltX ?? 0, ev.tiltY ?? 0),
         );
       }
-      scheduleRender();
+      scheduleOverlayRender();
     },
-    [buildPoint, eraseAt, scheduleRender],
+    [buildPoint, clientToWorld, eraseAt, scheduleOverlayRender, scheduleStaticRender],
   );
 
   const endGesture = useCallback(
@@ -536,7 +614,7 @@ export function useDrawing({
           lassoRef.current = [];
           selectionPhaseRef.current = 'idle';
           setSelectionPhase('idle');
-          scheduleRender();
+          scheduleOverlayRender();
 
         } else if (phase === 'moving') {
           const { dx, dy } = moveOffsetRef.current;
@@ -555,7 +633,10 @@ export function useDrawing({
           moveOriginRef.current = null;
           selectionPhaseRef.current = 'idle';
           setSelectionPhase('idle');
-          scheduleRender();
+          // Committed ink repaints via the history effect; redraw the rect at its
+          // final resting place on the overlay.
+          scheduleStaticRender();
+          scheduleOverlayRender();
         }
         return;
       }
@@ -566,10 +647,10 @@ export function useDrawing({
         eraseWorkingRef.current = null;
         if (erasedDuringDrag.current && working) {
           erasedDuringDrag.current = false;
-          history.set(working);
+          history.set(working); // static repaints via the history effect
           strokesRef.current = working;
         } else {
-          scheduleRender();
+          scheduleStaticRender();
         }
         return;
       }
@@ -577,13 +658,19 @@ export function useDrawing({
       // ── pen ──
       const live = liveStrokeRef.current;
       liveStrokeRef.current = null;
-      if (!live || live.points.length === 0) return;
+      if (!live || live.points.length === 0) {
+        scheduleOverlayRender(); // clear any partial live stroke
+        return;
+      }
 
       const next = [...strokesRef.current, live];
       history.set(next);
       strokesRef.current = next;
+      // Clear the live copy off the overlay now; the committed copy lands on the
+      // static layer via the history effect (avoids a one-frame double draw).
+      scheduleOverlayRender();
     },
-    [history, scheduleRender],
+    [history, scheduleOverlayRender, scheduleStaticRender],
   );
 
   // ─── Toolbar operations ─────────────────────────────────────────────────────
@@ -609,26 +696,108 @@ export function useDrawing({
   useEffect(() => {
     strokesRef.current = history.present;
     setIsEmpty(history.present.length === 0);
-    scheduleRender();
+    scheduleStaticRender();
     if (hydratedRef.current) {
       save(history.present);
     } else {
       hydratedRef.current = true;
     }
-  }, [history.present, save, scheduleRender]);
+  }, [history.present, save, scheduleStaticRender]);
 
-  // Cancel any pending rAF on unmount.
+  // Cancel any pending rAFs on unmount.
   useEffect(() => {
     return () => {
-      if (rafId.current !== null) {
-        cancelAnimationFrame(rafId.current);
-        rafId.current = null;
+      if (staticRafId.current !== null) {
+        cancelAnimationFrame(staticRafId.current);
+        staticRafId.current = null;
+      }
+      if (overlayRafId.current !== null) {
+        cancelAnimationFrame(overlayRafId.current);
+        overlayRafId.current = null;
       }
     };
   }, []);
 
+  // ─── View controls (zoom + pan) ───────────────────────────────────────────────
+
+  const commitView = useCallback(
+    (next: ViewTransform) => {
+      viewRef.current = next;
+      setView(next);
+      // Both layers depend on the transform — repaint each once.
+      scheduleStaticRender();
+      scheduleOverlayRender();
+    },
+    [scheduleStaticRender, scheduleOverlayRender],
+  );
+
+  const zoomBy = useCallback(
+    (factor: number, screenX?: number, screenY?: number) => {
+      const prev = viewRef.current;
+      const scale = clampScale(prev.scale * factor);
+      if (scale === prev.scale) return;
+      // Keep the anchor point stationary on screen while zooming.
+      const canvas = overlayRef.current;
+      const ax = screenX ?? (canvas ? canvas.clientWidth / 2 : 0);
+      const ay = screenY ?? (canvas ? canvas.clientHeight / 2 : 0);
+      // World point under the anchor must stay fixed: solve new pan.
+      const worldX = ax / prev.scale + prev.panX;
+      const worldY = ay / prev.scale + prev.panY;
+      commitView({ scale, panX: worldX - ax / scale, panY: worldY - ay / scale });
+    },
+    [commitView],
+  );
+
+  const panBy = useCallback(
+    (dxScreen: number, dyScreen: number) => {
+      const prev = viewRef.current;
+      commitView({
+        ...prev,
+        panX: prev.panX - dxScreen / prev.scale,
+        panY: prev.panY - dyScreen / prev.scale,
+      });
+    },
+    [commitView],
+  );
+
+  const resetView = useCallback(() => {
+    commitView(IDENTITY_VIEW);
+  }, [commitView]);
+
+  // Native, non-passive wheel listener so we can preventDefault and stop the
+  // browser from page-zooming on ctrl/⌘+wheel (pinch). Plain wheel pans.
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const prev = viewRef.current;
+      if (e.ctrlKey || e.metaKey) {
+        const scale = clampScale(prev.scale * Math.exp(-e.deltaY * 0.01));
+        if (scale === prev.scale) return;
+        const worldX = sx / prev.scale + prev.panX;
+        const worldY = sy / prev.scale + prev.panY;
+        commitView({ scale, panX: worldX - sx / scale, panY: worldY - sy / scale });
+      } else {
+        const dx = e.shiftKey ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey ? 0 : e.deltaY;
+        commitView({
+          ...prev,
+          panX: prev.panX + dx / prev.scale,
+          panY: prev.panY + dy / prev.scale,
+        });
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [commitView]);
+
   return {
     canvasRef,
+    overlayRef,
     strokes: history.present,
     onPointerDown,
     onPointerMove,
@@ -645,6 +814,14 @@ export function useDrawing({
       bounds: selectionBounds,
       clearSelection,
       deleteSelected,
+    },
+    view: {
+      scale: view.scale,
+      panX: view.panX,
+      panY: view.panY,
+      zoomBy,
+      panBy,
+      reset: resetView,
     },
   };
 }
