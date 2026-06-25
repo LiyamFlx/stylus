@@ -166,10 +166,14 @@ function binarize(
 }
 
 /**
- * Recognize handwriting from the given strokes via in-browser OCR.
+ * Recognize handwriting from the given strokes.
  *
- * @throws {RecognitionError} when there's no ink or OCR fails. Callers should
- *         surface `err.message`.
+ * Primary path is Claude vision via `/api/recognize` (far better at handwriting
+ * than OCR). If that call fails — offline, backend down, or budget reached — we
+ * fall back to the on-device Tesseract engine so recognition still works
+ * without a network.
+ *
+ * @throws {RecognitionError} when there's no ink, or when *both* engines fail.
  */
 export async function recognizeText(
   strokes: Stroke[],
@@ -185,9 +189,16 @@ export async function recognizeText(
 
   const image = rasterizeForOCR(strokes, bounds);
 
+  // 1) Claude vision (best accuracy).
   try {
-    // The worker lazily downloads + caches the language model on first use,
-    // then stays warm for subsequent recognitions.
+    const text = await recognizeViaClaude(image);
+    return { text: cleanup(text) };
+  } catch {
+    // fall through to on-device OCR
+  }
+
+  // 2) On-device Tesseract fallback.
+  try {
     const worker = await getWorker();
     const { data } = await worker.recognize(image);
     return { text: cleanup(data.text) };
@@ -197,6 +208,23 @@ export async function recognizeText(
       'failed',
     );
   }
+}
+
+/**
+ * Send the rasterized ink to the Claude-vision backend. Throws on any non-OK
+ * response so the caller can fall back to local OCR.
+ */
+async function recognizeViaClaude(image: HTMLCanvasElement): Promise<string> {
+  const dataUrl = image.toDataURL('image/png');
+  const res = await fetch('/api/recognize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: dataUrl }),
+  });
+  if (!res.ok) throw new Error(`recognize ${res.status}`);
+  const data = (await res.json()) as { text?: string; error?: string };
+  if (data.error) throw new Error(data.error);
+  return data.text ?? '';
 }
 
 /**

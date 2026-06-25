@@ -304,6 +304,9 @@ export function Workspace({
         if (e.key === 's') onToolChange('select');
         return;
       }
+      // While typing in a real field (e.g. the AI studio editor), let the
+      // browser handle ⌘Z / ⌘⇧Z natively so it undoes the text, not the canvas.
+      if (typing) return;
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
