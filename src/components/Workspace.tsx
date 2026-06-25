@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
+import { ConfirmDialog } from './Dialog';
 import { StudioPanel } from './StudioPanel';
 import { TextLayer } from './TextLayer';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
@@ -226,13 +227,18 @@ export function Workspace({
     void recognition.recognize(drawing.strokes);
   }, [drawing.strokes, recognition, texts]);
 
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+
   const handleClear = useCallback(() => {
     if (drawing.isEmpty && texts.length === 0) return;
-    if (window.confirm('Clear the whole canvas? Strokes and text will be removed.')) {
-      drawing.clear();
-      setTexts([]);
-    }
-  }, [drawing, texts.length]);
+    setClearConfirmOpen(true);
+  }, [drawing.isEmpty, texts.length]);
+
+  const confirmClear = useCallback(() => {
+    drawing.clear();
+    setTexts([]);
+    setClearConfirmOpen(false);
+  }, [drawing]);
 
   const handleClosePanel = useCallback(() => {
     setPanelOpen(false);
@@ -427,6 +433,16 @@ export function Workspace({
         text={recognition.text}
         recognitionError={recognition.error}
         onClose={handleClosePanel}
+      />
+
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        title="Clear the whole canvas?"
+        message="All strokes and text on this page will be removed. This can be undone with ⌘Z."
+        confirmLabel="Clear canvas"
+        danger
+        onConfirm={confirmClear}
+        onCancel={() => setClearConfirmOpen(false)}
       />
 
       {/* On-screen keyboard for the text tool. */}
