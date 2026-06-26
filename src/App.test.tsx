@@ -65,17 +65,18 @@ describe('App keyboard shortcuts', () => {
     expect(screen.getByText(/start writing or drawing/i)).toBeInTheDocument();
   });
 
-  it('cycles the paper style blank → grid → ruled → dots → blank', () => {
+  it('opens the paper picker and selects a background', () => {
     render(<App />);
     const paperBtn = () => screen.getAllByRole('button', { name: /^Paper:/ })[0];
     expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
+
+    // Opening the picker reveals the four options.
     fireEvent.click(paperBtn());
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(4);
+
+    // Selecting one applies it and closes the menu.
+    fireEvent.click(screen.getAllByRole('menuitemradio', { name: /Grid/i })[0]);
     expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Grid');
-    fireEvent.click(paperBtn());
-    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Ruled');
-    fireEvent.click(paperBtn());
-    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Dots');
-    fireEvent.click(paperBtn());
-    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
+    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
   });
 });

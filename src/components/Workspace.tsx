@@ -17,7 +17,6 @@ import { eraserRadius } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
 import { inkKey, readAux, touchDocument, writeAux } from '../lib/documents';
 import type { PaperStyle, PenSize, TextItem, Tool } from '../types';
-import { PAPER_STYLES } from '../types';
 
 interface WorkspaceProps {
   documentId: string;
@@ -75,12 +74,6 @@ export function Workspace({
     writeAux(documentId, { paper, texts });
     touchDocument(documentId, Date.now());
   }, [documentId, paper, texts]);
-
-  /* ------------------------------ paper cycle ----------------------------- */
-
-  const cyclePaper = useCallback(() => {
-    setPaper((p) => PAPER_STYLES[(PAPER_STYLES.indexOf(p) + 1) % PAPER_STYLES.length]);
-  }, []);
 
   /* ------------------------------- text edit ------------------------------ */
 
@@ -418,7 +411,7 @@ export function Workspace({
         onToolChange={onToolChange}
         onColorChange={onColorChange}
         onSizeChange={onSizeChange}
-        onPaperChange={cyclePaper}
+        onPaperSelect={setPaper}
         onUndo={drawing.undo}
         onRedo={drawing.redo}
         onClear={handleClear}

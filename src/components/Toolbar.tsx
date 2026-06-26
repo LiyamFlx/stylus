@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PaperStyle, PenSize, Tool } from '../types';
-import { PEN_SIZES, PRESET_COLORS } from '../types';
+import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
 import {
   PenIcon,
   EraserIcon,
@@ -37,7 +37,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onSizeChange: (size: PenSize) => void;
-  onPaperChange: () => void;
+  onPaperSelect: (paper: PaperStyle) => void;
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
@@ -231,6 +231,105 @@ function ColorPicker({
   );
 }
 
+/** A small CSS rendering of each paper guide, shown in the picker swatches. */
+function PaperSwatch({ style }: { style: PaperStyle }) {
+  const base = 'h-7 w-7 rounded bg-bg';
+  if (style === 'blank') return <span className={base} />;
+  if (style === 'dots') {
+    return (
+      <span
+        className={base}
+        style={{
+          backgroundImage: 'radial-gradient(rgba(255,255,255,0.45) 1px, transparent 1px)',
+          backgroundSize: '7px 7px',
+        }}
+      />
+    );
+  }
+  const line = 'rgba(255,255,255,0.4) 0 1px, transparent 1px 7px';
+  return (
+    <span
+      className={base}
+      style={{
+        backgroundImage:
+          style === 'grid'
+            ? `repeating-linear-gradient(0deg, ${line}), repeating-linear-gradient(90deg, ${line})`
+            : `repeating-linear-gradient(0deg, ${line})`,
+      }}
+    />
+  );
+}
+
+/** Paper-guide button that opens a popover to pick Blank / Grid / Ruled / Dots. */
+function PaperPicker({
+  paper,
+  onPaperSelect,
+}: {
+  paper: PaperStyle;
+  onPaperSelect: (paper: PaperStyle) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click or Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <IconButton
+        label={`Paper: ${PAPER_LABELS[paper]}`}
+        active={open || paper !== 'blank'}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <PaperIcon />
+      </IconButton>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Paper background"
+          className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+        >
+          {PAPER_STYLES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="menuitemradio"
+              aria-checked={paper === s}
+              onClick={() => {
+                onPaperSelect(s);
+                setOpen(false);
+              }}
+              className={[
+                'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                paper === s
+                  ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
+                  : 'hover:bg-white/[0.06]',
+              ].join(' ')}
+            >
+              <PaperSwatch style={s} />
+              <span className="text-[13px] font-medium text-ink-900">
+                {PAPER_LABELS[s]}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Toolbar(props: ToolbarProps) {
   const {
     tool,
@@ -244,7 +343,7 @@ export function Toolbar(props: ToolbarProps) {
     onToolChange,
     onColorChange,
     onSizeChange,
-    onPaperChange,
+    onPaperSelect,
     onUndo,
     onRedo,
     onClear,
@@ -295,13 +394,7 @@ export function Toolbar(props: ToolbarProps) {
       <ColorPicker color={color} onColorChange={onColorChange} />
 
       <Divider />
-      <IconButton
-        label={`Paper: ${PAPER_LABELS[paper]}`}
-        active={paper !== 'blank'}
-        onClick={onPaperChange}
-      >
-        <PaperIcon />
-      </IconButton>
+      <PaperPicker paper={paper} onPaperSelect={onPaperSelect} />
 
       <Divider />
       <IconButton label="Undo" disabled={!canUndo} onClick={onUndo}>
