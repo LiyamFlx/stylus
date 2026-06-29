@@ -10,13 +10,14 @@ import { InputMethodGroup } from './ToolbarInputMethods';
 import { BrandFooter } from './Brand';
 import { MenuIcon } from './icons';
 import { useDrawing } from '../hooks/useDrawing';
+import { useMusicMode } from '../hooks/useMusicMode';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
 import { eraserRadius } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
 import { inkKey, readAux, touchDocument, writeAux } from '../lib/documents';
-import type { PaperStyle, PenSize, TextItem, Tool } from '../types';
+import type { PaperStyle, PenSize, Stroke, TextItem, Tool } from '../types';
 
 interface WorkspaceProps {
   documentId: string;
@@ -58,8 +59,31 @@ export function Workspace({
   const [texts, setTexts] = useState<TextItem[]>(initialAux.texts);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
-  const drawing = useDrawing({ tool, color, size, paper, storageKey: inkKey(documentId) });
+  const music = useMusicMode();
+  const canvasHeightRef = useRef(0);
+
+  const drawing = useDrawing({
+    tool,
+    color,
+    size,
+    paper,
+    storageKey: inkKey(documentId),
+    onStrokeEnd: (stroke: Stroke) => {
+      music.handleStrokeEnd(stroke, canvasHeightRef.current || window.innerHeight);
+    },
+  });
   const recognition = useRecognition();
+
+  // Keep the canvas height current for pitch mapping (top = high, bottom = low).
+  useEffect(() => {
+    const update = () => {
+      canvasHeightRef.current =
+        drawing.canvasRef.current?.clientHeight ?? window.innerHeight;
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [drawing.canvasRef]);
 
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -421,6 +445,19 @@ export function Workspace({
         inputMethodGroup={
           <InputMethodGroup scanner={scanner} stylus={stylus} />
         }
+        musicMode={music.enabled}
+        onToggleMusic={music.toggleMusicMode}
+        playing={music.playing}
+        onPlayToggle={() => {
+          const el = drawing.canvasRef.current;
+          music.togglePlayback(
+            drawing.strokes,
+            el?.clientWidth ?? window.innerWidth,
+            el?.clientHeight ?? window.innerHeight,
+          );
+        }}
+        palette={music.palette}
+        onCyclePalette={music.cyclePalette}
       />
 
       <StudioPanel
@@ -495,6 +532,14 @@ export function Workspace({
           <span className="text-lg leading-none">+</span>
         </button>
       </div>
+
+      {music.enabled && music.playing && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-0 z-10 h-full w-0.5 bg-brand-400/80"
+          style={{ left: `${music.playheadX}px` }}
+        />
+      )}
 
       <BrandFooter />
 
