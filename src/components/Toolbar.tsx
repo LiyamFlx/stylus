@@ -15,7 +15,11 @@ import {
   LassoIcon,
   CloseIcon,
   SpinnerIcon,
+  MusicIcon,
+  PlayIcon,
+  StopIcon,
 } from './icons';
+import type { PaletteId } from '../lib/kandinsky/audio';
 
 /** Human-readable label for the current paper guide, used in the tooltip. */
 const PAPER_LABELS: Record<PaperStyle, string> = {
@@ -46,6 +50,12 @@ interface ToolbarProps {
   onExportPDF: () => void;
   /** Text / scanner / stylus input-method buttons, rendered in the pill. */
   inputMethodGroup?: React.ReactNode;
+  musicMode: boolean;
+  onToggleMusic: () => void;
+  playing: boolean;
+  onPlayToggle: () => void;
+  palette: PaletteId;
+  onCyclePalette: () => void;
 }
 
 /** A square icon button with active / disabled states. */
@@ -351,6 +361,12 @@ export function Toolbar(props: ToolbarProps) {
     onExportPNG,
     onExportPDF,
     inputMethodGroup,
+    musicMode,
+    onToggleMusic,
+    playing,
+    onPlayToggle,
+    palette,
+    onCyclePalette,
   } = props;
 
   // Mobile: the pill collapses to a single menu button that expands a tray.
@@ -421,6 +437,44 @@ export function Toolbar(props: ToolbarProps) {
       <IconButton label="Export PDF" disabled={isEmpty} onClick={onExportPDF}>
         <FileIcon />
       </IconButton>
+
+      <Divider />
+      <IconButton
+        label={musicMode ? 'Turn music mode off' : 'Turn music mode on'}
+        active={musicMode}
+        onClick={onToggleMusic}
+      >
+        <MusicIcon />
+      </IconButton>
+      {musicMode && (
+        <>
+          <IconButton
+            label={playing ? 'Stop' : 'Play soundscape'}
+            active={playing}
+            disabled={isEmpty}
+            onClick={onPlayToggle}
+          >
+            {playing ? <StopIcon /> : <PlayIcon />}
+          </IconButton>
+          <button
+            type="button"
+            title={`Sound palette ${palette} — tap to switch`}
+            aria-label={`Sound palette ${palette}, tap to switch`}
+            onClick={onCyclePalette}
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/[0.06]"
+          >
+            <span
+              className="h-5 w-5 rounded-full border border-border-strong"
+              style={{
+                background:
+                  palette === 'A'
+                    ? 'linear-gradient(90deg, #22c55e 50%, #3b82f6 50%)'
+                    : 'linear-gradient(90deg, #a855f7 50%, #ec4899 50%)',
+              }}
+            />
+          </button>
+        </>
+      )}
     </>
   );
 

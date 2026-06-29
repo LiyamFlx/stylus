@@ -178,3 +178,37 @@ export const LassoIcon = ({ size = 20, className }: IconProps) => (
     <path d="M12 10c-1 1.5-1.5 3-1 5" />
   </svg>
 );
+
+export const MusicIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M9 18V5l12-2v13" />
+    <circle cx="6" cy="18" r="3" />
+    <circle cx="18" cy="16" r="3" />
+  </svg>
+);
+
+export const PlayIcon = ({ size = 20, className }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden
+  >
+    <path d="M8 5v14l11-7z" />
+  </svg>
+);
+
+export const StopIcon = ({ size = 20, className }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden
+  >
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </svg>
+);
