@@ -33,6 +33,8 @@ interface UseDrawingOptions {
   paper: PaperStyle;
   /** localStorage key for this document's strokes. */
   storageKey?: string;
+  /** Fired the moment a pen stroke commits — used for live music feedback. */
+  onStrokeEnd?: (stroke: Stroke) => void;
 }
 
 /** Selection phase for the lasso tool. */
@@ -131,6 +133,7 @@ export function useDrawing({
   size,
   paper,
   storageKey,
+  onStrokeEnd,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -157,6 +160,9 @@ export function useDrawing({
   // Toolbar settings mirrored so handlers always read fresh values.
   const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper });
   settingsRef.current = { tool, color, size, paper };
+
+  const onStrokeEndRef = useRef<UseDrawingOptions['onStrokeEnd']>(onStrokeEnd);
+  onStrokeEndRef.current = onStrokeEnd;
 
   const [isEmpty, setIsEmpty] = useState(true);
 
@@ -666,6 +672,7 @@ export function useDrawing({
       const next = [...strokesRef.current, live];
       history.set(next);
       strokesRef.current = next;
+      onStrokeEndRef.current?.(live);
       // Clear the live copy off the overlay now; the committed copy lands on the
       // static layer via the history effect (avoids a one-frame double draw).
       scheduleOverlayRender();
