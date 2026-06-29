@@ -11,6 +11,7 @@ import { BrandFooter } from './Brand';
 import { MenuIcon } from './icons';
 import { useDrawing } from '../hooks/useDrawing';
 import { useMusicMode } from '../hooks/useMusicMode';
+import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -69,7 +70,12 @@ export function Workspace({
     paper,
     storageKey: inkKey(documentId),
     onStrokeEnd: (stroke: Stroke) => {
-      music.handleStrokeEnd(stroke, canvasHeightRef.current || window.innerHeight);
+      const el = drawing.canvasRef.current;
+      music.handleStrokeEnd(
+        stroke,
+        el?.clientWidth ?? window.innerWidth,
+        canvasHeightRef.current || window.innerHeight,
+      );
     },
   });
   const recognition = useRecognition();
@@ -254,8 +260,9 @@ export function Workspace({
   const confirmClear = useCallback(() => {
     drawing.clear();
     setTexts([]);
+    music.resetMelody();
     setClearConfirmOpen(false);
-  }, [drawing]);
+  }, [drawing, music]);
 
   const handleClosePanel = useCallback(() => {
     setPanelOpen(false);
@@ -450,11 +457,7 @@ export function Workspace({
         playing={music.playing}
         onPlayToggle={() => {
           const el = drawing.canvasRef.current;
-          music.togglePlayback(
-            drawing.strokes,
-            el?.clientWidth ?? window.innerWidth,
-            el?.clientHeight ?? window.innerHeight,
-          );
+          music.togglePlayback(el?.clientWidth ?? window.innerWidth);
         }}
         palette={music.palette}
         onCyclePalette={music.cyclePalette}
@@ -534,12 +537,17 @@ export function Workspace({
       </div>
 
       {music.enabled && music.playing && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute top-0 z-10 h-full w-0.5 bg-brand-400/80"
-          style={{ left: `${music.playheadX}px` }}
-        />
+        <>
+          <KandinskyPulses shapes={music.shapesForOverlay()} />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-0 z-20 h-full w-0.5 bg-brand-400/80"
+            style={{ left: `${music.playheadX}px` }}
+          />
+        </>
       )}
+
+      {music.welcome && <KandinskyWelcome />}
 
       <BrandFooter />
 

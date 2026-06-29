@@ -75,6 +75,22 @@ export function startAudioContext(): void {
   }
 }
 
+/**
+ * A short rising arpeggio played when the mode is entered — the inviting
+ * "welcome" sound. No-op if the engine hasn't loaded.
+ */
+export function playWelcomeFlourish(palette: PaletteId): void {
+  if (!engines || !Tone) return;
+  const inst = engines[palette].circle as {
+    triggerAttackRelease: (note: string, dur: string, time?: number) => unknown;
+  };
+  const now = Tone.now();
+  const chord = ['C4', 'E4', 'G4', 'C5'];
+  chord.forEach((note, i) => {
+    inst.triggerAttackRelease(note, '8n', now + i * 0.12);
+  });
+}
+
 /** Play one shape's note. No-op if the engine hasn't finished loading. */
 export function playShapeSound(
   shape: ShapeClass,

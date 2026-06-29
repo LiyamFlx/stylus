@@ -6,6 +6,14 @@ export interface ClassifiedShape {
   type: ShapeClass;
   /** Leftmost x of the stroke — used as the playhead trigger position. */
   minX: number;
+  /** Rightmost x — used with minX to draw the reaction pulse. */
+  maxX: number;
+  /** Top y of the bounding box. */
+  minY: number;
+  /** Bottom y of the bounding box. */
+  maxY: number;
+  /** Horizontal center of the stroke. */
+  centerX: number;
   /** Vertical center — mapped to pitch. */
   centerY: number;
 }
@@ -62,7 +70,9 @@ function circleVariance(points: InkPoint[], cx: number, cy: number): number {
 
 export function classifyShape(points: InkPoint[]): ClassifiedShape {
   if (points.length < 3) {
-    return { type: 'line', minX: points[0]?.x ?? 0, centerY: points[0]?.y ?? 0 };
+    const x = points[0]?.x ?? 0;
+    const y = points[0]?.y ?? 0;
+    return { type: 'line', minX: x, maxX: x, minY: y, maxY: y, centerX: x, centerY: y };
   }
 
   let minX = Infinity;
@@ -85,28 +95,29 @@ export function classifyShape(points: InkPoint[]): ClassifiedShape {
   const start = points[0];
   const end = points[points.length - 1];
   const endpointsDist = Math.hypot(start.x - end.x, start.y - end.y);
+  const bounds = { minX, maxX, minY, maxY, centerX, centerY };
 
   // Closed-loop gate: endpoints near each other relative to the shape's size.
   const isClosed =
     endpointsDist < diag * 0.25 || (points.length > 20 && endpointsDist < 30);
 
   if (!isClosed) {
-    return { type: diag > 150 ? 'line' : 'freeform', minX, centerY };
+    return { type: diag > 150 ? 'line' : 'freeform', ...bounds };
   }
 
   // A square's corner-vs-edge radius variance (~0.015) is low enough to look
   // round under a loose threshold; keep this tight so squares fall through to
   // corner-counting. A true circle sits near 0.
   if (circleVariance(points, centerX, centerY) < 0.008) {
-    return { type: 'circle', minX, centerY };
+    return { type: 'circle', ...bounds };
   }
 
   // Corner count on the closed path. RDP keeps the duplicated closing point,
   // so a triangle simplifies to 4 kept points and a square to 5.
   const simplified = rdp(points, diag * 0.08);
   const corners = simplified.length - 1;
-  if (corners === 3) return { type: 'triangle', minX, centerY };
-  if (corners === 4) return { type: 'square', minX, centerY };
+  if (corners === 3) return { type: 'triangle', ...bounds };
+  if (corners === 4) return { type: 'square', ...bounds };
 
-  return { type: 'freeform', minX, centerY };
+  return { type: 'freeform', ...bounds };
 }

@@ -42,3 +42,33 @@ body {
 .ink-surface {
   touch-action: none;
 }
+
+/* ── Kandinsky music mode ─────────────────────────────────────────────── */
+
+/* Centered welcome moment: fade + scale in, hold, then fade out. */
+@keyframes kandinsky-welcome {
+  0%   { opacity: 0; transform: scale(0.92); }
+  18%  { opacity: 1; transform: scale(1); }
+  72%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+.kandinsky-welcome {
+  animation: kandinsky-welcome 2.2s ease-in-out forwards;
+}
+
+/* Shape reaction: a bright ring that glows and pulses outward as the note
+   fires, then fades. Mounted only while the shape is "lit". */
+@keyframes kandinsky-pulse {
+  0%   { opacity: 0.9; transform: scale(0.8); }
+  100% { opacity: 0;   transform: scale(1.25); }
+}
+.kandinsky-pulse {
+  background: radial-gradient(
+    closest-side,
+    rgba(99, 102, 241, 0.35),
+    rgba(99, 102, 241, 0.12) 70%,
+    transparent
+  );
+  box-shadow: 0 0 22px 6px rgba(129, 140, 248, 0.55);
+  animation: kandinsky-pulse 0.32s ease-out forwards;
+}
