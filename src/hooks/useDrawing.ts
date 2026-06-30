@@ -468,6 +468,9 @@ export function useDrawing({
     const ids = selectedIdsRef.current;
     if (ids.size === 0) return;
     const { next, newIds } = duplicateStrokes(strokesRef.current, ids, 16, 16);
+    // No clones produced (e.g. the selection referenced strokes removed by a
+    // prior undo) → don't burn an undo slot on a no-op.
+    if (newIds.size === 0) return;
     history.set(next);
     strokesRef.current = next;
     selectedIdsRef.current = newIds;
@@ -480,6 +483,8 @@ export function useDrawing({
       const ids = selectedIdsRef.current;
       if (ids.size === 0) return;
       const next = recolorStrokes(strokesRef.current, ids, color);
+      // recolorStrokes returns the same reference when nothing changed.
+      if (next === strokesRef.current) return;
       history.set(next);
       strokesRef.current = next;
       scheduleOverlayRender();

@@ -70,7 +70,9 @@ export function StudioPanel({
   }, [copied]);
 
   const runAction = useCallback(
-    async (key: RefineAction) => {
+    async (key: RefineAction, sourceOverride?: string) => {
+      const source = sourceOverride ?? draft;
+      if (!source.trim()) return;
       lastAction.current = key;
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -81,7 +83,7 @@ export function StudioPanel({
       setAiError(null);
       setCopied(false);
       try {
-        const out = await refine(key, draft, controller.signal);
+        const out = await refine(key, source, controller.signal);
         if (lastAction.current !== key) return; // superseded
         setAiResult(out);
       } catch (err) {
@@ -94,19 +96,21 @@ export function StudioPanel({
     [draft],
   );
 
-  // One-tap actions from the selection toolbar: once OCR succeeds and the draft
-  // is seeded, auto-run the requested action a single time per open.
+  // One-tap actions from the selection toolbar: once OCR succeeds, auto-run the
+  // requested action exactly once per open. We pass the OCR `text` directly so
+  // this doesn't depend on the draft-sync effect firing first (avoids a
+  // double-fire from indeterminate effect ordering).
   const autoRanRef = useRef(false);
   useEffect(() => {
     if (!open) {
       autoRanRef.current = false;
       return;
     }
-    if (autoAction && status === 'success' && draft && !autoRanRef.current) {
+    if (autoAction && status === 'success' && text.trim() && !autoRanRef.current) {
       autoRanRef.current = true;
-      void runAction(autoAction);
+      void runAction(autoAction, text);
     }
-  }, [open, autoAction, status, draft, runAction]);
+  }, [open, autoAction, status, text, runAction]);
 
   const regenerate = useCallback(() => {
     if (lastAction.current) void runAction(lastAction.current);

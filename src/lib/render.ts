@@ -1,7 +1,6 @@
 import type { InkPoint, PaperStyle, Stroke } from '../types';
 import type { Bounds } from './geometry';
 import { drawPaper } from './paper';
-import { penProfile } from './penProfiles';
 
 /**
  * Canvas rendering helpers.
@@ -16,9 +15,10 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   const { points, color, size } = stroke;
   if (points.length === 0) return;
 
-  const blend = penProfile(stroke.penType ?? 'fountain').blend;
-  const prevBlend = ctx.globalCompositeOperation;
-  ctx.globalCompositeOperation = blend;
+  // Translucent pens (highlighter) carry their opacity per-point via p.opacity,
+  // so they read correctly over any background — including the opaque export
+  // fill. We deliberately do NOT use a 'multiply' blend: against the dark export
+  // background multiply collapses highlights to near-black.
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineCap = 'round';
@@ -32,7 +32,6 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
     ctx.arc(p.x, p.y, pointWidth(p, size) / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = prevBlend;
     return;
   }
 
@@ -53,7 +52,6 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = prevBlend;
 }
 
 export interface RenderOptions {

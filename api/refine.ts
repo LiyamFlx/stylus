@@ -73,6 +73,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { text: result } = await generateText({
       model: MODEL,
       prompt: build(source),
+      // Bound the response so a long note can't run the function toward its
+      // timeout; ample for note refinement, Ask, and Translate.
+      maxOutputTokens: 768,
       providerOptions: {
         gateway: {
           models: FALLBACK_MODELS,

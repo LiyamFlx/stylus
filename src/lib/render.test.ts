@@ -10,6 +10,8 @@ function mockCtx() {
     lineCap: '',
     lineJoin: '',
     lineWidth: 0,
+    globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
     beginPath: vi.fn(),
     arc: vi.fn(),
     fill: vi.fn(),
@@ -46,6 +48,15 @@ describe('drawStroke', () => {
     expect(ctx.quadraticCurveTo).toHaveBeenCalledTimes(2);
     expect(ctx.stroke).toHaveBeenCalledTimes(2);
     expect(ctx.arc).not.toHaveBeenCalled();
+  });
+
+  it('never switches to a multiply blend (would blacken highlighter on dark exports)', () => {
+    const ctx = mockCtx();
+    drawStroke(
+      ctx as unknown as CanvasRenderingContext2D,
+      stroke([[0, 0], [10, 0], [20, 0]], { penType: 'highlighter' }),
+    );
+    expect(ctx.globalCompositeOperation).toBe('source-over');
   });
 
   it('applies the stroke color to both stroke and fill styles', () => {

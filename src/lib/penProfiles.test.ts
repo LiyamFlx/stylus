@@ -18,17 +18,16 @@ describe('penProfile', () => {
     expect(p.widthFor(0.1, 4)).toBe(p.widthFor(0.9, 4));
   });
 
-  it('highlighter is wide and translucent and uses multiply blend', () => {
+  it('highlighter is wide and translucent', () => {
     const hi = penProfile('highlighter');
     const ball = penProfile('ballpoint');
     expect(hi.widthFor(0.5, 4)).toBeGreaterThan(ball.widthFor(0.5, 4));
     expect(hi.opacity).toBeLessThan(1);
-    expect(hi.blend).toBe('multiply');
   });
 
-  it('opaque pens default blend to source-over and full opacity', () => {
+  it('opaque pens have full opacity', () => {
     expect(penProfile('ballpoint').opacity).toBe(1);
-    expect(penProfile('fountain').blend).toBe('source-over');
+    expect(penProfile('fountain').opacity).toBe(1);
   });
 
   it('clamps width to a sane minimum', () => {

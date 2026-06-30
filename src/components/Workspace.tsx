@@ -512,6 +512,7 @@ export function Workspace({
           onConvert={handleConvertSelection}
           onAsk={handleAskSelection}
           onTranslate={handleTranslateSelection}
+          busy={recognition.status === 'loading'}
         />
       )}
 

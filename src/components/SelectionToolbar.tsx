@@ -23,6 +23,8 @@ interface SelectionToolbarProps {
   onConvert: () => void;
   onAsk: () => void;
   onTranslate: () => void;
+  /** Recognition in flight — disable actions that start a new OCR job. */
+  busy: boolean;
 }
 
 /**
@@ -42,6 +44,7 @@ export function SelectionToolbar({
   onConvert,
   onAsk,
   onTranslate,
+  busy,
 }: SelectionToolbarProps) {
   const [colorOpen, setColorOpen] = useState(false);
 
@@ -59,17 +62,17 @@ export function SelectionToolbar({
       style={{ left: centerX, top }}
     >
       <div className="flex items-center gap-1 rounded-full border border-border bg-bg-muted/90 px-2 py-1.5 shadow-pop backdrop-blur-pill">
-        <ToolbarButton label="Convert to text" onClick={onConvert}>
+        <ToolbarButton label="Convert to text" onClick={onConvert} disabled={busy}>
           <TypeIcon size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Ask Stylus" onClick={onAsk}>
+        <ToolbarButton label="Ask Stylus" onClick={onAsk} disabled={busy}>
           <SparkleIcon size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Translate" onClick={onTranslate}>
+        <ToolbarButton label="Translate" onClick={onTranslate} disabled={busy}>
           <GlobeIcon size={18} />
         </ToolbarButton>
         <span className="mx-0.5 h-5 w-px bg-border-strong" aria-hidden />
-        <ToolbarButton label="Copy text" onClick={onCopy}>
+        <ToolbarButton label="Copy text" onClick={onCopy} disabled={busy}>
           <CopyIcon size={18} />
         </ToolbarButton>
         <ToolbarButton label="Duplicate" onClick={onDuplicate}>
@@ -109,10 +112,12 @@ export function SelectionToolbar({
 function ToolbarButton({
   label,
   onClick,
+  disabled = false,
   children,
 }: {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -120,8 +125,9 @@ function ToolbarButton({
       type="button"
       title={label}
       aria-label={label}
+      disabled={disabled}
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
+      className="flex h-9 w-9 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
     >
       {children}
     </button>
