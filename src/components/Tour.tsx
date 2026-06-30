@@ -25,17 +25,26 @@ function findTarget(id: string): Rect | null {
 export function Tour({ controller }: { controller: TourController }) {
   const { active, stepIndex, step, isFirst, isLast, next, back, skip } = controller;
   const [rect, setRect] = useState<Rect | null>(null);
+  // The step id the current `rect` was measured for. Guards against the
+  // previous step's stale measurement leaking into the first render of the next
+  // step (which would otherwise auto-skip a perfectly valid target).
+  const [measuredFor, setMeasuredFor] = useState<string | null>(null);
   const firedRef = useRef(false);
   const skipRef = useRef(false);
 
   // Measure the current target (and re-measure on resize/scroll).
   useLayoutEffect(() => {
     if (!active || !step) return;
+    skipRef.current = false;
     if (!step.target) {
       setRect(null);
+      setMeasuredFor(step.id);
       return;
     }
-    const measure = () => setRect(findTarget(step.target!));
+    const measure = () => {
+      setRect(findTarget(step.target!));
+      setMeasuredFor(step.id);
+    };
     measure();
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
@@ -45,17 +54,16 @@ export function Tour({ controller }: { controller: TourController }) {
     };
   }, [active, step]);
 
-  // If a targeted step resolves to no visible element, advance past it once.
+  // If a targeted step resolves to no visible element AFTER measuring THIS step,
+  // advance past it once. The measuredFor === step.id check prevents acting on a
+  // prior step's stale rect during the transition render.
   useEffect(() => {
-    if (!active || !step || !step.target) {
-      skipRef.current = false;
-      return;
-    }
-    if (rect === null && !skipRef.current) {
+    if (!active || !step || !step.target) return;
+    if (measuredFor === step.id && rect === null && !skipRef.current) {
       skipRef.current = true;
       next();
     }
-  }, [active, step, rect, next]);
+  }, [active, step, measuredFor, rect, next]);
 
   // Escape closes (= skip).
   useEffect(() => {
@@ -124,8 +132,9 @@ export function Tour({ controller }: { controller: TourController }) {
     );
   }
 
-  // Targeted step: render nothing until measured (the effect will skip if absent).
-  if (!rect) return null;
+  // Targeted step: render nothing until THIS step is measured (the effect will
+  // skip it if the target turns out to be absent).
+  if (measuredFor !== step.id || !rect) return null;
 
   const pad = 8;
   const ringTop = rect.top - pad;

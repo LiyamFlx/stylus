@@ -4,6 +4,8 @@ import { Workspace } from './components/Workspace';
 import { useDocuments } from './hooks/useDocuments';
 import { loadProfile, saveProfile } from './lib/profile';
 import { EditingPrefsProvider } from './lib/editingPrefs';
+import { Tour } from './components/Tour';
+import { useTour } from './hooks/useTour';
 
 /**
  * App shell: owns the local profile, the persisted prefs (Night Mode,
@@ -21,12 +23,19 @@ export default function App() {
 
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
+  const tour = useTour();
 
   useEffect(() => {
     const p = loadProfile();
     setProfileName(p.name);
     setNightMode(p.nightMode);
     setStabilizer(p.stabilizer);
+  }, []);
+
+  // Auto-run the onboarding tour once for first-time visitors.
+  useEffect(() => {
+    tour.maybeAutostart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // saveProfile merges over the stored profile, so each setter persists only
@@ -87,6 +96,10 @@ export default function App() {
           onToggleNightMode={toggleNightMode}
           stabilizer={stabilizer}
           onToggleStabilizer={toggleStabilizer}
+          onStartTour={() => {
+            setSidebarOpen(false);
+            tour.start();
+          }}
           docs={documents.docs}
           currentId={documents.currentId}
           onSelectDoc={selectDoc}
@@ -94,6 +107,8 @@ export default function App() {
           onRenameDoc={documents.rename}
           onDeleteDoc={documents.remove}
         />
+
+        <Tour controller={tour} />
 
         {/* Night Mode: a warm, dimming tint overlay. A fixed sibling (not a CSS
             filter on an ancestor) so it never forces the live-drawing canvas

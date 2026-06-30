@@ -515,6 +515,7 @@ export function Workspace({
           type="button"
           aria-label="Open menu"
           title="Open menu"
+          data-tour="menu"
           onClick={onOpenSidebar}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-muted/80 text-ink-900 shadow-pop backdrop-blur-pill"
         >

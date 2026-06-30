@@ -19,6 +19,7 @@ interface SidebarProps {
   onToggleNightMode: () => void;
   stabilizer: boolean;
   onToggleStabilizer: () => void;
+  onStartTour: () => void;
   docs: DocMeta[];
   currentId: string | null;
   onSelectDoc: (id: string) => void;
@@ -40,6 +41,7 @@ export function Sidebar({
   onToggleNightMode,
   stabilizer,
   onToggleStabilizer,
+  onStartTour,
   docs,
   currentId,
   onSelectDoc,
@@ -109,6 +111,13 @@ export function Sidebar({
           on={stabilizer}
           onToggle={onToggleStabilizer}
         />
+        <button
+          type="button"
+          onClick={onStartTour}
+          className="mt-1 flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium text-ink-900 transition-colors hover:bg-white/[0.05]"
+        >
+          Take the tour
+        </button>
 
         {/* Documents */}
         <div className="flex items-center justify-between px-4 pb-1 pt-4">

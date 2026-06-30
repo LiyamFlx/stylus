@@ -70,12 +70,15 @@ function IconButton({
   active = false,
   disabled = false,
   onClick,
+  dataTour,
   children,
 }: {
   label: string;
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
+  /** Optional onboarding-tour target hook. */
+  dataTour?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -86,6 +89,7 @@ function IconButton({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
+      data-tour={dataTour}
       className={[
         'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-30',
@@ -120,6 +124,7 @@ function ConvertButton({
       aria-label="Convert to text"
       disabled={disabled}
       onClick={onClick}
+      data-tour="convert"
       className={[
         'flex h-9 items-center justify-center gap-1.5 rounded-full px-3 transition-colors',
         'border border-brand-500/40 bg-brand-500/[0.14] text-brand-300',
@@ -436,6 +441,7 @@ export function Toolbar(props: ToolbarProps) {
         label="Pen"
         active={tool === 'pen'}
         onClick={() => onToolChange('pen')}
+        dataTour="pen"
       >
         <PenIcon />
       </IconButton>
@@ -459,6 +465,7 @@ export function Toolbar(props: ToolbarProps) {
         label="Select"
         active={tool === 'select'}
         onClick={() => onToolChange('select')}
+        dataTour="select"
       >
         <LassoIcon />
       </IconButton>
