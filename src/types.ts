@@ -7,6 +7,8 @@
  * browser's handwriting recognizer without re-deriving timing.
  */
 
+import type { PenType } from './lib/penProfiles';
+
 export type Tool = 'pen' | 'eraser' | 'text' | 'select';
 
 /** A single sampled point along a stroke. */
@@ -48,6 +50,8 @@ export interface Stroke {
   color: string;
   /** Base line width in CSS px before pressure scaling. */
   size: number;
+  /** Pen used to draw it. Optional for back-compat; renders as fountain. */
+  penType?: PenType;
   points: InkPoint[];
 }
 

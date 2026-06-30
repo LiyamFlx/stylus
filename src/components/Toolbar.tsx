@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PaperStyle, PenSize, Tool } from '../types';
 import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
+import { PEN_TYPES, penProfile, type PenType } from '../lib/penProfiles';
 import {
   PenIcon,
   EraserIcon,
@@ -39,9 +40,11 @@ interface ToolbarProps {
   canRedo: boolean;
   isEmpty: boolean;
   recognizing: boolean;
+  penType: PenType;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onSizeChange: (size: PenSize) => void;
+  onPenTypeChange: (penType: PenType) => void;
   onPaperSelect: (paper: PaperStyle) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -321,11 +324,80 @@ function PaperPicker({
   );
 }
 
+/** Pen-type button that opens a popover to pick Fountain / Ballpoint / etc. */
+function PenTypePicker({
+  penType,
+  onPenTypeChange,
+}: {
+  penType: PenType;
+  onPenTypeChange: (penType: PenType) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <IconButton
+        label={`Pen: ${penProfile(penType).label}`}
+        active={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <PenIcon />
+      </IconButton>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Pen type"
+          className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+        >
+          {PEN_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="menuitemradio"
+              aria-checked={penType === t}
+              onClick={() => {
+                onPenTypeChange(t);
+                setOpen(false);
+              }}
+              className={[
+                'flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors',
+                penType === t
+                  ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
+                  : 'hover:bg-white/[0.06]',
+              ].join(' ')}
+            >
+              <span className="text-[13px] font-medium text-ink-900">
+                {penProfile(t).label}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Toolbar(props: ToolbarProps) {
   const {
     tool,
     color,
     size,
+    penType,
     paper,
     canUndo,
     canRedo,
@@ -334,6 +406,7 @@ export function Toolbar(props: ToolbarProps) {
     onToolChange,
     onColorChange,
     onSizeChange,
+    onPenTypeChange,
     onPaperSelect,
     onUndo,
     onRedo,
@@ -362,6 +435,15 @@ export function Toolbar(props: ToolbarProps) {
       >
         <PenIcon />
       </IconButton>
+      {tool === 'pen' && (
+        <PenTypePicker
+          penType={penType}
+          onPenTypeChange={(t) => {
+            onPenTypeChange(t);
+            onToolChange('pen');
+          }}
+        />
+      )}
       <IconButton
         label="Eraser"
         active={tool === 'eraser'}

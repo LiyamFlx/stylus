@@ -12,6 +12,7 @@ import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
 import { duplicateStrokes, recolorStrokes } from '../lib/selectionOps';
+import { penProfile, type PenType } from '../lib/penProfiles';
 import type { Bounds } from '../lib/geometry';
 import {
   applyMoveOffset,
@@ -32,6 +33,8 @@ interface UseDrawingOptions {
   color: string;
   size: number;
   paper: PaperStyle;
+  /** Active pen type. Defaults to fountain when omitted. */
+  penType?: PenType;
   /** localStorage key for this document's strokes. */
   storageKey?: string;
   /** Fired the moment a pen stroke commits — used for live music feedback. */
@@ -97,13 +100,6 @@ function isPalmRejected(pointerType: string): boolean {
   return Date.now() - lastPenLiftTime < PALM_REJECTION_MS;
 }
 
-/** Pressure → line width with an ease-in curve. Pens only; others use base. */
-function pressureToWidth(pressure: number, baseWidth: number): number {
-  const p = Math.max(0.05, Math.min(1, pressure));
-  const minWidth = Math.max(1, baseWidth * 0.3);
-  const maxWidth = baseWidth * 3;
-  return minWidth + (maxWidth - minWidth) * (p * p);
-}
 
 /** Tilt → opacity for a pencil-on-its-side feel. 0° opaque, 60°+ → 40%. */
 function tiltToOpacity(tiltX: number, tiltY: number): number {
@@ -135,6 +131,7 @@ export function useDrawing({
   color,
   size,
   paper,
+  penType = 'fountain',
   storageKey,
   onStrokeEnd,
 }: UseDrawingOptions): UseDrawingResult {
@@ -161,8 +158,8 @@ export function useDrawing({
   const overlayRafId = useRef<number | null>(null);
 
   // Toolbar settings mirrored so handlers always read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper });
-  settingsRef.current = { tool, color, size, paper };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, penType });
+  settingsRef.current = { tool, color, size, paper, penType };
 
   const onStrokeEndRef = useRef<UseDrawingOptions['onStrokeEnd']>(onStrokeEnd);
   onStrokeEndRef.current = onStrokeEnd;
@@ -373,11 +370,12 @@ export function useDrawing({
       const pressure =
         pointerType === 'mouse' || rawPressure === 0 ? 0.5 : rawPressure;
       const baseSize = settingsRef.current.size;
-      const width =
-        pointerType === 'pen'
-          ? pressureToWidth(pressure, baseSize)
-          : baseSize * (0.4 + pressure * 1.2);
-      const opacity = pointerType === 'pen' ? tiltToOpacity(tiltX, tiltY) : 1;
+      const profile = penProfile(settingsRef.current.penType ?? 'fountain');
+      const width = profile.widthFor(pressure, baseSize);
+      // Tilt shading applies to pen input for opaque pens; the pen's base
+      // opacity (e.g. highlighter's translucency) multiplies in.
+      const tilt = pointerType === 'pen' ? tiltToOpacity(tiltX, tiltY) : 1;
+      const opacity = profile.opacity * tilt;
       return {
         x,
         y,
@@ -549,6 +547,7 @@ export function useDrawing({
         id: createId(),
         color: activeColor,
         size: activeSize,
+        penType: settingsRef.current.penType ?? 'fountain',
         points: [point],
       };
       scheduleOverlayRender();

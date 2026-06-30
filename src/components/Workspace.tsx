@@ -15,6 +15,7 @@ import { useMusicMode } from '../hooks/useMusicMode';
 import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { SelectionToolbar } from './SelectionToolbar';
 import type { RefineAction } from '../lib/ai';
+import type { PenType } from '../lib/penProfiles';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -29,9 +30,11 @@ interface WorkspaceProps {
   tool: Tool;
   color: string;
   size: PenSize;
+  penType: PenType;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onSizeChange: (size: PenSize) => void;
+  onPenTypeChange: (penType: PenType) => void;
   onOpenSidebar: () => void;
 }
 
@@ -53,9 +56,11 @@ export function Workspace({
   tool,
   color,
   size,
+  penType,
   onToolChange,
   onColorChange,
   onSizeChange,
+  onPenTypeChange,
   onOpenSidebar,
 }: WorkspaceProps) {
   const initialAux = useRef(readAux(documentId)).current;
@@ -70,6 +75,7 @@ export function Workspace({
     color,
     size,
     paper,
+    penType,
     storageKey: inkKey(documentId),
     onStrokeEnd: (stroke: Stroke) => {
       const el = drawing.canvasRef.current;
@@ -532,6 +538,7 @@ export function Workspace({
         tool={tool}
         color={color}
         size={size}
+        penType={penType}
         paper={paper}
         canUndo={drawing.canUndo}
         canRedo={drawing.canRedo}
@@ -540,6 +547,7 @@ export function Workspace({
         onToolChange={onToolChange}
         onColorChange={onColorChange}
         onSizeChange={onSizeChange}
+        onPenTypeChange={onPenTypeChange}
         onPaperSelect={setPaper}
         onUndo={drawing.undo}
         onRedo={drawing.redo}
