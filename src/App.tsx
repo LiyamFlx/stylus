@@ -3,21 +3,17 @@ import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { useDocuments } from './hooks/useDocuments';
 import { loadProfile, saveProfile } from './lib/profile';
-import type { PenSize, Tool } from './types';
-import { PEN_SIZES, PRESET_COLORS } from './types';
-import type { PenType } from './lib/penProfiles';
+import { EditingPrefsProvider } from './lib/editingPrefs';
 
 /**
- * App shell: owns the global editing prefs (tool/color/size), the local
- * profile, and the sidebar. The actual editor lives in <Workspace>, keyed by
- * the current document id so switching documents re-mounts it with that
- * document's strokes, paper, and text.
+ * App shell: owns the local profile, the persisted prefs (Night Mode,
+ * stabilizer), and the sidebar. Transient editing prefs (tool / color / size /
+ * pen type) live in EditingPrefsProvider so the toolbar and drawing engine read
+ * them from context instead of being prop-drilled. The editor lives in
+ * <Workspace>, keyed by the current document id so switching documents
+ * re-mounts it with that document's strokes, paper, and text.
  */
 export default function App() {
-  const [tool, setTool] = useState<Tool>('pen');
-  const [color, setColor] = useState<string>(PRESET_COLORS[0]);
-  const [size, setSize] = useState<PenSize>(PEN_SIZES[1]);
-  const [penType, setPenType] = useState<PenType>('fountain');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileName, setProfileName] = useState('You');
   const [nightMode, setNightMode] = useState(false);
@@ -70,52 +66,47 @@ export default function App() {
   }, [documents]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-bg">
-      {documents.currentId && (
-        <Workspace
-          key={documents.currentId}
-          documentId={documents.currentId}
-          documentName={currentDoc?.name ?? 'Untitled'}
-          tool={tool}
-          color={color}
-          size={size}
-          penType={penType}
+    <EditingPrefsProvider>
+      <div className="relative h-full w-full overflow-hidden bg-bg">
+        {documents.currentId && (
+          <Workspace
+            key={documents.currentId}
+            documentId={documents.currentId}
+            documentName={currentDoc?.name ?? 'Untitled'}
+            stabilizer={stabilizer}
+            onOpenSidebar={() => setSidebarOpen(true)}
+          />
+        )}
+
+        <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          profileName={profileName}
+          onRenameProfile={renameProfile}
+          nightMode={nightMode}
+          onToggleNightMode={toggleNightMode}
           stabilizer={stabilizer}
-          onToolChange={setTool}
-          onColorChange={setColor}
-          onSizeChange={setSize}
-          onPenTypeChange={setPenType}
-          onOpenSidebar={() => setSidebarOpen(true)}
+          onToggleStabilizer={toggleStabilizer}
+          docs={documents.docs}
+          currentId={documents.currentId}
+          onSelectDoc={selectDoc}
+          onNewDoc={newDoc}
+          onRenameDoc={documents.rename}
+          onDeleteDoc={documents.remove}
         />
-      )}
 
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        profileName={profileName}
-        onRenameProfile={renameProfile}
-        nightMode={nightMode}
-        onToggleNightMode={toggleNightMode}
-        stabilizer={stabilizer}
-        onToggleStabilizer={toggleStabilizer}
-        docs={documents.docs}
-        currentId={documents.currentId}
-        onSelectDoc={selectDoc}
-        onNewDoc={newDoc}
-        onRenameDoc={documents.rename}
-        onDeleteDoc={documents.remove}
-      />
-
-      {/* Night Mode: a warm, dimming tint overlay. A fixed sibling (not a CSS
-          filter on an ancestor) so it never forces the live-drawing canvas into
-          a filtered composite layer — which can add ink latency on Safari. */}
-      {nightMode && (
-        <div
-          aria-hidden
-          className="pointer-events-none fixed inset-0 z-[100]"
-          style={{ backgroundColor: 'rgba(255, 170, 80, 0.10)', mixBlendMode: 'multiply' }}
-        />
-      )}
-    </div>
+        {/* Night Mode: a warm, dimming tint overlay. A fixed sibling (not a CSS
+            filter on an ancestor) so it never forces the live-drawing canvas
+            into a filtered composite layer — which can add ink latency on
+            Safari. */}
+        {nightMode && (
+          <div
+            aria-hidden
+            className="pointer-events-none fixed inset-0 z-[100]"
+            style={{ backgroundColor: 'rgba(255, 170, 80, 0.10)', mixBlendMode: 'multiply' }}
+          />
+        )}
+      </div>
+    </EditingPrefsProvider>
   );
 }

@@ -15,29 +15,21 @@ import { useMusicMode } from '../hooks/useMusicMode';
 import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { SelectionToolbar } from './SelectionToolbar';
 import type { RefineAction } from '../lib/ai';
-import type { PenType } from '../lib/penProfiles';
 import { copyText } from '../lib/clipboard';
 import { createId } from '../lib/id';
+import { useEditingPrefs } from '../lib/editingPrefsContext';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
 import { eraserRadius, worldToScreen } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
 import { inkKey, readAux, touchDocument, writeAux } from '../lib/documents';
-import type { PaperStyle, PenSize, Stroke, TextItem, Tool } from '../types';
+import type { PaperStyle, Stroke, TextItem } from '../types';
 
 interface WorkspaceProps {
   documentId: string;
   documentName: string;
-  tool: Tool;
-  color: string;
-  size: PenSize;
-  penType: PenType;
   stabilizer: boolean;
-  onToolChange: (tool: Tool) => void;
-  onColorChange: (color: string) => void;
-  onSizeChange: (size: PenSize) => void;
-  onPenTypeChange: (penType: PenType) => void;
   onOpenSidebar: () => void;
 }
 
@@ -51,17 +43,20 @@ const textId = () => createId('t_');
 export function Workspace({
   documentId,
   documentName,
-  tool,
-  color,
-  size,
-  penType,
   stabilizer,
-  onToolChange,
-  onColorChange,
-  onSizeChange,
-  onPenTypeChange,
   onOpenSidebar,
 }: WorkspaceProps) {
+  const {
+    tool,
+    color,
+    size,
+    penType,
+    setTool: onToolChange,
+    setColor: onColorChange,
+    setSize: onSizeChange,
+    setPenType: onPenTypeChange,
+  } = useEditingPrefs();
+
   const initialAux = useRef(readAux(documentId)).current;
   const [paper, setPaper] = useState<PaperStyle>(initialAux.paper);
   const [texts, setTexts] = useState<TextItem[]>(initialAux.texts);
