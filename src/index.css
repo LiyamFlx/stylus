@@ -72,11 +72,3 @@ body {
   box-shadow: 0 0 22px 6px rgba(129, 140, 248, 0.55);
   animation: kandinsky-pulse 0.32s ease-out forwards;
 }
-
-/* ── Night Mode ───────────────────────────────────────────────────────────
-   A warm, dimmed low-light view for late-night study. Applied as a root class
-   (toggled from the sidebar). Uses a filter so it works on top of the existing
-   token-based dark theme without re-tokenising the design system. */
-html.night {
-  filter: sepia(0.18) brightness(0.85) contrast(0.96);
-}

@@ -20,6 +20,16 @@ describe('profile', () => {
     expect(p.stabilizer).toBe(true);
   });
 
+  it('merges a partial save over stored values (no clobber)', () => {
+    saveProfile({ name: 'Ada', nightMode: true, stabilizer: true });
+    // A caller that only updates the name must not wipe the flags.
+    saveProfile({ name: 'Grace' });
+    const p = loadProfile();
+    expect(p.name).toBe('Grace');
+    expect(p.nightMode).toBe(true);
+    expect(p.stabilizer).toBe(true);
+  });
+
   it('falls back to the default for a blank stored name', () => {
     localStorage.setItem('stylus.profile.v1', JSON.stringify({ name: '   ' }));
     expect(loadProfile().name).toBe('You');

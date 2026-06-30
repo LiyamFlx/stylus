@@ -14,6 +14,7 @@ import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/rend
 import { duplicateStrokes, recolorStrokes } from '../lib/selectionOps';
 import { penProfile, type PenType } from '../lib/penProfiles';
 import { smoothPoint } from '../lib/stabilizer';
+import { createId } from '../lib/id';
 import type { Bounds } from '../lib/geometry';
 import {
   applyMoveOffset,
@@ -110,12 +111,6 @@ function tiltToOpacity(tiltX: number, tiltY: number): number {
   return 1 - Math.min(magnitude / 60, 1) * 0.6;
 }
 
-function createId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
 
 /**
  * Core drawing engine.

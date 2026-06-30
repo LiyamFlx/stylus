@@ -32,9 +32,15 @@ export function loadProfile(): Profile {
   }
 }
 
-export function saveProfile(profile: Profile): void {
+/**
+ * Persist a profile. Accepts a partial and MERGES over the stored value, so a
+ * caller (or an older, stale tab) that only knows some fields can't clobber the
+ * others back to defaults.
+ */
+export function saveProfile(profile: Partial<Profile>): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(profile));
+    const merged: Profile = { ...loadProfile(), ...profile };
+    localStorage.setItem(KEY, JSON.stringify(merged));
   } catch {
     // ignore (private mode / quota)
   }

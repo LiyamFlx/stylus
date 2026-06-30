@@ -33,34 +33,28 @@ export default function App() {
     setStabilizer(p.stabilizer);
   }, []);
 
-  // Apply Night Mode as a root class so the whole app dims/warms.
-  useEffect(() => {
-    document.documentElement.classList.toggle('night', nightMode);
-  }, [nightMode]);
-
-  const renameProfile = useCallback(
-    (name: string) => {
-      setProfileName(name);
-      saveProfile({ name, nightMode, stabilizer });
-    },
-    [nightMode, stabilizer],
-  );
+  // saveProfile merges over the stored profile, so each setter persists only
+  // its own field — no stale-closure overwrite of the others.
+  const renameProfile = useCallback((name: string) => {
+    setProfileName(name);
+    saveProfile({ name });
+  }, []);
 
   const toggleNightMode = useCallback(() => {
     setNightMode((on) => {
       const next = !on;
-      saveProfile({ name: profileName, nightMode: next, stabilizer });
+      saveProfile({ nightMode: next });
       return next;
     });
-  }, [profileName, stabilizer]);
+  }, []);
 
   const toggleStabilizer = useCallback(() => {
     setStabilizer((on) => {
       const next = !on;
-      saveProfile({ name: profileName, nightMode, stabilizer: next });
+      saveProfile({ stabilizer: next });
       return next;
     });
-  }, [profileName, nightMode]);
+  }, []);
 
   const selectDoc = useCallback(
     (id: string) => {
@@ -111,6 +105,17 @@ export default function App() {
         onRenameDoc={documents.rename}
         onDeleteDoc={documents.remove}
       />
+
+      {/* Night Mode: a warm, dimming tint overlay. A fixed sibling (not a CSS
+          filter on an ancestor) so it never forces the live-drawing canvas into
+          a filtered composite layer — which can add ink latency on Safari. */}
+      {nightMode && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-[100]"
+          style={{ backgroundColor: 'rgba(255, 170, 80, 0.10)', mixBlendMode: 'multiply' }}
+        />
+      )}
     </div>
   );
 }

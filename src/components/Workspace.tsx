@@ -16,6 +16,8 @@ import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { SelectionToolbar } from './SelectionToolbar';
 import type { RefineAction } from '../lib/ai';
 import type { PenType } from '../lib/penProfiles';
+import { copyText } from '../lib/clipboard';
+import { createId } from '../lib/id';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -39,12 +41,7 @@ interface WorkspaceProps {
   onOpenSidebar: () => void;
 }
 
-function textId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `t_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
+const textId = () => createId('t_');
 
 /**
  * The document editor. Re-mounted per document (keyed by id in App), so each
@@ -280,10 +277,11 @@ export function Workspace({
         toast.error('Nothing to copy — no handwriting recognized in the selection.');
         return;
       }
-      await navigator.clipboard.writeText(text);
-      toast.success('Copied recognized text');
+      const ok = await copyText(text);
+      if (ok) toast.success('Copied recognized text');
+      else toast.error("Couldn't copy to the clipboard.");
     } catch {
-      toast.error("Couldn't copy — recognition or clipboard failed.");
+      toast.error("Couldn't copy — recognition failed.");
     }
   }, [drawing.selection.selectedIds, drawing.strokes]);
 

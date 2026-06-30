@@ -1,4 +1,5 @@
 import type { PaperStyle, TextItem } from '../types';
+import { createId } from './id';
 
 /**
  * Local, offline-first multi-document store (no backend, no login).
@@ -39,12 +40,7 @@ const auxKey = (id: string) => `stylus.doc.v1.${id}.aux`;
 
 const DEFAULT_AUX: DocAux = { paper: 'blank', texts: [] };
 
-function uid(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `d_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
+const uid = () => createId('d_');
 
 function read<T>(key: string): T | null {
   try {
