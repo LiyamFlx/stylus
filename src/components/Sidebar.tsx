@@ -15,6 +15,8 @@ interface SidebarProps {
   onClose: () => void;
   profileName: string;
   onRenameProfile: (name: string) => void;
+  nightMode: boolean;
+  onToggleNightMode: () => void;
   docs: DocMeta[];
   currentId: string | null;
   onSelectDoc: (id: string) => void;
@@ -32,6 +34,8 @@ export function Sidebar({
   onClose,
   profileName,
   onRenameProfile,
+  nightMode,
+  onToggleNightMode,
   docs,
   currentId,
   onSelectDoc,
@@ -93,6 +97,30 @@ export function Sidebar({
             <CloseIcon size={18} />
           </button>
         </div>
+
+        {/* Night Mode toggle */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={nightMode}
+          onClick={onToggleNightMode}
+          className="mt-2 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-ink-900 transition-colors hover:bg-white/[0.05]"
+        >
+          <span className="font-medium">Night Mode</span>
+          <span
+            className={[
+              'relative h-5 w-9 rounded-full transition-colors',
+              nightMode ? 'bg-brand-500' : 'bg-white/15',
+            ].join(' ')}
+          >
+            <span
+              className={[
+                'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                nightMode ? 'translate-x-4' : 'translate-x-0.5',
+              ].join(' ')}
+            />
+          </span>
+        </button>
 
         {/* Documents */}
         <div className="flex items-center justify-between px-4 pb-1 pt-4">

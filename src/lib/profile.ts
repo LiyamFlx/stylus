@@ -5,17 +5,25 @@
 
 export interface Profile {
   name: string;
+  /** Warm, dimmed low-light view to reduce late-night eye strain. */
+  nightMode: boolean;
 }
 
 const KEY = 'stylus.profile.v1';
-const DEFAULT: Profile = { name: 'You' };
+const DEFAULT: Profile = { name: 'You', nightMode: false };
 
 export function loadProfile(): Profile {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT;
     const parsed = JSON.parse(raw) as Partial<Profile>;
-    return { name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : DEFAULT.name };
+    return {
+      name:
+        typeof parsed.name === 'string' && parsed.name.trim()
+          ? parsed.name
+          : DEFAULT.name,
+      nightMode: parsed.nightMode === true,
+    };
   } catch {
     return DEFAULT;
   }

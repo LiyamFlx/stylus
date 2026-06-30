@@ -70,9 +70,9 @@ describe('App keyboard shortcuts', () => {
     const paperBtn = () => screen.getAllByRole('button', { name: /^Paper:/ })[0];
     expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
 
-    // Opening the picker reveals the four options.
+    // Opening the picker reveals the six paper options.
     fireEvent.click(paperBtn());
-    expect(screen.getAllByRole('menuitemradio')).toHaveLength(4);
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(6);
 
     // Selecting one applies it and closes the menu.
     fireEvent.click(screen.getAllByRole('menuitemradio', { name: /Grid/i })[0]);

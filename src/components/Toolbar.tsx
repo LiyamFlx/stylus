@@ -29,6 +29,8 @@ const PAPER_LABELS: Record<PaperStyle, string> = {
   grid: 'Grid',
   ruled: 'Ruled',
   dots: 'Dots',
+  cornell: 'Cornell',
+  isometric: 'Isometric',
 };
 
 interface ToolbarProps {
@@ -241,6 +243,26 @@ function PaperSwatch({ style }: { style: PaperStyle }) {
     );
   }
   const line = 'rgba(255,255,255,0.4) 0 1px, transparent 1px 7px';
+  if (style === 'isometric') {
+    return (
+      <span
+        className={base}
+        style={{
+          backgroundImage: `repeating-linear-gradient(0deg, ${line}), repeating-linear-gradient(60deg, ${line}), repeating-linear-gradient(120deg, ${line})`,
+        }}
+      />
+    );
+  }
+  if (style === 'cornell') {
+    return (
+      <span
+        className={base}
+        style={{
+          backgroundImage: `repeating-linear-gradient(0deg, ${line}), linear-gradient(90deg, transparent 9px, rgba(255,255,255,0.4) 9px 10px, transparent 10px)`,
+        }}
+      />
+    );
+  }
   return (
     <span
       className={base}

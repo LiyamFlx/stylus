@@ -60,9 +60,16 @@ export const PEN_SIZES = [2, 4, 8] as const;
 export type PenSize = (typeof PEN_SIZES)[number];
 
 /** Paper guide drawn beneath the ink (and baked into exports). */
-export type PaperStyle = 'blank' | 'grid' | 'ruled' | 'dots';
+export type PaperStyle = 'blank' | 'grid' | 'ruled' | 'dots' | 'cornell' | 'isometric';
 /** Cycle order for the toolbar paper button. */
-export const PAPER_STYLES = ['blank', 'grid', 'ruled', 'dots'] as const;
+export const PAPER_STYLES = [
+  'blank',
+  'grid',
+  'ruled',
+  'dots',
+  'cornell',
+  'isometric',
+] as const;
 
 /** Eight preset ink colors. White first since it's the dark-mode default. */
 export const PRESET_COLORS = [

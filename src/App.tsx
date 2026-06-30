@@ -20,18 +20,34 @@ export default function App() {
   const [penType, setPenType] = useState<PenType>('fountain');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileName, setProfileName] = useState('You');
+  const [nightMode, setNightMode] = useState(false);
 
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
 
   useEffect(() => {
-    setProfileName(loadProfile().name);
+    const p = loadProfile();
+    setProfileName(p.name);
+    setNightMode(p.nightMode);
   }, []);
+
+  // Apply Night Mode as a root class so the whole app dims/warms.
+  useEffect(() => {
+    document.documentElement.classList.toggle('night', nightMode);
+  }, [nightMode]);
 
   const renameProfile = useCallback((name: string) => {
     setProfileName(name);
-    saveProfile({ name });
-  }, []);
+    saveProfile({ name, nightMode });
+  }, [nightMode]);
+
+  const toggleNightMode = useCallback(() => {
+    setNightMode((on) => {
+      const next = !on;
+      saveProfile({ name: profileName, nightMode: next });
+      return next;
+    });
+  }, [profileName]);
 
   const selectDoc = useCallback(
     (id: string) => {
@@ -70,6 +86,8 @@ export default function App() {
         onClose={() => setSidebarOpen(false)}
         profileName={profileName}
         onRenameProfile={renameProfile}
+        nightMode={nightMode}
+        onToggleNightMode={toggleNightMode}
         docs={documents.docs}
         currentId={documents.currentId}
         onSelectDoc={selectDoc}

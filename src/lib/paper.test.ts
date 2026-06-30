@@ -59,6 +59,24 @@ describe('drawPaper', () => {
     expect(c.restore).toHaveBeenCalledTimes(1);
   });
 
+  it('cornell draws ruled lines plus a margin and a summary line', () => {
+    const c = mockCtx();
+    // 100px tall → 3 horizontal ruled lines + 1 vertical margin + 1 summary = 5.
+    drawPaper(c as unknown as CanvasRenderingContext2D, 'cornell', 100, 100);
+    expect(c.moveTo).toHaveBeenCalledTimes(5);
+    expect(c.stroke).toHaveBeenCalledTimes(1);
+    expect(c.restore).toHaveBeenCalledTimes(1);
+  });
+
+  it('isometric draws horizontal plus two diagonal line families', () => {
+    const c = mockCtx();
+    drawPaper(c as unknown as CanvasRenderingContext2D, 'isometric', 100, 100);
+    // More segments than plain ruled (3) because of the diagonals.
+    expect(c.moveTo.mock.calls.length).toBeGreaterThan(3);
+    expect(c.stroke).toHaveBeenCalledTimes(1);
+    expect(c.restore).toHaveBeenCalledTimes(1);
+  });
+
   it('handles a canvas smaller than the spacing without drawing lines', () => {
     const c = mockCtx();
     drawPaper(c as unknown as CanvasRenderingContext2D, 'grid', 10, 10);
