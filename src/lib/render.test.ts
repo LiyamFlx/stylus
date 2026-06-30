@@ -16,9 +16,14 @@ function mockCtx() {
     arc: vi.fn(),
     fill: vi.fn(),
     moveTo: vi.fn(),
+    lineTo: vi.fn(),
     quadraticCurveTo: vi.fn(),
     stroke: vi.fn(),
     clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    drawImage: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
   };
 }
 
@@ -103,5 +108,27 @@ describe('renderAll', () => {
     renderAll(ctx as unknown as CanvasRenderingContext2D, [], 10, 10);
     expect(ctx.clearRect).toHaveBeenCalledTimes(1);
     expect(ctx.beginPath).not.toHaveBeenCalled();
+  });
+
+  it('renders the paper guide for a non-blank style', () => {
+    const ctx = mockCtx();
+    // In a real browser the guide is cached to an offscreen bitmap and blitted
+    // via drawImage; under jsdom (stub canvas) it falls back to drawing the
+    // guide directly. Either way the guide must appear.
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [], 200, 200, {
+      paper: 'isometric',
+    });
+    const cached = ctx.drawImage.mock.calls.length > 0;
+    const direct = ctx.stroke.mock.calls.length > 0;
+    expect(cached || direct).toBe(true);
+  });
+
+  it('draws no paper guide for the blank style', () => {
+    const ctx = mockCtx();
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [], 200, 200, {
+      paper: 'blank',
+    });
+    expect(ctx.drawImage).not.toHaveBeenCalled();
+    expect(ctx.stroke).not.toHaveBeenCalled();
   });
 });

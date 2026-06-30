@@ -20,7 +20,7 @@ export interface PenProfile {
   label: string;
 }
 
-const MIN_WIDTH = 0.75;
+const MIN_WIDTH = 1;
 
 function clampWidth(w: number): number {
   return Math.max(MIN_WIDTH, w);

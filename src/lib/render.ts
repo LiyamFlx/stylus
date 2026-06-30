@@ -64,6 +64,41 @@ export interface RenderOptions {
 }
 
 /**
+ * Cache the rendered paper guide as an offscreen bitmap so we don't re-stroke
+ * its (possibly hundreds of) line segments on every static repaint — the
+ * isometric guide alone is ~670 segments. Keyed by style+size; a size or style
+ * change rebuilds it. `blank` is never cached (it draws nothing).
+ */
+let paperCache: {
+  key: string;
+  canvas: HTMLCanvasElement;
+} | null = null;
+
+function getPaperBitmap(
+  style: PaperStyle,
+  width: number,
+  height: number,
+): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') return null; // no DOM (non-browser)
+  const key = `${style}|${width}|${height}`;
+  if (paperCache && paperCache.key === key) return paperCache.canvas;
+  try {
+    const off = document.createElement('canvas');
+    off.width = Math.max(1, Math.round(width));
+    off.height = Math.max(1, Math.round(height));
+    const offCtx = off.getContext('2d');
+    // Guard for stub canvas implementations (e.g. jsdom) where the 2D context
+    // lacks path methods — fall back to drawing the guide directly.
+    if (!offCtx || typeof offCtx.lineTo !== 'function') return null;
+    drawPaper(offCtx, style, width, height);
+    paperCache = { key, canvas: off };
+    return off;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Repaint the whole drawing: clear, optional opaque fill, paper guide, then
  * strokes in order. The fill is applied *after* the clear so callers that want
  * an opaque export background actually get one.
@@ -80,7 +115,14 @@ export function renderAll(
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, width, height);
   }
-  drawPaper(ctx, paper, width, height);
+  if (paper !== 'blank') {
+    const bitmap = getPaperBitmap(paper, width, height);
+    if (bitmap) {
+      ctx.drawImage(bitmap, 0, 0, width, height);
+    } else {
+      drawPaper(ctx, paper, width, height);
+    }
+  }
   for (const stroke of strokes) {
     drawStroke(ctx, stroke);
   }

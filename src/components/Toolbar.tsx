@@ -228,52 +228,34 @@ function ColorPicker({
 }
 
 /** A small CSS rendering of each paper guide, shown in the picker swatches. */
+// A repeating 1px line every 7px, reused by the line-based swatches.
+const SWATCH_LINE = 'rgba(255,255,255,0.4) 0 1px, transparent 1px 7px';
+
+/**
+ * CSS `background-image` for each paper-style swatch. Typed as a full
+ * `Record<PaperStyle, ...>` so adding a paper style without a swatch is a
+ * compile error (no silent fall-through to the ruled preview).
+ */
+const SWATCH_BG: Record<PaperStyle, React.CSSProperties> = {
+  blank: {},
+  dots: {
+    backgroundImage: 'radial-gradient(rgba(255,255,255,0.45) 1px, transparent 1px)',
+    backgroundSize: '7px 7px',
+  },
+  ruled: { backgroundImage: `repeating-linear-gradient(0deg, ${SWATCH_LINE})` },
+  grid: {
+    backgroundImage: `repeating-linear-gradient(0deg, ${SWATCH_LINE}), repeating-linear-gradient(90deg, ${SWATCH_LINE})`,
+  },
+  cornell: {
+    backgroundImage: `repeating-linear-gradient(0deg, ${SWATCH_LINE}), linear-gradient(90deg, transparent 9px, rgba(255,255,255,0.4) 9px 10px, transparent 10px)`,
+  },
+  isometric: {
+    backgroundImage: `repeating-linear-gradient(0deg, ${SWATCH_LINE}), repeating-linear-gradient(60deg, ${SWATCH_LINE}), repeating-linear-gradient(120deg, ${SWATCH_LINE})`,
+  },
+};
+
 function PaperSwatch({ style }: { style: PaperStyle }) {
-  const base = 'h-7 w-7 rounded bg-bg';
-  if (style === 'blank') return <span className={base} />;
-  if (style === 'dots') {
-    return (
-      <span
-        className={base}
-        style={{
-          backgroundImage: 'radial-gradient(rgba(255,255,255,0.45) 1px, transparent 1px)',
-          backgroundSize: '7px 7px',
-        }}
-      />
-    );
-  }
-  const line = 'rgba(255,255,255,0.4) 0 1px, transparent 1px 7px';
-  if (style === 'isometric') {
-    return (
-      <span
-        className={base}
-        style={{
-          backgroundImage: `repeating-linear-gradient(0deg, ${line}), repeating-linear-gradient(60deg, ${line}), repeating-linear-gradient(120deg, ${line})`,
-        }}
-      />
-    );
-  }
-  if (style === 'cornell') {
-    return (
-      <span
-        className={base}
-        style={{
-          backgroundImage: `repeating-linear-gradient(0deg, ${line}), linear-gradient(90deg, transparent 9px, rgba(255,255,255,0.4) 9px 10px, transparent 10px)`,
-        }}
-      />
-    );
-  }
-  return (
-    <span
-      className={base}
-      style={{
-        backgroundImage:
-          style === 'grid'
-            ? `repeating-linear-gradient(0deg, ${line}), repeating-linear-gradient(90deg, ${line})`
-            : `repeating-linear-gradient(0deg, ${line})`,
-      }}
-    />
-  );
+  return <span className="h-7 w-7 rounded bg-bg" style={SWATCH_BG[style]} />;
 }
 
 /** Paper-guide button that opens a popover to pick Blank / Grid / Ruled / Dots. */
