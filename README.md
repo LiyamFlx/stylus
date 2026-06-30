@@ -185,3 +185,5 @@ handwriting recognizer (which consumes per-point `{ x, y, t }`) with no rework.
 ## License
 
 [MIT](LICENSE) © Liyam Flexer
+
+<!-- deploy connectivity check: 2026-06-30T15:00Z -->
