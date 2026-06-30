@@ -212,3 +212,18 @@ export const StopIcon = ({ size = 20, className }: IconProps) => (
     <rect x="6" y="6" width="12" height="12" rx="2" />
   </svg>
 );
+
+export const DuplicateIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="8" y="8" width="12" height="12" rx="2" />
+    <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+    <path d="M12 11v4M10 13h4" />
+  </svg>
+);
+
+export const SparkleIcon = ({ size = 18, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15l-1.7-4L6 9.3l4.3-1.7z" />
+    <path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z" />
+  </svg>
+);

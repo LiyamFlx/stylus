@@ -18,6 +18,7 @@ import {
   MusicIcon,
   PlayIcon,
   StopIcon,
+  SparkleIcon,
 } from './icons';
 import type { PaletteId } from '../lib/kandinsky/audio';
 
@@ -125,26 +126,6 @@ function ConvertButton({
         Convert
       </span>
     </button>
-  );
-}
-
-/** Sparkle glyph for the Convert action. */
-function SparkleIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15l-1.7-4L6 9.3l4.3-1.7z" />
-      <path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z" />
-    </svg>
   );
 }
 

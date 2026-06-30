@@ -13,6 +13,7 @@ import { MenuIcon } from './icons';
 import { useDrawing } from '../hooks/useDrawing';
 import { useMusicMode } from '../hooks/useMusicMode';
 import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
+import { SelectionToolbar } from './SelectionToolbar';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -256,6 +257,25 @@ export function Workspace({
     void recognition.recognize(drawing.strokes);
   }, [drawing.strokes, recognition, texts]);
 
+  // Copy the recognized text of the current lasso selection to the clipboard.
+  const handleCopySelection = useCallback(async () => {
+    const ids = drawing.selection.selectedIds;
+    const selected = drawing.strokes.filter((s) => ids.has(s.id));
+    if (selected.length === 0) return;
+    try {
+      const { recognizeText } = await importChunk(() => import('../lib/recognition'));
+      const { text } = await recognizeText(selected);
+      if (!text.trim()) {
+        toast.error('Nothing to copy — no handwriting recognized in the selection.');
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      toast.success('Copied recognized text');
+    } catch {
+      toast.error("Couldn't copy — recognition or clipboard failed.");
+    }
+  }, [drawing.selection.selectedIds, drawing.strokes]);
+
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   const handleClear = useCallback(() => {
@@ -413,6 +433,20 @@ export function Workspace({
         onSelect={setActiveTextId}
         onMove={moveText}
       />
+
+      {tool === 'select' && (
+        <SelectionToolbar
+          bounds={drawing.selection.bounds}
+          selectedCount={drawing.selection.selectedIds.size}
+          phase={drawing.selection.phase}
+          view={drawing.view}
+          onDelete={drawing.selection.deleteSelected}
+          onDuplicate={drawing.selection.duplicateSelected}
+          onRecolor={drawing.selection.recolorSelected}
+          onCopy={handleCopySelection}
+          onConvert={handleRecognize}
+        />
+      )}
 
       {/* Sidebar opener + current document name */}
       <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
