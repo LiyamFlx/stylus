@@ -14,6 +14,7 @@ import { useDrawing } from '../hooks/useDrawing';
 import { useMusicMode } from '../hooks/useMusicMode';
 import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { SelectionToolbar } from './SelectionToolbar';
+import type { RefineAction } from '../lib/ai';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -242,6 +243,7 @@ export function Workspace({
   }, [drawing.strokes, exportOpts]);
 
   const handleRecognize = useCallback(() => {
+    setPanelAutoAction(null);
     setPanelOpen(true);
     // Recognition OCRs ink strokes only. If there's no ink, give an accurate
     // message instead of falsely claiming the canvas is empty when there are
@@ -276,6 +278,59 @@ export function Workspace({
     }
   }, [drawing.selection.selectedIds, drawing.strokes]);
 
+  // AI action to auto-run in the studio panel once recognition lands (set by
+  // the selection toolbar's Ask Stylus / Translate). null = manual studio.
+  const [panelAutoAction, setPanelAutoAction] = useState<RefineAction | null>(null);
+
+  const selectedStrokes = useCallback(() => {
+    const ids = drawing.selection.selectedIds;
+    return drawing.strokes.filter((s) => ids.has(s.id));
+  }, [drawing.selection.selectedIds, drawing.strokes]);
+
+  // Open the studio on the current selection and (optionally) auto-run an AI
+  // action (Ask Stylus / Translate). Falls back to the whole canvas when the
+  // selection is empty, matching the toolbar Convert behaviour.
+  const runSelectionAI = useCallback(
+    (action: RefineAction | null) => {
+      const selected = selectedStrokes();
+      const strokes = selected.length > 0 ? selected : drawing.strokes;
+      setPanelAutoAction(action);
+      setPanelOpen(true);
+      if (strokes.length === 0) {
+        recognition.fail('Nothing to recognize — the selection is empty.');
+        return;
+      }
+      void recognition.recognize(strokes);
+    },
+    [selectedStrokes, drawing.strokes, recognition],
+  );
+
+  const handleAskSelection = useCallback(() => runSelectionAI('ask'), [runSelectionAI]);
+  const handleTranslateSelection = useCallback(
+    () => runSelectionAI('translate'),
+    [runSelectionAI],
+  );
+
+  // Convert the selection to a typed text box on the canvas.
+  const handleConvertSelection = useCallback(async () => {
+    const selected = selectedStrokes();
+    if (selected.length === 0) {
+      handleRecognize();
+      return;
+    }
+    try {
+      const { recognizeText } = await importChunk(() => import('../lib/recognition'));
+      const { text } = await recognizeText(selected);
+      if (!text.trim()) {
+        toast.error('No handwriting recognized in the selection.');
+        return;
+      }
+      pasteText(text);
+    } catch {
+      toast.error("Couldn't convert — recognition failed.");
+    }
+  }, [selectedStrokes, handleRecognize, pasteText]);
+
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   const handleClear = useCallback(() => {
@@ -292,6 +347,7 @@ export function Workspace({
 
   const handleClosePanel = useCallback(() => {
     setPanelOpen(false);
+    setPanelAutoAction(null);
     recognition.reset();
   }, [recognition]);
 
@@ -444,7 +500,9 @@ export function Workspace({
           onDuplicate={drawing.selection.duplicateSelected}
           onRecolor={drawing.selection.recolorSelected}
           onCopy={handleCopySelection}
-          onConvert={handleRecognize}
+          onConvert={handleConvertSelection}
+          onAsk={handleAskSelection}
+          onTranslate={handleTranslateSelection}
         />
       )}
 
@@ -508,6 +566,7 @@ export function Workspace({
         status={recognition.status}
         text={recognition.text}
         recognitionError={recognition.error}
+        autoAction={panelAutoAction}
         onClose={handleClosePanel}
       />
 

@@ -12,6 +12,11 @@ interface StudioPanelProps {
   text: string;
   /** OCR error message, if recognition failed. */
   recognitionError: string | null;
+  /**
+   * When set, auto-run this refine action once recognition succeeds (used by
+   * the selection toolbar's Ask Stylus / Translate one-tap actions).
+   */
+  autoAction?: RefineAction | null;
   onClose: () => void;
 }
 
@@ -27,6 +32,7 @@ export function StudioPanel({
   status,
   text,
   recognitionError,
+  autoAction,
   onClose,
 }: StudioPanelProps) {
   // Editable recognized text. Seeded from OCR, kept in a ref for the textarea.
@@ -87,6 +93,20 @@ export function StudioPanel({
     },
     [draft],
   );
+
+  // One-tap actions from the selection toolbar: once OCR succeeds and the draft
+  // is seeded, auto-run the requested action a single time per open.
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      autoRanRef.current = false;
+      return;
+    }
+    if (autoAction && status === 'success' && draft && !autoRanRef.current) {
+      autoRanRef.current = true;
+      void runAction(autoAction);
+    }
+  }, [open, autoAction, status, draft, runAction]);
 
   const regenerate = useCallback(() => {
     if (lastAction.current) void runAction(lastAction.current);

@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { worldToScreen, type ViewTransform, type Bounds } from '../lib/geometry';
 import { PRESET_COLORS } from '../types';
-import { TrashIcon, CopyIcon, DuplicateIcon, TypeIcon, SparkleIcon, PaperIcon } from './icons';
+import {
+  TrashIcon,
+  CopyIcon,
+  DuplicateIcon,
+  TypeIcon,
+  SparkleIcon,
+  PaperIcon,
+  GlobeIcon,
+} from './icons';
 
 interface SelectionToolbarProps {
   bounds: Bounds | null;
@@ -13,6 +21,8 @@ interface SelectionToolbarProps {
   onCopy: () => void;
   onRecolor: (color: string) => void;
   onConvert: () => void;
+  onAsk: () => void;
+  onTranslate: () => void;
 }
 
 /**
@@ -30,6 +40,8 @@ export function SelectionToolbar({
   onCopy,
   onRecolor,
   onConvert,
+  onAsk,
+  onTranslate,
 }: SelectionToolbarProps) {
   const [colorOpen, setColorOpen] = useState(false);
 
@@ -50,8 +62,11 @@ export function SelectionToolbar({
         <ToolbarButton label="Convert to text" onClick={onConvert}>
           <TypeIcon size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Ask Stylus" onClick={onConvert}>
+        <ToolbarButton label="Ask Stylus" onClick={onAsk}>
           <SparkleIcon size={18} />
+        </ToolbarButton>
+        <ToolbarButton label="Translate" onClick={onTranslate}>
+          <GlobeIcon size={18} />
         </ToolbarButton>
         <span className="mx-0.5 h-5 w-px bg-border-strong" aria-hidden />
         <ToolbarButton label="Copy text" onClick={onCopy}>

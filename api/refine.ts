@@ -9,7 +9,18 @@ import { generateText, APICallError } from 'ai';
  * POST { action, text } -> { result }
  */
 
-type Action = 'polish' | 'grammar' | 'summarize' | 'todo' | 'formal' | 'casual';
+type Action =
+  | 'polish'
+  | 'grammar'
+  | 'summarize'
+  | 'todo'
+  | 'formal'
+  | 'casual'
+  | 'ask'
+  | 'translate';
+
+/** When the selection is already English, Translate sends it here instead. */
+const DEFAULT_TRANSLATE_TARGET = 'Spanish';
 
 const PROMPTS: Record<Action, (t: string) => string> = {
   polish: (t) =>
@@ -24,6 +35,10 @@ const PROMPTS: Record<Action, (t: string) => string> = {
     `Rewrite the following note in a polished, professional tone. Return only the rewritten text.\n\n"""${t}"""`,
   casual: (t) =>
     `Rewrite the following note in a warm, friendly, casual tone. Return only the rewritten text.\n\n"""${t}"""`,
+  ask: (t) =>
+    `You are Stylus, a helpful study assistant. The following is a handwritten note a student selected. Explain it clearly and concisely, answer any question it poses, and point out any mistakes. Use short paragraphs or bullets. Return only your response, no preamble.\n\n"""${t}"""`,
+  translate: (t) =>
+    `Detect the language of the following note. If it is not English, translate it into clear English. If it is already English, translate it into ${DEFAULT_TRANSLATE_TARGET}. Preserve line breaks. Return only the translation, with no preamble or language labels.\n\n"""${t}"""`,
 };
 
 // Haiku is covered by AI Gateway free-tier credits (the Sonnet/Opus tiers are

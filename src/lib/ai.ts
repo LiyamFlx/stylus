@@ -10,7 +10,9 @@ export type RefineAction =
   | 'summarize'
   | 'todo'
   | 'formal'
-  | 'casual';
+  | 'casual'
+  | 'ask'
+  | 'translate';
 
 export interface RefineActionDef {
   key: RefineAction;
@@ -27,9 +29,20 @@ export const REFINE_ACTIONS: RefineActionDef[] = [
   { key: 'casual', label: 'Casual' },
 ];
 
+/**
+ * Labels for actions not shown as studio chips but triggered from the selection
+ * toolbar (Ask Stylus, Translate).
+ */
+const EXTRA_LABELS: Partial<Record<RefineAction, string>> = {
+  ask: 'Ask Stylus',
+  translate: 'Translate',
+};
+
 /** Map an action key to its human label. */
 export function refineLabel(key: RefineAction): string {
-  return REFINE_ACTIONS.find((a) => a.key === key)?.label ?? key;
+  return (
+    REFINE_ACTIONS.find((a) => a.key === key)?.label ?? EXTRA_LABELS[key] ?? key
+  );
 }
 
 /**
