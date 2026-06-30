@@ -17,20 +17,15 @@ import { useTour } from './hooks/useTour';
  */
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [profileName, setProfileName] = useState('You');
-  const [nightMode, setNightMode] = useState(false);
-  const [stabilizer, setStabilizer] = useState(false);
+  // Seed prefs from the persisted profile synchronously so night mode doesn't
+  // flash off for one frame on load.
+  const [profileName, setProfileName] = useState(() => loadProfile().name);
+  const [nightMode, setNightMode] = useState(() => loadProfile().nightMode);
+  const [stabilizer, setStabilizer] = useState(() => loadProfile().stabilizer);
 
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
   const tour = useTour();
-
-  useEffect(() => {
-    const p = loadProfile();
-    setProfileName(p.name);
-    setNightMode(p.nightMode);
-    setStabilizer(p.stabilizer);
-  }, []);
 
   // Auto-run the onboarding tour once for first-time visitors.
   useEffect(() => {
@@ -83,6 +78,7 @@ export default function App() {
             documentId={documents.currentId}
             documentName={currentDoc?.name ?? 'Untitled'}
             stabilizer={stabilizer}
+            nightMode={nightMode}
             onOpenSidebar={() => setSidebarOpen(true)}
           />
         )}
@@ -109,18 +105,6 @@ export default function App() {
         />
 
         <Tour controller={tour} />
-
-        {/* Night Mode: a warm, dimming tint overlay. A fixed sibling (not a CSS
-            filter on an ancestor) so it never forces the live-drawing canvas
-            into a filtered composite layer — which can add ink latency on
-            Safari. */}
-        {nightMode && (
-          <div
-            aria-hidden
-            className="pointer-events-none fixed inset-0 z-[100]"
-            style={{ backgroundColor: 'rgba(255, 170, 80, 0.10)', mixBlendMode: 'multiply' }}
-          />
-        )}
       </div>
     </EditingPrefsProvider>
   );

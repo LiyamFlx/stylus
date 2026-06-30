@@ -12,8 +12,10 @@ export function fireConfetti(originX?: number, originY?: number, count = 90): vo
   const cy = originY ?? window.innerHeight / 2;
 
   const container = document.createElement('div');
+  // z below the tour finish card (z-150) so the card text + Done button stay
+  // readable and clickable while confetti falls behind them.
   container.style.cssText =
-    'position:fixed;inset:0;pointer-events:none;z-index:200;overflow:hidden;';
+    'position:fixed;inset:0;pointer-events:none;z-index:140;overflow:hidden;';
   document.body.appendChild(container);
 
   interface P {

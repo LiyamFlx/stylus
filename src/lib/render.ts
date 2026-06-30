@@ -19,6 +19,7 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   // so they read correctly over any background — including the opaque export
   // fill. We deliberately do NOT use a 'multiply' blend: against the dark export
   // background multiply collapses highlights to near-black.
+  ctx.globalCompositeOperation = 'source-over'; // never inherit a stray blend
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineCap = 'round';

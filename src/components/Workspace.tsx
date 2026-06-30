@@ -30,6 +30,7 @@ interface WorkspaceProps {
   documentId: string;
   documentName: string;
   stabilizer: boolean;
+  nightMode: boolean;
   onOpenSidebar: () => void;
 }
 
@@ -44,6 +45,7 @@ export function Workspace({
   documentId,
   documentName,
   stabilizer,
+  nightMode,
   onOpenSidebar,
 }: WorkspaceProps) {
   const {
@@ -296,12 +298,15 @@ export function Workspace({
     (action: RefineAction | null) => {
       const selected = selectedStrokes();
       const strokes = selected.length > 0 ? selected : drawing.strokes;
-      setPanelAutoAction(action);
       setPanelOpen(true);
       if (strokes.length === 0) {
+        // No ink → don't leave an unfulfillable auto-action queued for a later
+        // successful recognition to pick up.
+        setPanelAutoAction(null);
         recognition.fail('Nothing to recognize — the selection is empty.');
         return;
       }
+      setPanelAutoAction(action);
       void recognition.recognize(strokes);
     },
     [selectedStrokes, drawing.strokes, recognition],
@@ -481,6 +486,18 @@ export function Workspace({
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
       />
+
+      {/* Night Mode: a warm, dimming tint over the canvas + ink only. Sits above
+          the canvas (z-10) but below the toolbars/dialogs/toasts/tour (z-20+),
+          so UI chrome stays un-tinted and readable. pointer-events-none keeps
+          drawing unaffected. */}
+      {nightMode && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-10"
+          style={{ backgroundColor: 'rgba(255, 170, 80, 0.10)', mixBlendMode: 'multiply' }}
+        />
+      )}
 
       <TextLayer
         items={texts}

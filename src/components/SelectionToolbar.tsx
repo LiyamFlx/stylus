@@ -48,7 +48,11 @@ export function SelectionToolbar({
 }: SelectionToolbarProps) {
   const [colorOpen, setColorOpen] = useState(false);
 
-  if (!bounds || selectedCount === 0 || phase === 'moving') return null;
+  // Hidden during an active lasso draw or move so it never floats over an
+  // in-progress gesture on a stale selection.
+  if (!bounds || selectedCount === 0 || phase === 'moving' || phase === 'lasso') {
+    return null;
+  }
 
   // Anchor: horizontal center of the selection, just above its top edge.
   const topLeft = worldToScreen(bounds.minX, bounds.minY, view);
