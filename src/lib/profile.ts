@@ -7,10 +7,12 @@ export interface Profile {
   name: string;
   /** Warm, dimmed low-light view to reduce late-night eye strain. */
   nightMode: boolean;
+  /** Damp jitter on the live stroke for steadier handwriting. */
+  stabilizer: boolean;
 }
 
 const KEY = 'stylus.profile.v1';
-const DEFAULT: Profile = { name: 'You', nightMode: false };
+const DEFAULT: Profile = { name: 'You', nightMode: false, stabilizer: false };
 
 export function loadProfile(): Profile {
   try {
@@ -23,6 +25,7 @@ export function loadProfile(): Profile {
           ? parsed.name
           : DEFAULT.name,
       nightMode: parsed.nightMode === true,
+      stabilizer: parsed.stabilizer === true,
     };
   } catch {
     return DEFAULT;

@@ -31,6 +31,7 @@ interface WorkspaceProps {
   color: string;
   size: PenSize;
   penType: PenType;
+  stabilizer: boolean;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onSizeChange: (size: PenSize) => void;
@@ -57,6 +58,7 @@ export function Workspace({
   color,
   size,
   penType,
+  stabilizer,
   onToolChange,
   onColorChange,
   onSizeChange,
@@ -76,6 +78,7 @@ export function Workspace({
     size,
     paper,
     penType,
+    stabilizer,
     storageKey: inkKey(documentId),
     onStrokeEnd: (stroke: Stroke) => {
       const el = drawing.canvasRef.current;

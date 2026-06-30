@@ -21,6 +21,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileName, setProfileName] = useState('You');
   const [nightMode, setNightMode] = useState(false);
+  const [stabilizer, setStabilizer] = useState(false);
 
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
@@ -29,6 +30,7 @@ export default function App() {
     const p = loadProfile();
     setProfileName(p.name);
     setNightMode(p.nightMode);
+    setStabilizer(p.stabilizer);
   }, []);
 
   // Apply Night Mode as a root class so the whole app dims/warms.
@@ -36,18 +38,29 @@ export default function App() {
     document.documentElement.classList.toggle('night', nightMode);
   }, [nightMode]);
 
-  const renameProfile = useCallback((name: string) => {
-    setProfileName(name);
-    saveProfile({ name, nightMode });
-  }, [nightMode]);
+  const renameProfile = useCallback(
+    (name: string) => {
+      setProfileName(name);
+      saveProfile({ name, nightMode, stabilizer });
+    },
+    [nightMode, stabilizer],
+  );
 
   const toggleNightMode = useCallback(() => {
     setNightMode((on) => {
       const next = !on;
-      saveProfile({ name: profileName, nightMode: next });
+      saveProfile({ name: profileName, nightMode: next, stabilizer });
       return next;
     });
-  }, [profileName]);
+  }, [profileName, stabilizer]);
+
+  const toggleStabilizer = useCallback(() => {
+    setStabilizer((on) => {
+      const next = !on;
+      saveProfile({ name: profileName, nightMode, stabilizer: next });
+      return next;
+    });
+  }, [profileName, nightMode]);
 
   const selectDoc = useCallback(
     (id: string) => {
@@ -73,6 +86,7 @@ export default function App() {
           color={color}
           size={size}
           penType={penType}
+          stabilizer={stabilizer}
           onToolChange={setTool}
           onColorChange={setColor}
           onSizeChange={setSize}
@@ -88,6 +102,8 @@ export default function App() {
         onRenameProfile={renameProfile}
         nightMode={nightMode}
         onToggleNightMode={toggleNightMode}
+        stabilizer={stabilizer}
+        onToggleStabilizer={toggleStabilizer}
         docs={documents.docs}
         currentId={documents.currentId}
         onSelectDoc={selectDoc}

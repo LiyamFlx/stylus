@@ -13,6 +13,7 @@ import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
 import { duplicateStrokes, recolorStrokes } from '../lib/selectionOps';
 import { penProfile, type PenType } from '../lib/penProfiles';
+import { smoothPoint } from '../lib/stabilizer';
 import type { Bounds } from '../lib/geometry';
 import {
   applyMoveOffset,
@@ -35,6 +36,8 @@ interface UseDrawingOptions {
   paper: PaperStyle;
   /** Active pen type. Defaults to fountain when omitted. */
   penType?: PenType;
+  /** When true, damp jitter on the live stroke (low-lag smoothing). */
+  stabilizer?: boolean;
   /** localStorage key for this document's strokes. */
   storageKey?: string;
   /** Fired the moment a pen stroke commits — used for live music feedback. */
@@ -132,6 +135,7 @@ export function useDrawing({
   size,
   paper,
   penType = 'fountain',
+  stabilizer = false,
   storageKey,
   onStrokeEnd,
 }: UseDrawingOptions): UseDrawingResult {
@@ -158,8 +162,10 @@ export function useDrawing({
   const overlayRafId = useRef<number | null>(null);
 
   // Toolbar settings mirrored so handlers always read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, penType });
-  settingsRef.current = { tool, color, size, paper, penType };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, penType, stabilizer });
+  settingsRef.current = { tool, color, size, paper, penType, stabilizer };
+  // Previous smoothed world point for the stabilizer; reset at each stroke start.
+  const smoothPrevRef = useRef<{ x: number; y: number } | null>(null);
 
   const onStrokeEndRef = useRef<UseDrawingOptions['onStrokeEnd']>(onStrokeEnd);
   onStrokeEndRef.current = onStrokeEnd;
@@ -543,6 +549,7 @@ export function useDrawing({
 
       // ── pen ──
       const point = getPoint(e);
+      smoothPrevRef.current = { x: point.x, y: point.y };
       liveStrokeRef.current = {
         id: createId(),
         color: activeColor,
@@ -602,8 +609,11 @@ export function useDrawing({
       // ── pen ──
       const live = liveStrokeRef.current;
       if (!live) return;
+      const stabilize = settingsRef.current.stabilizer === true;
       for (const ev of samples) {
-        const w = clientToWorld(ev.clientX, ev.clientY);
+        const raw = clientToWorld(ev.clientX, ev.clientY);
+        const w = stabilize ? smoothPoint(raw, smoothPrevRef.current, 0.35) : raw;
+        if (stabilize) smoothPrevRef.current = w;
         live.points.push(
           buildPoint(w.x, w.y, ev.pointerType, ev.pressure, ev.tiltX ?? 0, ev.tiltY ?? 0),
         );

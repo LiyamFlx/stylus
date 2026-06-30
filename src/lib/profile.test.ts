@@ -4,18 +4,20 @@ import { initials, loadProfile, saveProfile } from './profile';
 describe('profile', () => {
   beforeEach(() => localStorage.clear());
 
-  it('defaults to "You" with night mode off when nothing is stored', () => {
-    expect(loadProfile()).toEqual({ name: 'You', nightMode: false });
+  it('defaults to "You" with prefs off when nothing is stored', () => {
+    expect(loadProfile()).toEqual({ name: 'You', nightMode: false, stabilizer: false });
   });
 
   it('round-trips a saved name', () => {
-    saveProfile({ name: 'Ada Lovelace', nightMode: false });
+    saveProfile({ name: 'Ada Lovelace', nightMode: false, stabilizer: false });
     expect(loadProfile().name).toBe('Ada Lovelace');
   });
 
-  it('round-trips the night-mode flag', () => {
-    saveProfile({ name: 'Ada', nightMode: true });
-    expect(loadProfile().nightMode).toBe(true);
+  it('round-trips the night-mode and stabilizer flags', () => {
+    saveProfile({ name: 'Ada', nightMode: true, stabilizer: true });
+    const p = loadProfile();
+    expect(p.nightMode).toBe(true);
+    expect(p.stabilizer).toBe(true);
   });
 
   it('falls back to the default for a blank stored name', () => {
