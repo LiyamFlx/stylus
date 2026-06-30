@@ -6,6 +6,7 @@ import { StudioPanel } from './StudioPanel';
 import { TextLayer } from './TextLayer';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
 import { Toaster } from './Toaster';
+import { toast } from '../lib/toast';
 import { InputMethodGroup } from './ToolbarInputMethods';
 import { BrandFooter } from './Brand';
 import { MenuIcon } from './icons';
@@ -15,7 +16,7 @@ import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
-import { eraserRadius } from '../lib/geometry';
+import { eraserRadius, worldToScreen } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
 import { inkKey, readAux, touchDocument, writeAux } from '../lib/documents';
 import type { PaperStyle, PenSize, Stroke, TextItem, Tool } from '../types';
@@ -61,7 +62,6 @@ export function Workspace({
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
   const music = useMusicMode();
-  const canvasHeightRef = useRef(0);
 
   const drawing = useDrawing({
     tool,
@@ -73,23 +73,29 @@ export function Workspace({
       const el = drawing.canvasRef.current;
       music.handleStrokeEnd(
         stroke,
+        drawing.view,
         el?.clientWidth ?? window.innerWidth,
-        canvasHeightRef.current || window.innerHeight,
+        el?.clientHeight ?? window.innerHeight,
       );
     },
   });
   const recognition = useRecognition();
 
-  // Keep the canvas height current for pitch mapping (top = high, bottom = low).
+  // Surface an audio-load failure (offline / stale chunk) instead of a silently
+  // dead toggle button.
   useEffect(() => {
-    const update = () => {
-      canvasHeightRef.current =
-        drawing.canvasRef.current?.clientHeight ?? window.innerHeight;
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, [drawing.canvasRef]);
+    if (music.loadError) {
+      toast.error("Couldn't load music mode — check your connection and retry.");
+    }
+  }, [music.loadError]);
+
+  // Reconcile the melody with the strokes still on the canvas. When a stroke is
+  // erased, deleted, undone, or moved away, drop/refresh its melody entry so the
+  // sweep never fires a phantom note or glows a deleted shape.
+  useEffect(() => {
+    if (!music.enabled) return;
+    music.syncMelody(new Set(drawing.strokes.map((s) => s.id)));
+  }, [drawing.strokes, music]);
 
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -457,7 +463,7 @@ export function Workspace({
         playing={music.playing}
         onPlayToggle={() => {
           const el = drawing.canvasRef.current;
-          music.togglePlayback(el?.clientWidth ?? window.innerWidth);
+          music.togglePlayback(drawing.view, el?.clientWidth ?? window.innerWidth);
         }}
         palette={music.palette}
         onCyclePalette={music.cyclePalette}
@@ -538,11 +544,17 @@ export function Workspace({
 
       {music.enabled && music.playing && (
         <>
-          <KandinskyPulses shapes={music.shapesForOverlay()} />
+          <KandinskyPulses
+            shapes={music.melody}
+            litIds={music.litIds}
+            view={drawing.view}
+          />
           <div
             aria-hidden
             className="pointer-events-none absolute top-0 z-20 h-full w-0.5 bg-brand-400/80"
-            style={{ left: `${music.playheadX}px` }}
+            style={{
+              left: `${worldToScreen(music.playheadX, 0, drawing.view).x}px`,
+            }}
           />
         </>
       )}

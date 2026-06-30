@@ -31,9 +31,11 @@ function lineStroke(): Stroke {
   };
 }
 
+const VIEW = { scale: 1, panX: 0, panY: 0 };
+
 describe('useMusicMode', () => {
   beforeEach(() => {
-    loadAudioEngine.mockClear();
+    loadAudioEngine.mockClear().mockResolvedValue(undefined);
     startAudioContext.mockClear();
     playShapeSound.mockClear();
     playWelcomeFlourish.mockClear();
@@ -42,7 +44,7 @@ describe('useMusicMode', () => {
   it('starts disabled and silent', () => {
     const { result } = renderHook(() => useMusicMode());
     expect(result.current.enabled).toBe(false);
-    result.current.handleStrokeEnd(lineStroke(), 800, 600);
+    result.current.handleStrokeEnd(lineStroke(), VIEW, 800, 600);
     expect(playShapeSound).not.toHaveBeenCalled();
   });
 
@@ -64,10 +66,12 @@ describe('useMusicMode', () => {
       result.current.toggleMusicMode();
     });
     await waitFor(() => expect(result.current.enabled).toBe(true));
-    act(() => result.current.handleStrokeEnd(lineStroke(), 800, 600));
+    act(() => result.current.handleStrokeEnd(lineStroke(), VIEW, 800, 600));
     // First call is the instant feedback for the just-drawn shape.
     expect(playShapeSound).toHaveBeenCalledWith('line', expect.any(String), 'A');
     expect(result.current.playing).toBe(true); // a from-start sweep began
+    // The melody is keyed by the stroke id so it can be reconciled later.
+    expect(result.current.melody.map((s) => s.id)).toEqual(['x']);
   });
 
   it('cyclePalette flips A <-> B', () => {
@@ -77,5 +81,25 @@ describe('useMusicMode', () => {
     expect(result.current.palette).toBe('B');
     act(() => result.current.cyclePalette());
     expect(result.current.palette).toBe('A');
+  });
+
+  it('syncMelody drops entries whose stroke is no longer on the canvas', async () => {
+    const { result } = renderHook(() => useMusicMode());
+    await act(async () => result.current.toggleMusicMode());
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+    act(() => result.current.handleStrokeEnd(lineStroke(), VIEW, 800, 600));
+    expect(result.current.melody).toHaveLength(1);
+    // The stroke was deleted/undone — its id is gone from the live set.
+    act(() => result.current.syncMelody(new Set<string>()));
+    expect(result.current.melody).toHaveLength(0);
+  });
+
+  it('surfaces a load error instead of enabling when the engine fails to load', async () => {
+    loadAudioEngine.mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(() => useMusicMode());
+    await act(async () => result.current.toggleMusicMode());
+    await waitFor(() => expect(result.current.loadError).toBe(true));
+    expect(result.current.enabled).toBe(false);
+    expect(playWelcomeFlourish).not.toHaveBeenCalled();
   });
 });

@@ -10,20 +10,13 @@ type ShapeInstruments = Record<
 >;
 
 let Tone: typeof ToneNS | null = null;
-let engines: Record<PaletteId, ShapeInstruments> | null = null;
+// Built lazily per palette — most users only ever hear palette A, so palette B's
+// five synth nodes aren't allocated in the Web Audio graph until first used.
+const engines: Partial<Record<PaletteId, ShapeInstruments>> = {};
 
-/**
- * Lazily import Tone.js and build both instrument palettes. Idempotent. Does
- * NOT start the audio context (must happen in a user gesture — see
- * startAudioContext).
- */
-export async function loadAudioEngine(): Promise<void> {
-  if (Tone) return;
-  const mod = await import('tone');
-  Tone = mod;
-
-  engines = {
-    A: {
+function buildPalette(mod: typeof ToneNS, palette: PaletteId): ShapeInstruments {
+  if (palette === 'A') {
+    return {
       line: new mod.PolySynth(mod.Synth, {
         oscillator: { type: 'triangle' },
         envelope: { release: 0.6 },
@@ -44,28 +37,51 @@ export async function loadAudioEngine(): Promise<void> {
         noise: { type: 'white' },
         envelope: { attack: 0.005, decay: 0.08, sustain: 0 },
       }).toDestination(),
-    } as unknown as ShapeInstruments,
-    B: {
-      line: new mod.PolySynth(mod.FMSynth, {
-        modulationIndex: 3,
-        envelope: { release: 0.4 },
-      }).toDestination(),
-      freeform: new mod.PolySynth(mod.FMSynth, {
-        envelope: { release: 0.4 },
-      }).toDestination(),
-      circle: new mod.PolySynth(mod.AMSynth, {
-        harmonicity: 2,
-        envelope: { attack: 0.1, release: 1 },
-      }).toDestination(),
-      square: new mod.PolySynth(mod.Synth, {
-        oscillator: { type: 'pulse' },
-        envelope: { attack: 0.01, release: 0.1 },
-      }).toDestination(),
-      triangle: new mod.MembraneSynth({
-        envelope: { attack: 0.001, decay: 0.1, sustain: 0 },
-      }).toDestination(),
-    } as unknown as ShapeInstruments,
-  };
+    } as unknown as ShapeInstruments;
+  }
+  return {
+    line: new mod.PolySynth(mod.FMSynth, {
+      modulationIndex: 3,
+      envelope: { release: 0.4 },
+    }).toDestination(),
+    freeform: new mod.PolySynth(mod.FMSynth, {
+      envelope: { release: 0.4 },
+    }).toDestination(),
+    circle: new mod.PolySynth(mod.AMSynth, {
+      harmonicity: 2,
+      envelope: { attack: 0.1, release: 1 },
+    }).toDestination(),
+    square: new mod.PolySynth(mod.Synth, {
+      oscillator: { type: 'pulse' },
+      envelope: { attack: 0.01, release: 0.1 },
+    }).toDestination(),
+    triangle: new mod.MembraneSynth({
+      envelope: { attack: 0.001, decay: 0.1, sustain: 0 },
+    }).toDestination(),
+  } as unknown as ShapeInstruments;
+}
+
+/** Get (building on first use) the instruments for a palette. */
+function instrumentsFor(palette: PaletteId): ShapeInstruments | null {
+  if (!Tone) return null;
+  let kit = engines[palette];
+  if (!kit) {
+    kit = buildPalette(Tone, palette);
+    engines[palette] = kit;
+  }
+  return kit;
+}
+
+/**
+ * Lazily import Tone.js and build the default palette (A). Idempotent. Does NOT
+ * start the audio context (must happen in a user gesture — see
+ * startAudioContext).
+ */
+export async function loadAudioEngine(): Promise<void> {
+  if (Tone) return;
+  const mod = await import('tone');
+  Tone = mod;
+  instrumentsFor('A');
 }
 
 /** Resume the audio context. Call from inside a user-gesture handler. */
@@ -80,8 +96,9 @@ export function startAudioContext(): void {
  * "welcome" sound. No-op if the engine hasn't loaded.
  */
 export function playWelcomeFlourish(palette: PaletteId): void {
-  if (!engines || !Tone) return;
-  const inst = engines[palette].circle as {
+  const kit = instrumentsFor(palette);
+  if (!kit || !Tone) return;
+  const inst = kit.circle as {
     triggerAttackRelease: (note: string, dur: string, time?: number) => unknown;
   };
   const now = Tone.now();
@@ -97,8 +114,9 @@ export function playShapeSound(
   note: string,
   palette: PaletteId,
 ): void {
-  if (!engines) return;
-  const inst = engines[palette][shape] ?? engines[palette].line;
+  const kit = instrumentsFor(palette);
+  if (!kit) return;
+  const inst = kit[shape] ?? kit.line;
   if (shape === 'triangle') {
     (inst.triggerAttackRelease as (dur: string) => unknown)('16n');
   } else {
