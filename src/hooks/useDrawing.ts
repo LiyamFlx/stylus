@@ -11,6 +11,7 @@ import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
+import { duplicateStrokes, recolorStrokes } from '../lib/selectionOps';
 import type { Bounds } from '../lib/geometry';
 import {
   applyMoveOffset,
@@ -47,6 +48,8 @@ export interface SelectionState {
   bounds: Bounds | null;
   clearSelection: () => void;
   deleteSelected: () => void;
+  duplicateSelected: () => void;
+  recolorSelected: (color: string) => void;
 }
 
 /** Canvas view (zoom + pan) plus the controls to mutate it. */
@@ -457,6 +460,29 @@ export function useDrawing({
     scheduleOverlayRender();
   }, [history, scheduleOverlayRender]);
 
+  const duplicateSelected = useCallback(() => {
+    const ids = selectedIdsRef.current;
+    if (ids.size === 0) return;
+    const { next, newIds } = duplicateStrokes(strokesRef.current, ids, 16, 16);
+    history.set(next);
+    strokesRef.current = next;
+    selectedIdsRef.current = newIds;
+    setSelectedIds(newIds);
+    scheduleOverlayRender();
+  }, [history, scheduleOverlayRender]);
+
+  const recolorSelected = useCallback(
+    (color: string) => {
+      const ids = selectedIdsRef.current;
+      if (ids.size === 0) return;
+      const next = recolorStrokes(strokesRef.current, ids, color);
+      history.set(next);
+      strokesRef.current = next;
+      scheduleOverlayRender();
+    },
+    [history, scheduleOverlayRender],
+  );
+
   // ─── Pointer event handlers ─────────────────────────────────────────────────
 
   const onPointerDown = useCallback(
@@ -821,6 +847,8 @@ export function useDrawing({
       bounds: selectionBounds,
       clearSelection,
       deleteSelected,
+      duplicateSelected,
+      recolorSelected,
     },
     view: {
       scale: view.scale,
