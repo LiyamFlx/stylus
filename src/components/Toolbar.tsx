@@ -371,7 +371,7 @@ function PenTypePicker({
         <div
           role="menu"
           aria-label="Pen type"
-          className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+          className="absolute left-0 top-full z-30 mt-2 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
         >
           {PEN_TYPES.map((t) => (
             <button
@@ -554,9 +554,10 @@ export function Toolbar(props: ToolbarProps) {
 
   return (
     <>
-      {/* Desktop / wide: single floating pill, horizontally centered. */}
+      {/* Desktop / wide: single floating pill, horizontally centered, capped so it
+          never grows into the hamburger button's reserved zone at the left edge. */}
       <div className="pointer-events-none absolute inset-x-0 top-4 z-20 hidden justify-center sm:flex">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
+        <div className="pointer-events-auto flex max-w-[calc(100vw-152px)] items-center gap-1 overflow-x-auto rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
           {controls}
         </div>
       </div>
