@@ -29,6 +29,27 @@ export function duplicateStrokes(
 }
 
 /**
+ * Drop from the selection any ids no longer present in `strokes` — e.g. after an
+ * undo/redo brings back a state where selected strokes don't exist. Returns the
+ * same set reference (identity-stable) when nothing needs pruning, so callers
+ * can cheaply skip a state update.
+ */
+export function reconcileSelection(
+  selectedIds: ReadonlySet<string>,
+  strokes: Stroke[],
+): ReadonlySet<string> {
+  if (selectedIds.size === 0) return selectedIds;
+  const liveIds = new Set(strokes.map((s) => s.id));
+  let changed = false;
+  const next = new Set<string>();
+  for (const id of selectedIds) {
+    if (liveIds.has(id)) next.add(id);
+    else changed = true;
+  }
+  return changed ? next : selectedIds;
+}
+
+/**
  * Set `color` on the selected strokes. Returns the same array reference when
  * the selection is empty (lets callers skip a no-op commit).
  */

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { duplicateStrokes, recolorStrokes } from '../lib/selectionOps';
+import {
+  duplicateStrokes,
+  recolorStrokes,
+  reconcileSelection,
+} from '../lib/selectionOps';
 import type { Stroke } from '../types';
 
 function stroke(id: string, color = '#fff'): Stroke {
@@ -47,5 +51,31 @@ describe('recolorStrokes', () => {
   it('returns the same array reference when nothing is selected', () => {
     const all = [stroke('a')];
     expect(recolorStrokes(all, new Set(), '#000')).toBe(all);
+  });
+});
+
+describe('reconcileSelection', () => {
+  it('drops ids whose strokes no longer exist (e.g. after undo)', () => {
+    const selected = new Set(['a', 'b']);
+    // Undo removed stroke 'b' from the canvas.
+    const next = reconcileSelection(selected, [stroke('a')]);
+    expect([...next]).toEqual(['a']);
+  });
+
+  it('returns the same set reference when every selected stroke still exists', () => {
+    const selected = new Set(['a', 'b']);
+    const strokes = [stroke('a'), stroke('b'), stroke('c')];
+    expect(reconcileSelection(selected, strokes)).toBe(selected);
+  });
+
+  it('returns the same (empty) reference when nothing is selected', () => {
+    const selected = new Set<string>();
+    expect(reconcileSelection(selected, [stroke('a')])).toBe(selected);
+  });
+
+  it('empties the selection when all selected strokes are gone', () => {
+    const selected = new Set(['a', 'b']);
+    const next = reconcileSelection(selected, [stroke('c')]);
+    expect(next.size).toBe(0);
   });
 });

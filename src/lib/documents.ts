@@ -144,18 +144,37 @@ export function touchDocument(id: string, now: number): void {
   });
 }
 
-/** Delete a document and its payloads. Returns the next current id (or null). */
-export function deleteDocument(id: string): string | null {
+/**
+ * Delete a document and its payloads. Returns the next current id.
+ *
+ * The store guarantees there is always at least one document: deleting the last
+ * remaining one creates a fresh replacement in its place. Keeping that invariant
+ * here (rather than in callers) means no caller can ever leave a zero-document,
+ * null-current state behind.
+ */
+export function deleteDocument(id: string): string {
   const idx = readIndex();
-  if (!idx) return null;
+  if (!idx) {
+    return ensureIndex(Date.now()).currentId!;
+  }
   const docs = idx.docs.filter((d) => d.id !== id);
+
   try {
     localStorage.removeItem(inkKey(id));
     localStorage.removeItem(auxKey(id));
   } catch {
     // ignore
   }
-  const currentId = idx.currentId === id ? (docs[0]?.id ?? null) : idx.currentId;
+
+  if (docs.length === 0) {
+    const now = Date.now();
+    const meta: DocMeta = { id: uid(), name: 'My notes', createdAt: now, updatedAt: now };
+    write(auxKey(meta.id), DEFAULT_AUX);
+    writeIndex({ version: 1, currentId: meta.id, docs: [meta] });
+    return meta.id;
+  }
+
+  const currentId = idx.currentId === id ? docs[0].id : idx.currentId!;
   writeIndex({ ...idx, currentId, docs });
   return currentId;
 }

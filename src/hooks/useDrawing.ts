@@ -11,7 +11,7 @@ import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
-import { duplicateStrokes, recolorStrokes } from '../lib/selectionOps';
+import { duplicateStrokes, recolorStrokes, reconcileSelection } from '../lib/selectionOps';
 import { penProfile, type PenType } from '../lib/penProfiles';
 import { smoothPoint } from '../lib/stabilizer';
 import { createId } from '../lib/id';
@@ -96,14 +96,6 @@ export interface UseDrawingResult {
  * after the pen lifts so a resting palm can't draw stray strokes.
  */
 const PALM_REJECTION_MS = 200;
-let lastPenLiftTime = 0;
-let activePenPointerType: string | null = null;
-
-function isPalmRejected(pointerType: string): boolean {
-  if (pointerType !== 'touch') return false;
-  return Date.now() - lastPenLiftTime < PALM_REJECTION_MS;
-}
-
 
 /** Tilt → opacity for a pencil-on-its-side feel. 0° opaque, 60°+ → 40%. */
 function tiltToOpacity(tiltX: number, tiltY: number): number {
@@ -152,6 +144,15 @@ export function useDrawing({
   // In-progress stroke + active-gesture bookkeeping.
   const liveStrokeRef = useRef<Stroke | null>(null);
   const activePointerId = useRef<number | null>(null);
+
+  // Palm rejection is per-instance: sharing this across canvases (split view,
+  // multi-window) would let a pen lift in one instance reject touch in another.
+  const lastPenLiftTimeRef = useRef(0);
+  const activePenPointerTypeRef = useRef<string | null>(null);
+  const isPalmRejected = useCallback((pointerType: string): boolean => {
+    if (pointerType !== 'touch') return false;
+    return Date.now() - lastPenLiftTimeRef.current < PALM_REJECTION_MS;
+  }, []);
   const strokeStartTime = useRef<number>(0);
   const staticRafId = useRef<number | null>(null);
   const overlayRafId = useRef<number | null>(null);
@@ -495,7 +496,7 @@ export function useDrawing({
       if (activePointerId.current !== null) return;
       if (isPalmRejected(e.pointerType)) return;
 
-      if (e.pointerType === 'pen') activePenPointerType = 'pen';
+      if (e.pointerType === 'pen') activePenPointerTypeRef.current = 'pen';
 
       e.currentTarget.setPointerCapture(e.pointerId);
       activePointerId.current = e.pointerId;
@@ -559,7 +560,7 @@ export function useDrawing({
       };
       scheduleOverlayRender();
     },
-    [eraseAt, getCanvasPoint, getPoint, scheduleOverlayRender],
+    [eraseAt, getCanvasPoint, getPoint, isPalmRejected, scheduleOverlayRender],
   );
 
   const onPointerMove = useCallback(
@@ -629,9 +630,9 @@ export function useDrawing({
       try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
       activePointerId.current = null;
 
-      if (e.pointerType === 'pen' && activePenPointerType === 'pen') {
-        lastPenLiftTime = Date.now();
-        activePenPointerType = null;
+      if (e.pointerType === 'pen' && activePenPointerTypeRef.current === 'pen') {
+        lastPenLiftTimeRef.current = Date.now();
+        activePenPointerTypeRef.current = null;
       }
 
       const { tool: activeTool } = settingsRef.current;
@@ -738,6 +739,22 @@ export function useDrawing({
   useEffect(() => {
     strokesRef.current = history.present;
     setIsEmpty(history.present.length === 0);
+
+    // Reconcile the selection with the new stroke set. undo/redo can bring back
+    // a state where selected strokes no longer exist (or remove them again);
+    // without this the selection toolbar floats over phantom bounds and the
+    // mutating actions operate on ids that aren't on the canvas.
+    const reconciled = reconcileSelection(selectedIdsRef.current, history.present);
+    if (reconciled !== selectedIdsRef.current) {
+      const next = reconciled as Set<string>;
+      selectedIdsRef.current = next;
+      setSelectedIds(next);
+      if (next.size === 0) {
+        selectionPhaseRef.current = 'idle';
+        setSelectionPhase('idle');
+      }
+    }
+
     scheduleStaticRender();
     if (hydratedRef.current) {
       save(history.present);
@@ -837,20 +854,11 @@ export function useDrawing({
     return () => el.removeEventListener('wheel', onWheel);
   }, [commitView]);
 
-  return {
-    canvasRef,
-    overlayRef,
-    strokes: history.present,
-    onPointerDown,
-    onPointerMove,
-    onPointerUp: endGesture,
-    undo,
-    redo,
-    canUndo: history.canUndo,
-    canRedo: history.canRedo,
-    clear,
-    isEmpty,
-    selection: {
+  // Memoize the public surface so consumers can safely use `selection` / `view`
+  // (or the whole result) as effect deps — otherwise every render hands back
+  // fresh object literals and defeats their memoization.
+  const selectionState = useMemo<SelectionState>(
+    () => ({
       phase: selectionPhase,
       selectedIds,
       bounds: selectionBounds,
@@ -858,14 +866,60 @@ export function useDrawing({
       deleteSelected,
       duplicateSelected,
       recolorSelected,
-    },
-    view: {
+    }),
+    [
+      selectionPhase,
+      selectedIds,
+      selectionBounds,
+      clearSelection,
+      deleteSelected,
+      duplicateSelected,
+      recolorSelected,
+    ],
+  );
+
+  const viewState = useMemo<ViewState>(
+    () => ({
       scale: view.scale,
       panX: view.panX,
       panY: view.panY,
       zoomBy,
       panBy,
       reset: resetView,
-    },
-  };
+    }),
+    [view.scale, view.panX, view.panY, zoomBy, panBy, resetView],
+  );
+
+  return useMemo<UseDrawingResult>(
+    () => ({
+      canvasRef,
+      overlayRef,
+      strokes: history.present,
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: endGesture,
+      undo,
+      redo,
+      canUndo: history.canUndo,
+      canRedo: history.canRedo,
+      clear,
+      isEmpty,
+      selection: selectionState,
+      view: viewState,
+    }),
+    [
+      history.present,
+      onPointerDown,
+      onPointerMove,
+      endGesture,
+      undo,
+      redo,
+      history.canUndo,
+      history.canRedo,
+      clear,
+      isEmpty,
+      selectionState,
+      viewState,
+    ],
+  );
 }

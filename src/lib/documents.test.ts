@@ -91,10 +91,15 @@ describe('documents', () => {
       expect(localStorage.getItem(inkKey(second.id))).toBeNull();
     });
 
-    it('returns null when the last document is deleted', () => {
+    it('creates a fresh replacement when the last document is deleted', () => {
       const only = ensureIndex(NOW).docs[0];
-      expect(deleteDocument(only.id)).toBeNull();
-      expect(listDocuments()).toHaveLength(0);
+      const next = deleteDocument(only.id);
+      // The store never drops to zero documents: a replacement is created and
+      // returned as the new current id.
+      const docs = listDocuments();
+      expect(docs).toHaveLength(1);
+      expect(docs[0].id).not.toBe(only.id);
+      expect(next).toBe(docs[0].id);
     });
   });
 

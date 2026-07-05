@@ -48,18 +48,35 @@ describe('importChunk', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(sessionStorage.getItem('stylus.chunk-reloaded')).toBe('1');
+    // The flag records *when* the reload happened (a recent timestamp), not a
+    // bare boolean, so the cooldown guard can expire.
+    const ts = Number(sessionStorage.getItem('stylus.chunk-reloaded'));
+    expect(Date.now() - ts).toBeLessThan(1000);
     void failing;
   });
 
-  it('rethrows (no reload loop) if a chunk fails again after a reload', async () => {
-    sessionStorage.setItem('stylus.chunk-reloaded', '1');
+  it('rethrows (no reload loop) if a chunk fails again within the cooldown', async () => {
+    // A reload that just happened (fresh timestamp) → still in cooldown.
+    sessionStorage.setItem('stylus.chunk-reloaded', String(Date.now()));
     await expect(
       importChunk(() =>
         Promise.reject(new Error('Failed to fetch dynamically imported module')),
       ),
     ).rejects.toThrow(/dynamically imported module/);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reloads again once the cooldown has expired (stale flag from an old load)', async () => {
+    // A reload flag far in the past → cooldown expired → a fresh stale-chunk
+    // failure gets a new reload attempt rather than being stuck throwing.
+    sessionStorage.setItem('stylus.chunk-reloaded', String(Date.now() - 60_000));
+    const failing = importChunk(() =>
+      Promise.reject(new Error('Failed to fetch dynamically imported module')),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reload).toHaveBeenCalledTimes(1);
+    void failing;
   });
 
   it('rethrows non-chunk errors without reloading', async () => {

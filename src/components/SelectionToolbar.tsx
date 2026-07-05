@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { worldToScreen, type ViewTransform, type Bounds } from '../lib/geometry';
 import { PRESET_COLORS } from '../types';
 import {
@@ -7,7 +7,6 @@ import {
   DuplicateIcon,
   TypeIcon,
   SparkleIcon,
-  PaperIcon,
   GlobeIcon,
 } from './icons';
 
@@ -26,6 +25,8 @@ interface SelectionToolbarProps {
   /** Recognition in flight — disable actions that start a new OCR job. */
   busy: boolean;
 }
+
+const TOOLBAR_HALF_WIDTH = 160; // ~pill width / 2, for viewport clamping
 
 /**
  * Floating actions pill anchored above a lasso selection. World-space bounds →
@@ -47,17 +48,46 @@ export function SelectionToolbar({
   busy,
 }: SelectionToolbarProps) {
   const [colorOpen, setColorOpen] = useState(false);
+  const colorRef = useRef<HTMLDivElement>(null);
 
-  // Hidden during an active lasso draw or move so it never floats over an
-  // in-progress gesture on a stale selection.
-  if (!bounds || selectedCount === 0 || phase === 'moving' || phase === 'lasso') {
-    return null;
-  }
+  const hidden = !bounds || selectedCount === 0 || phase === 'moving' || phase === 'lasso';
 
-  // Anchor: horizontal center of the selection, just above its top edge.
+  // Close the color popover whenever the selection changes or disappears —
+  // the pill stays mounted for the whole select-tool session, so stale open
+  // state would otherwise resurface on the next selection.
+  useEffect(() => {
+    setColorOpen(false);
+  }, [bounds, selectedCount]);
+
+  // Outside-click / Escape to close, matching the app's other popovers. Uses
+  // pointerdown, not mousedown, for pen/touch in embedded WebViews.
+  useEffect(() => {
+    if (!colorOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) {
+        setColorOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setColorOpen(false);
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [colorOpen]);
+
+  if (hidden) return null;
+
+  // Anchor: horizontal center of the selection, just above its top edge —
+  // clamped so the pill never runs off the viewport for edge selections.
   const topLeft = worldToScreen(bounds.minX, bounds.minY, view);
   const topRight = worldToScreen(bounds.maxX, bounds.minY, view);
-  const centerX = (topLeft.x + topRight.x) / 2;
+  const rawCenterX = (topLeft.x + topRight.x) / 2;
+  const centerX = Math.min(
+    Math.max(rawCenterX, TOOLBAR_HALF_WIDTH),
+    window.innerWidth - TOOLBAR_HALF_WIDTH,
+  );
   const top = Math.max(8, topLeft.y - 52);
 
   return (
@@ -79,12 +109,18 @@ export function SelectionToolbar({
         <ToolbarButton label="Copy text" onClick={onCopy} disabled={busy}>
           <CopyIcon size={18} />
         </ToolbarButton>
-        <ToolbarButton label="Duplicate" onClick={onDuplicate}>
+        <ToolbarButton label="Duplicate" onClick={onDuplicate} disabled={busy}>
           <DuplicateIcon size={18} />
         </ToolbarButton>
-        <div className="relative">
-          <ToolbarButton label="Change color" onClick={() => setColorOpen((o) => !o)}>
-            <PaperIcon size={18} />
+        <div ref={colorRef} className="relative">
+          <ToolbarButton
+            label="Change color"
+            onClick={() => setColorOpen((o) => !o)}
+            disabled={busy}
+          >
+            {/* Swatch, not an icon — matches ColorPicker's pattern instead of
+                misusing PaperIcon. */}
+            <span className="h-[18px] w-[18px] rounded-full border border-border-strong bg-[conic-gradient(from_0deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7,#ef4444)]" />
           </ToolbarButton>
           {colorOpen && (
             <div className="absolute left-1/2 top-full z-40 mt-2 flex -translate-x-1/2 gap-1.5 rounded-panel border border-border bg-bg-muted/95 p-2 shadow-pop backdrop-blur-pill">
@@ -105,7 +141,7 @@ export function SelectionToolbar({
           )}
         </div>
         <span className="mx-0.5 h-5 w-px bg-border-strong" aria-hidden />
-        <ToolbarButton label="Delete" onClick={onDelete}>
+        <ToolbarButton label="Delete" onClick={onDelete} disabled={busy}>
           <TrashIcon size={18} />
         </ToolbarButton>
       </div>

@@ -86,6 +86,12 @@ export function Workspace({
   });
   const recognition = useRecognition();
 
+  // useDrawing returns a fresh object every render, so depending on it directly
+  // in effects re-binds their listeners on every pointer-move frame. Route it
+  // through a ref instead and keep the effect deps on stable primitives.
+  const drawingRef = useRef(drawing);
+  drawingRef.current = drawing;
+
   // Surface an audio-load failure (offline / stale chunk) instead of a silently
   // dead toggle button.
   useEffect(() => {
@@ -100,7 +106,12 @@ export function Workspace({
   useEffect(() => {
     if (!music.enabled) return;
     music.syncMelody(new Set(drawing.strokes.map((s) => s.id)));
-  }, [drawing.strokes, music]);
+    // Depend on the specific stable members, not the whole `music` object —
+    // useMusicMode returns a fresh object each render, which would otherwise
+    // run this on every re-render instead of only on stroke changes. Both
+    // `enabled` and `syncMelody` (a useCallback) are the only members read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawing.strokes, music.enabled, music.syncMelody]);
 
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -262,23 +273,31 @@ export function Workspace({
     void recognition.recognize(drawing.strokes);
   }, [drawing.strokes, recognition, texts]);
 
+  // Bumped whenever a new selection-recognition request starts. Async handlers
+  // capture their generation and bail if it's been superseded — so a result
+  // from a since-changed selection never acts on the wrong strokes.
+  const requestGen = useRef(0);
+
   // Copy the recognized text of the current lasso selection to the clipboard.
   const handleCopySelection = useCallback(async () => {
     const ids = drawing.selection.selectedIds;
     const selected = drawing.strokes.filter((s) => ids.has(s.id));
     if (selected.length === 0) return;
+    const gen = ++requestGen.current;
     try {
       const { recognizeText } = await importChunk(() => import('../lib/recognition'));
       const { text } = await recognizeText(selected);
+      if (gen !== requestGen.current) return; // selection changed mid-flight
       if (!text.trim()) {
         toast.error('Nothing to copy — no handwriting recognized in the selection.');
         return;
       }
       const ok = await copyText(text);
+      if (gen !== requestGen.current) return;
       if (ok) toast.success('Copied recognized text');
       else toast.error("Couldn't copy to the clipboard.");
     } catch {
-      toast.error("Couldn't copy — recognition failed.");
+      if (gen === requestGen.current) toast.error("Couldn't copy — recognition failed.");
     }
   }, [drawing.selection.selectedIds, drawing.strokes]);
 
@@ -325,16 +344,18 @@ export function Workspace({
       handleRecognize();
       return;
     }
+    const gen = ++requestGen.current;
     try {
       const { recognizeText } = await importChunk(() => import('../lib/recognition'));
       const { text } = await recognizeText(selected);
+      if (gen !== requestGen.current) return; // selection changed mid-flight
       if (!text.trim()) {
         toast.error('No handwriting recognized in the selection.');
         return;
       }
       pasteText(text);
     } catch {
-      toast.error("Couldn't convert — recognition failed.");
+      if (gen === requestGen.current) toast.error("Couldn't convert — recognition failed.");
     }
   }, [selectedStrokes, handleRecognize, pasteText]);
 
@@ -358,6 +379,11 @@ export function Workspace({
     recognition.reset();
   }, [recognition]);
 
+  const handlePlayToggle = useCallback(() => {
+    const el = drawing.canvasRef.current;
+    music.togglePlayback(drawing.view, el?.clientWidth ?? window.innerWidth);
+  }, [drawing.canvasRef, drawing.view, music]);
+
   /* ------------------------------- zoom + pan ----------------------------- */
   // Wheel/pinch zoom + pan are handled by a native listener in useDrawing; the
   // controls below drive zoom from the toolbar cluster.
@@ -368,6 +394,7 @@ export function Workspace({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const drawing = drawingRef.current;
       const target = e.target as HTMLElement | null;
       const typing =
         target?.tagName === 'INPUT' ||
@@ -431,7 +458,7 @@ export function Workspace({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [tool, editActive, finishText, onToolChange, drawing]);
+  }, [tool, editActive, finishText, onToolChange]);
 
   // Paste clipboard text onto the canvas (Cmd/Ctrl+V, right-click → Paste).
   // When the paste targets a real input/textarea/contenteditable (e.g. the AI
@@ -576,10 +603,7 @@ export function Workspace({
         musicMode={music.enabled}
         onToggleMusic={music.toggleMusicMode}
         playing={music.playing}
-        onPlayToggle={() => {
-          const el = drawing.canvasRef.current;
-          music.togglePlayback(drawing.view, el?.clientWidth ?? window.innerWidth);
-        }}
+        onPlayToggle={handlePlayToggle}
         palette={music.palette}
         onCyclePalette={music.cyclePalette}
       />

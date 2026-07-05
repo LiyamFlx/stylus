@@ -9,6 +9,10 @@
  */
 
 const RELOAD_FLAG = 'stylus.chunk-reloaded';
+/** Suppress a second reload only within this window — long enough to cover a
+ *  real reload + re-render, short enough that a stale flag from a crashed tab
+ *  doesn't block retries indefinitely. */
+const RELOAD_COOLDOWN_MS = 15_000;
 
 /** True if an error looks like a missing-chunk failure from a new deploy. */
 export function isChunkLoadError(err: unknown): boolean {
@@ -18,17 +22,19 @@ export function isChunkLoadError(err: unknown): boolean {
   );
 }
 
-function getFlag(): boolean {
+function recentlyReloaded(): boolean {
   try {
-    return sessionStorage.getItem(RELOAD_FLAG) !== null;
+    const ts = sessionStorage.getItem(RELOAD_FLAG);
+    if (!ts) return false;
+    return Date.now() - Number(ts) < RELOAD_COOLDOWN_MS;
   } catch {
     return false;
   }
 }
 
-function setFlag(): void {
+function markReloaded(): void {
   try {
-    sessionStorage.setItem(RELOAD_FLAG, '1');
+    sessionStorage.setItem(RELOAD_FLAG, String(Date.now()));
   } catch {
     // sessionStorage unavailable (private mode) — reload guard is best-effort.
   }
@@ -44,8 +50,10 @@ function clearFlag(): void {
 
 /**
  * Run a dynamic `import()`; on a stale-chunk failure, reload the page once to
- * pick up the latest deploy. A session flag prevents a reload loop if the chunk
- * is genuinely broken rather than just stale.
+ * pick up the latest deploy. A time-boxed session flag prevents a reload loop
+ * if the chunk is genuinely broken rather than just stale — after the cooldown
+ * expires, a fresh failure gets one more reload attempt rather than being
+ * permanently stuck throwing for the rest of the tab's session.
  */
 export async function importChunk<T>(load: () => Promise<T>): Promise<T> {
   try {
@@ -53,8 +61,8 @@ export async function importChunk<T>(load: () => Promise<T>): Promise<T> {
     clearFlag(); // a successful load means we're on a consistent deploy
     return mod;
   } catch (err) {
-    if (isChunkLoadError(err) && !getFlag()) {
-      setFlag();
+    if (isChunkLoadError(err) && !recentlyReloaded()) {
+      markReloaded();
       window.location.reload();
       // The reload tears down the page; never resolve so callers don't proceed.
       return new Promise<T>(() => {});

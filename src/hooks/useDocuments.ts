@@ -59,15 +59,10 @@ export function useDocuments(): UseDocumentsResult {
 
   const remove = useCallback(
     (id: string) => {
-      const next = deleteDocument(id);
-      if (next === null) {
-        // Deleted the last document — recreate a fresh one.
-        const idx = ensureIndex(Date.now());
-        setDocs(idx.docs);
-        setCurrentId(idx.currentId);
-      } else {
-        refresh();
-      }
+      // deleteDocument guarantees a document always remains (recreating one when
+      // the last is deleted), so we can just re-read the store.
+      deleteDocument(id);
+      refresh();
     },
     [refresh],
   );

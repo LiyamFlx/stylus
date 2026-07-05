@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Tool } from '../types';
 
 interface CanvasProps {
@@ -48,6 +48,14 @@ export function Canvas({
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const showRing = tool === 'eraser' && hoverPos !== null;
 
+  // Drop the stale position on tool switch — otherwise re-entering eraser
+  // mode shows the ring at wherever the cursor was last time it was active.
+  useEffect(() => {
+    if (tool !== 'eraser') setHoverPos(null);
+  }, [tool]);
+
+  const clearHover = useCallback(() => setHoverPos(null), []);
+
   // Derive cursor: callers can override via the `cursor` prop; otherwise fall
   // back to sensible per-tool defaults.
   const resolvedCursor =
@@ -61,6 +69,18 @@ export function Canvas({
     }
     onPointerMove(e);
   };
+
+  const handlePointerCancel = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>) => {
+      // Treat cancellation (palm rejection, system gesture) like a normal up so
+      // we never leave a dangling captured pointer — and also drop the hover
+      // ring, since cancel usually means the pointer left valid contact and
+      // pointerleave won't reliably fire while captured.
+      onPointerUp(e);
+      setHoverPos(null);
+    },
+    [onPointerUp],
+  );
 
   // Ring radius is a world-space value, so scale it to on-screen pixels.
   const ringRadius = eraserRadius * scale;
@@ -78,12 +98,8 @@ export function Canvas({
         onPointerDown={onPointerDown}
         onPointerMove={trackCursor}
         onPointerUp={onPointerUp}
-        onPointerLeave={() => setHoverPos(null)}
-        // Treat cancellation (e.g. palm rejection, system gesture) like a
-        // normal up so we never leave a dangling captured pointer. We do NOT
-        // bind pointerleave for the gesture: with setPointerCapture active the
-        // gesture should continue even when the pointer exits the bounds.
-        onPointerCancel={onPointerUp}
+        onPointerLeave={clearHover}
+        onPointerCancel={handlePointerCancel}
       />
       {showRing && (
         <div

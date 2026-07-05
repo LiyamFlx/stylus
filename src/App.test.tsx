@@ -7,12 +7,13 @@ import App from './App';
  * is inert in jsdom (no 2D context), but the tool-state wiring driven by the
  * window keydown handler is fully observable via the toolbar's aria-pressed.
  */
+// The test env reports as desktop (see test/setup matchMedia stub), so the
+// toolbar mounts its single desktop pill with all controls directly visible.
 function penButton() {
-  // Toolbar is rendered twice (desktop + mobile tray); either reflects state.
-  return screen.getAllByRole('button', { name: 'Pen' })[0];
+  return screen.getByRole('button', { name: 'Pen' });
 }
 function eraserButton() {
-  return screen.getAllByRole('button', { name: 'Eraser' })[0];
+  return screen.getByRole('button', { name: 'Eraser' });
 }
 
 describe('App keyboard shortcuts', () => {
@@ -67,7 +68,7 @@ describe('App keyboard shortcuts', () => {
 
   it('opens the paper picker and selects a background', () => {
     render(<App />);
-    const paperBtn = () => screen.getAllByRole('button', { name: /^Paper:/ })[0];
+    const paperBtn = () => screen.getByRole('button', { name: /^Paper:/ });
     expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
 
     // Opening the picker reveals the six paper options.
@@ -75,7 +76,7 @@ describe('App keyboard shortcuts', () => {
     expect(screen.getAllByRole('menuitemradio')).toHaveLength(6);
 
     // Selecting one applies it and closes the menu.
-    fireEvent.click(screen.getAllByRole('menuitemradio', { name: /Grid/i })[0]);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Grid/i }));
     expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Grid');
     expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
   });

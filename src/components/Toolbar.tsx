@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PaperStyle, PenSize, Tool } from '../types';
 import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
 import { PEN_TYPES, penProfile, type PenType } from '../lib/penProfiles';
@@ -63,6 +63,52 @@ interface ToolbarProps {
   palette: PaletteId;
   onCyclePalette: () => void;
 }
+
+/**
+ * Live media-query match, used to decide which toolbar variant to mount.
+ * Only one variant (desktop pill or mobile tray) exists in the DOM at a time —
+ * previously both were mounted simultaneously and toggled with CSS `hidden`,
+ * which doubled every popover's state, effects, and listeners.
+ */
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
+
+/**
+ * Shared close-on-outside-click / close-on-Escape behavior for popovers.
+ * Uses `pointerdown` (not `mousedown`) since pen/touch input in embedded
+ * WebViews isn't guaranteed to synthesize mouse events.
+ */
+function usePopover(open: boolean, setOpen: (open: boolean) => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, setOpen]);
+  return ref;
+}
+
+const isHexColor = (c: string) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c);
 
 /** A square icon button with active / disabled states. */
 function IconButton({
@@ -222,7 +268,9 @@ function ColorPicker({
       >
         <input
           type="color"
-          value={isPreset ? '#ffffff' : color}
+          // Show the real current color whenever it's valid hex — previously
+          // this forced #ffffff for presets, causing a jump on open.
+          value={isHexColor(color) ? color : '#ffffff'}
           onChange={(e) => onColorChange(e.target.value)}
           className="absolute inset-0 cursor-pointer opacity-0"
           aria-label="Pick a custom color"
@@ -272,22 +320,7 @@ function PaperPicker({
   onPaperSelect: (paper: PaperStyle) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on outside click or Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const ref = usePopover(open, setOpen);
 
   return (
     <div ref={ref} className="relative">
@@ -342,21 +375,7 @@ function PenTypePicker({
   onPenTypeChange: (penType: PenType) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const ref = usePopover(open, setOpen);
 
   return (
     <div ref={ref} className="relative">
@@ -434,6 +453,21 @@ export function Toolbar(props: ToolbarProps) {
 
   // Mobile: the pill collapses to a single menu button that expands a tray.
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 640px)');
+
+  // If the viewport crosses into desktop while the mobile tray is open, don't
+  // leave it stuck in a hidden-but-mounted state.
+  useEffect(() => {
+    if (isDesktop) setMobileOpen(false);
+  }, [isDesktop]);
+
+  const handlePenTypeChange = useCallback(
+    (t: PenType) => {
+      onPenTypeChange(t);
+      onToolChange('pen');
+    },
+    [onPenTypeChange, onToolChange],
+  );
 
   const controls = (
     <>
@@ -446,13 +480,7 @@ export function Toolbar(props: ToolbarProps) {
         <PenIcon />
       </IconButton>
       {tool === 'pen' && (
-        <PenTypePicker
-          penType={penType}
-          onPenTypeChange={(t) => {
-            onPenTypeChange(t);
-            onToolChange('pen');
-          }}
-        />
+        <PenTypePicker penType={penType} onPenTypeChange={handlePenTypeChange} />
       )}
       <IconButton
         label="Eraser"
@@ -552,32 +580,33 @@ export function Toolbar(props: ToolbarProps) {
     </>
   );
 
-  return (
-    <>
-      {/* Desktop / wide: single floating pill, horizontally centered, capped so it
-          never grows into the hamburger button's reserved zone at the left edge. */}
-      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 hidden justify-center sm:flex">
+  // Only one variant is ever mounted now — no hidden duplicate toolbar
+  // (and its popovers/effects) sitting in the DOM on the other breakpoint.
+  if (isDesktop) {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center">
         <div className="pointer-events-auto flex max-w-[calc(100vw-152px)] items-center gap-1 overflow-x-auto rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
           {controls}
         </div>
       </div>
+    );
+  }
 
-      {/* Mobile: a menu button that expands into a wrapping tray. */}
-      <div className="absolute inset-x-0 top-4 z-20 flex flex-col items-center sm:hidden">
-        <button
-          type="button"
-          aria-label={mobileOpen ? 'Close tools' : 'Open tools'}
-          onClick={() => setMobileOpen((o) => !o)}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-muted/80 text-ink-900 shadow-pop backdrop-blur-pill"
-        >
-          {mobileOpen ? <CloseIcon size={22} /> : <MenuIcon size={22} />}
-        </button>
-        {mobileOpen && (
-          <div className="mt-2 flex max-w-[92vw] flex-wrap items-center justify-center gap-1 rounded-panel border border-border bg-bg-muted/80 px-3 py-2 shadow-pop backdrop-blur-pill">
-            {controls}
-          </div>
-        )}
-      </div>
-    </>
+  return (
+    <div className="absolute inset-x-0 top-4 z-20 flex flex-col items-center">
+      <button
+        type="button"
+        aria-label={mobileOpen ? 'Close tools' : 'Open tools'}
+        onClick={() => setMobileOpen((o) => !o)}
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-muted/80 text-ink-900 shadow-pop backdrop-blur-pill"
+      >
+        {mobileOpen ? <CloseIcon size={22} /> : <MenuIcon size={22} />}
+      </button>
+      {mobileOpen && (
+        <div className="mt-2 flex max-w-[92vw] flex-wrap items-center justify-center gap-1 rounded-panel border border-border bg-bg-muted/80 px-3 py-2 shadow-pop backdrop-blur-pill">
+          {controls}
+        </div>
+      )}
+    </div>
   );
 }
