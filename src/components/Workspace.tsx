@@ -12,6 +12,7 @@ import { BrandFooter } from './Brand';
 import { MenuIcon } from './icons';
 import { useDrawing } from '../hooks/useDrawing';
 import { useMusicMode } from '../hooks/useMusicMode';
+import { useLearningAudio } from '../hooks/useLearningAudio';
 import { KandinskyWelcome, KandinskyPulses } from './KandinskyOverlay';
 import { SelectionToolbar } from './SelectionToolbar';
 import type { RefineAction } from '../lib/ai';
@@ -65,6 +66,7 @@ export function Workspace({
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
   const music = useMusicMode();
+  const learningAudio = useLearningAudio();
 
   const drawing = useDrawing({
     tool,
@@ -83,6 +85,10 @@ export function Workspace({
         el?.clientHeight ?? window.innerHeight,
       );
     },
+    // Learning Mode: live per-sample velocity → audio braking.
+    onPenStart: learningAudio.onStrokeStart,
+    onPenSample: learningAudio.onSample,
+    onPenEnd: learningAudio.onStrokeEnd,
   });
   const recognition = useRecognition();
 
@@ -99,6 +105,12 @@ export function Workspace({
       toast.error("Couldn't load music mode — check your connection and retry.");
     }
   }, [music.loadError]);
+
+  useEffect(() => {
+    if (learningAudio.loadError) {
+      toast.error("Couldn't load Learning Mode audio — check your connection and retry.");
+    }
+  }, [learningAudio.loadError]);
 
   // Reconcile the melody with the strokes still on the canvas. When a stroke is
   // erased, deleted, undone, or moved away, drop/refresh its melody entry so the
@@ -602,6 +614,8 @@ export function Workspace({
         }
         musicMode={music.enabled}
         onToggleMusic={music.toggleMusicMode}
+        learningMode={learningAudio.enabled}
+        onToggleLearning={learningAudio.toggle}
         playing={music.playing}
         onPlayToggle={handlePlayToggle}
         palette={music.palette}

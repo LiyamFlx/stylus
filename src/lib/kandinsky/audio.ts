@@ -91,6 +91,59 @@ export function startAudioContext(): void {
   }
 }
 
+/* ─── Learning Mode: velocity audio-braking ──────────────────────────────────
+ * A single sustained oscillator whose pitch/timbre is modulated continuously by
+ * how fast the user is drawing — a clean tone at a comfortable pace that flattens
+ * and roughens as the stroke gets too fast. One held note (ramped), never a
+ * per-sample retrigger, so it reads as smooth "braking", not a stutter of notes.
+ */
+let brakeSynth: { synth: ToneNS.Synth; playing: boolean } | null = null;
+const BRAKE_BASE_FREQ = 440; // A4 at a comfortable pace
+
+function ensureBrakeSynth(): { synth: ToneNS.Synth; playing: boolean } | null {
+  if (!Tone) return null;
+  if (!brakeSynth) {
+    const synth = new Tone.Synth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.05, decay: 0.1, sustain: 1, release: 0.25 },
+    }).toDestination();
+    synth.volume.value = -14;
+    brakeSynth = { synth, playing: false };
+  }
+  return brakeSynth;
+}
+
+/**
+ * Modulate the braking tone for a given 0–1 intensity (0 = comfortable pace,
+ * 1 = too fast). Starts the held note on first call of a stroke and ramps its
+ * detune/timbre thereafter. No-op until the engine has loaded.
+ */
+export function updateBrakeTone(intensity: number): void {
+  const b = ensureBrakeSynth();
+  if (!b || !Tone) return;
+  // Flatten downward and roughen as speed increases.
+  const detune = -intensity * 180; // cents
+  b.synth.oscillator.type = intensity > 0.5 ? 'triangle' : 'sine';
+  b.synth.detune.rampTo(detune, 0.05);
+  if (!b.playing) {
+    b.synth.triggerAttack(BRAKE_BASE_FREQ, Tone.now());
+    b.playing = true;
+  }
+}
+
+/** Release the braking tone at stroke end. No-op if not sounding. */
+export function releaseBrakeTone(): void {
+  if (!brakeSynth || !brakeSynth.playing || !Tone) return;
+  brakeSynth.synth.triggerRelease(Tone.now());
+  brakeSynth.playing = false;
+}
+
+/** Dispose the braking synth (on Learning Mode off). */
+export function disposeBrakeTone(): void {
+  brakeSynth?.synth.dispose();
+  brakeSynth = null;
+}
+
 /**
  * A short rising arpeggio played when the mode is entered — the inviting
  * "welcome" sound. No-op if the engine hasn't loaded.

@@ -17,6 +17,7 @@ import {
   CloseIcon,
   SpinnerIcon,
   MusicIcon,
+  GaugeIcon,
   PlayIcon,
   StopIcon,
   SparkleIcon,
@@ -58,6 +59,9 @@ interface ToolbarProps {
   inputMethodGroup?: React.ReactNode;
   musicMode: boolean;
   onToggleMusic: () => void;
+  /** Learning Mode: velocity audio-braking feedback while drawing. */
+  learningMode: boolean;
+  onToggleLearning: () => void;
   playing: boolean;
   onPlayToggle: () => void;
   palette: PaletteId;
@@ -445,6 +449,8 @@ export function Toolbar(props: ToolbarProps) {
     inputMethodGroup,
     musicMode,
     onToggleMusic,
+    learningMode,
+    onToggleLearning,
     playing,
     onPlayToggle,
     palette,
@@ -547,6 +553,17 @@ export function Toolbar(props: ToolbarProps) {
         onClick={onToggleMusic}
       >
         <MusicIcon />
+      </IconButton>
+      <IconButton
+        label={
+          learningMode
+            ? 'Turn Learning Mode off'
+            : 'Learning Mode — audio feedback when drawing too fast'
+        }
+        active={learningMode}
+        onClick={onToggleLearning}
+      >
+        <GaugeIcon />
       </IconButton>
       {musicMode && (
         <>

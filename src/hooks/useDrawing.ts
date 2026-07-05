@@ -43,6 +43,11 @@ interface UseDrawingOptions {
   storageKey?: string;
   /** Fired the moment a pen stroke commits — used for live music feedback. */
   onStrokeEnd?: (stroke: Stroke) => void;
+  /** Optional live side-channel for per-sample pen feedback (Learning Mode
+   *  audio). Additive: the core stroke pipeline ignores these entirely. */
+  onPenStart?: () => void;
+  onPenSample?: (point: InkPoint) => void;
+  onPenEnd?: () => void;
 }
 
 /** Selection phase for the lasso tool. */
@@ -125,6 +130,9 @@ export function useDrawing({
   stabilizer = false,
   storageKey,
   onStrokeEnd,
+  onPenStart,
+  onPenSample,
+  onPenEnd,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -165,6 +173,15 @@ export function useDrawing({
 
   const onStrokeEndRef = useRef<UseDrawingOptions['onStrokeEnd']>(onStrokeEnd);
   onStrokeEndRef.current = onStrokeEnd;
+
+  // Live pen side-channel (Learning Mode audio) mirrored to refs so the hot
+  // path reads current callbacks without re-binding handlers.
+  const onPenStartRef = useRef(onPenStart);
+  onPenStartRef.current = onPenStart;
+  const onPenSampleRef = useRef(onPenSample);
+  onPenSampleRef.current = onPenSample;
+  const onPenEndRef = useRef(onPenEnd);
+  onPenEndRef.current = onPenEnd;
 
   const [isEmpty, setIsEmpty] = useState(true);
 
@@ -558,6 +575,8 @@ export function useDrawing({
         penType: settingsRef.current.penType ?? 'fountain',
         points: [point],
       };
+      onPenStartRef.current?.();
+      onPenSampleRef.current?.(point);
       scheduleOverlayRender();
     },
     [eraseAt, getCanvasPoint, getPoint, isPalmRejected, scheduleOverlayRender],
@@ -615,9 +634,9 @@ export function useDrawing({
         const raw = clientToWorld(ev.clientX, ev.clientY);
         const w = stabilize ? smoothPoint(raw, smoothPrevRef.current, 0.35) : raw;
         if (stabilize) smoothPrevRef.current = w;
-        live.points.push(
-          buildPoint(w.x, w.y, ev.pointerType, ev.pressure, ev.tiltX ?? 0, ev.tiltY ?? 0),
-        );
+        const pt = buildPoint(w.x, w.y, ev.pointerType, ev.pressure, ev.tiltX ?? 0, ev.tiltY ?? 0);
+        live.points.push(pt);
+        onPenSampleRef.current?.(pt);
       }
       scheduleOverlayRender();
     },
@@ -700,6 +719,7 @@ export function useDrawing({
       // ── pen ──
       const live = liveStrokeRef.current;
       liveStrokeRef.current = null;
+      onPenEndRef.current?.();
       if (!live || live.points.length === 0) {
         scheduleOverlayRender(); // clear any partial live stroke
         return;

@@ -187,6 +187,14 @@ export const MusicIcon = ({ size = 20, className }: IconProps) => (
   </svg>
 );
 
+/** Speedometer — Learning Mode velocity audio-braking. */
+export const GaugeIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M12 14a1 1 0 0 0 1-1l3-5-5 3a1 1 0 0 0 1 3z" />
+    <path d="M4.5 18a8 8 0 1 1 15 0" />
+  </svg>
+);
+
 export const PlayIcon = ({ size = 20, className }: IconProps) => (
   <svg
     width={size}
