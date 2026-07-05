@@ -37,7 +37,7 @@ const PAPER_LABELS: Record<PaperStyle, string> = {
 interface ToolbarProps {
   tool: Tool;
   color: string;
-  size: number;
+  size: PenSize;
   paper: PaperStyle;
   canUndo: boolean;
   canRedo: boolean;
@@ -194,7 +194,7 @@ function SizePicker({
   size,
   onSizeChange,
 }: {
-  size: number;
+  size: PenSize;
   onSizeChange: (s: PenSize) => void;
 }) {
   return (

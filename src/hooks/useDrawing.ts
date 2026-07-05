@@ -86,6 +86,8 @@ export interface UseDrawingResult {
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
+  /** Abort the in-flight gesture without committing (pointercancel). */
+  onPointerCancel: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -736,6 +738,46 @@ export function useDrawing({
     [history, scheduleOverlayRender, scheduleStaticRender],
   );
 
+  /**
+   * Abort the in-flight gesture WITHOUT committing it. Fired on `pointercancel`
+   * (palm rejection, a system/browser gesture stealing the pointer) — precisely
+   * the case where the partial stroke/erase/move is not what the user meant to
+   * keep. Discards all in-flight state and repaints back to the committed ink.
+   */
+  const cancelGesture = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerId !== activePointerId.current) return;
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      activePointerId.current = null;
+
+      if (e.pointerType === 'pen' && activePenPointerTypeRef.current === 'pen') {
+        lastPenLiftTimeRef.current = Date.now();
+        activePenPointerTypeRef.current = null;
+      }
+
+      // Discard any in-flight per-tool work (none of it touches history).
+      liveStrokeRef.current = null;
+      onPenEndRef.current?.();
+      eraseWorkingRef.current = null;
+      erasedDuringDrag.current = false;
+      moveOffsetRef.current = { dx: 0, dy: 0 };
+      moveOriginRef.current = null;
+      // A cancelled lasso drops back to no selection; a cancelled move keeps the
+      // existing selection but drops the offset. Either way, reset the phase.
+      if (selectionPhaseRef.current === 'lasso') {
+        lassoRef.current = [];
+      }
+      selectionPhaseRef.current = 'idle';
+      setSelectionPhase('idle');
+
+      // Repaint both layers back to committed ink (undoing any move preview /
+      // erase working copy shown mid-gesture).
+      scheduleStaticRender();
+      scheduleOverlayRender();
+    },
+    [scheduleOverlayRender, scheduleStaticRender],
+  );
+
   // ─── Toolbar operations ─────────────────────────────────────────────────────
 
   const undo = useCallback(() => { history.undo(); }, [history]);
@@ -918,6 +960,7 @@ export function useDrawing({
       onPointerDown,
       onPointerMove,
       onPointerUp: endGesture,
+      onPointerCancel: cancelGesture,
       undo,
       redo,
       canUndo: history.canUndo,
@@ -932,6 +975,7 @@ export function useDrawing({
       onPointerDown,
       onPointerMove,
       endGesture,
+      cancelGesture,
       undo,
       redo,
       history.canUndo,

@@ -17,7 +17,7 @@ import { inkBounds, type Bounds } from './geometry';
  * OCR engines recognize best. Accuracy is strongest on neat / printed
  * handwriting; very fast cursive is harder. To swap in a cloud recognizer with
  * better cursive accuracy later, only this file changes — its public surface is
- * just `recognizeText()` and `isRecognitionSupported()`.
+ * just `recognizeText()`.
  */
 
 const OCR_LANG = 'eng';
@@ -40,14 +40,6 @@ export { RecognitionError } from './recognitionError';
 
 export interface RecognitionResult {
   text: string;
-}
-
-/**
- * Tesseract runs everywhere we support, so recognition is always "available".
- * Kept for API symmetry and so callers can branch without knowing the engine.
- */
-export function isRecognitionSupported(): boolean {
-  return true;
 }
 
 /**

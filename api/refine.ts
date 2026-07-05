@@ -47,6 +47,9 @@ const PROMPTS: Record<Action, (t: string) => string> = {
 const MODEL = 'anthropic/claude-haiku-4.5';
 const FALLBACK_MODELS = ['anthropic/claude-3.5-haiku'];
 
+/** Max characters of recognized text accepted per request. */
+const MAX_INPUT_CHARS = 8_000;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -66,6 +69,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const source = (text ?? '').trim();
   if (!source) {
     res.status(400).json({ error: 'No text to refine.' });
+    return;
+  }
+  // Cap input length: a note refinement never needs more, and an oversized body
+  // would inflate token spend and latency. Recognized handwriting is short.
+  if (source.length > MAX_INPUT_CHARS) {
+    res.status(413).json({ error: 'Selection is too long to refine.' });
     return;
   }
 
@@ -100,7 +109,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return;
       }
     }
-    const message = err instanceof Error ? err.message : 'Refinement failed.';
-    res.status(500).json({ error: message });
+    // Log the real error server-side; return a generic message so internal
+    // details (stack, provider internals) never reach the client.
+    console.error('[stylus/refine] unexpected error', err);
+    res.status(500).json({ error: 'Refinement failed. Please try again.' });
   }
 }

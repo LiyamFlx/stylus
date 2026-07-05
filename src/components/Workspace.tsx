@@ -524,6 +524,7 @@ export function Workspace({
         onPointerDown={drawing.onPointerDown}
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
+        onPointerCancel={drawing.onPointerCancel}
       />
 
       {/* Night Mode: a warm, dimming tint over the canvas + ink only. Sits above

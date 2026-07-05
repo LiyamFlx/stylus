@@ -17,6 +17,8 @@ interface CanvasProps {
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
+  /** Abort the in-flight gesture without committing (palm rejection etc.). */
+  onPointerCancel: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
 }
 
 /**
@@ -44,6 +46,7 @@ export function Canvas({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
 }: CanvasProps) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const showRing = tool === 'eraser' && hoverPos !== null;
@@ -72,14 +75,15 @@ export function Canvas({
 
   const handlePointerCancel = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
-      // Treat cancellation (palm rejection, system gesture) like a normal up so
-      // we never leave a dangling captured pointer — and also drop the hover
-      // ring, since cancel usually means the pointer left valid contact and
-      // pointerleave won't reliably fire while captured.
-      onPointerUp(e);
+      // Cancellation (palm rejection, a system/browser gesture stealing the
+      // pointer) must DISCARD the in-flight gesture, not commit it like a normal
+      // up would. Also drop the hover ring, since cancel usually means the
+      // pointer left valid contact and pointerleave won't reliably fire while
+      // captured.
+      onPointerCancel(e);
       setHoverPos(null);
     },
-    [onPointerUp],
+    [onPointerCancel],
   );
 
   // Ring radius is a world-space value, so scale it to on-screen pixels.
