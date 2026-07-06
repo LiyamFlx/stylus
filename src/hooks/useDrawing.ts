@@ -12,6 +12,7 @@ import { useHistory } from './useHistory';
 import type { HistorySnapshot } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
+import { RULING_SPACING } from '../lib/paper';
 import { duplicateStrokes, recolorStrokes, reconcileSelection } from '../lib/selectionOps';
 import { penProfile, type PenType } from '../lib/penProfiles';
 import { smoothPoint } from '../lib/stabilizer';
@@ -177,6 +178,9 @@ export function useDrawing({
   // render path (paintStatic) and the pan clamp read it.
   const panBoundsRef = useRef<Bounds | null>(panBounds);
   panBoundsRef.current = panBounds;
+  // Notebook auto-scroll handler; assigned once commitView exists, called from
+  // endGesture (both defined below). Declared here to precede endGesture.
+  const autoScrollRef = useRef<((stroke: Stroke) => void) | null>(null);
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW);
   const { save, load } = useLocalStorage(storageKey);
 
@@ -641,6 +645,54 @@ export function useDrawing({
     [scheduleStaticRender, scheduleOverlayRender],
   );
 
+  /**
+   * Notebook "focus follows writing": after a pen stroke commits, keep the
+   * writing position comfortably in the upper-middle of the page so you're not
+   * writing at the bottom edge. Pure geometry — the stroke's baseline (its
+   * lowest ink) is the write head; if it sits below a comfort band, pan down so
+   * it rises to ~42% of the viewport. When the stroke ended near the right
+   * margin (a finished line), advance an extra ruling so the next line lands in
+   * view. commitView clamps to the page, so this never scrolls past the sheet.
+   */
+  const autoScroll = useCallback(
+    (stroke: Stroke) => {
+      const bounds = panBoundsRef.current;
+      const canvas = canvasRef.current;
+      if (!bounds || !canvas || stroke.points.length === 0) return;
+
+      const view = viewRef.current;
+      const vh = canvas.clientHeight;
+      // Write head = lowest (max y) ink of this stroke, in world space.
+      let baseY = -Infinity;
+      let maxX = -Infinity;
+      for (const p of stroke.points) {
+        if (p.y > baseY) baseY = p.y;
+        if (p.x > maxX) maxX = p.x;
+      }
+      // Its current screen position.
+      const screenY = (baseY - view.panY) * view.scale;
+
+      const comfortLine = vh * 0.62; // below here → nudge up
+      const target = vh * 0.42; // bring the write head to here
+      let deltaScreenY = 0;
+      if (screenY > comfortLine) deltaScreenY = screenY - target;
+
+      // Finished a line (reached the right margin) → advance one ruling so the
+      // next line is comfortably visible.
+      const pageW = bounds.maxX - bounds.minX;
+      const atRightMargin = maxX >= bounds.minX + pageW * 0.9;
+      if (atRightMargin) {
+        deltaScreenY += RULING_SPACING[settingsRef.current.ruling ?? 'college'] * view.scale;
+      }
+
+      if (deltaScreenY < 1) return; // nothing worth moving
+      // Pan down: increasing panY scrolls the content up.
+      commitView({ ...view, panY: view.panY + deltaScreenY / view.scale });
+    },
+    [commitView],
+  );
+  autoScrollRef.current = autoScroll;
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -925,6 +977,10 @@ export function useDrawing({
       history.set(next);
       strokesRef.current = next;
       onStrokeEndRef.current?.(live);
+      // Notebook: gently follow the writing position down the page (and advance
+      // a line when the pen reached the right margin). Ref-indirected because
+      // the handler needs commitView, defined below.
+      autoScrollRef.current?.(live);
       // Clear the live copy off the overlay now; the committed copy lands on the
       // static layer via the history effect (avoids a one-frame double draw).
       scheduleOverlayRender();
