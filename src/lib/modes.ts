@@ -103,6 +103,19 @@ export function modeConfig(mode: unknown): ModeConfig {
   return MODE_CONFIGS[resolveMode(mode)];
 }
 
+/** Default name for a new document, by mode. One source of truth so the seed
+ *  doc and every picker-created doc agree (they used to split 'My notes' vs
+ *  'Untitled'). */
+const DEFAULT_DOC_NAMES: Record<AppMode, string> = {
+  canvas: 'My notes',
+  notebook: 'Notebook',
+  mobile: 'Quick note',
+};
+
+export function defaultDocName(mode: unknown): string {
+  return DEFAULT_DOC_NAMES[resolveMode(mode)];
+}
+
 /**
  * The single derivation of the canvas touch-action (Phase 2 item 5).
  * NEVER a static per-mode constant: it's a function of (mode, tool) today and

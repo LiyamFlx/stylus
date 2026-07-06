@@ -7,7 +7,7 @@ import { InstallPrompt } from './components/InstallPrompt';
 import { useVisualViewport } from './hooks/useVisualViewport';
 import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
-import { modeConfig } from './lib/modes';
+import { modeConfig, defaultDocName } from './lib/modes';
 import type { AppMode } from './lib/modes';
 import type { HistorySnapshot } from './hooks/useHistory';
 import type { Stroke } from './types';
@@ -127,7 +127,7 @@ export default function App() {
   }, []);
   const createWithMode = useCallback(
     (mode: AppMode) => {
-      documents.create('Untitled', mode);
+      documents.create(defaultDocName(mode), mode);
       setNewDocOpen(false);
     },
     [documents],

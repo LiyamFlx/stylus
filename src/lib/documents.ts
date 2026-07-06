@@ -269,7 +269,11 @@ export const pagesKey = (docId: string) => `stylus.doc.v1.${docId}.pages`;
 
 const pageUid = () => createId('p_');
 
-const DEFAULT_PAGE_PAPER: PaperStyle = 'ruled'; // becomes 'notebook' in Phase 1 item 3
+// Notebook pages are the cream, red-margin exercise-book page — not plain
+// ruled lines on the dark canvas. (This was left as 'ruled' with a "becomes
+// notebook" TODO that never landed, so the notebook paper never actually
+// rendered.)
+const DEFAULT_PAGE_PAPER: PaperStyle = 'notebook';
 
 function reindex(pages: PageMeta[]): PageMeta[] {
   return pages.map((p, i) => (p.index === i ? p : { ...p, index: i }));

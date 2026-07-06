@@ -116,7 +116,14 @@ export function Workspace({
   // docs keep the per-doc aux exactly as before.
   const initialAux = useRef(
     pageId
-      ? { paper: pagePaper ?? ('ruled' as PaperStyle), texts: readPageAux(documentId, pageId).texts }
+      ? {
+          // Fall back to the MODE's default paper (notebook → cream ruled page
+          // with a red margin), not a hardcoded 'ruled' — that bug left new
+          // notebook pages showing plain grey rules on the dark canvas instead
+          // of the exercise-book page.
+          paper: pagePaper ?? modeConfig(appMode).defaultPaper,
+          texts: readPageAux(documentId, pageId).texts,
+        }
       : readAux(documentId),
   ).current;
   const [paper, setPaper] = useState<PaperStyle>(initialAux.paper);
@@ -775,7 +782,9 @@ export function Workspace({
         }
         aria-hidden={chromeHidden}
       >
-      {/* Sidebar opener + current document name */}
+      {/* Brand + sidebar opener + current document name. The logo mark gives
+          the app identity here (it used to be a never-rendered BrandHeader);
+          the doc-name pill carries the wordmark + current document. */}
       <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
         <button
           type="button"
@@ -790,7 +799,7 @@ export function Workspace({
         <button
           type="button"
           title={documentName}
-          aria-label={`Current document: ${documentName} — open menu`}
+          aria-label={`Current document: ${documentName}. Open menu`}
           onClick={onOpenSidebar}
           className="hidden h-11 max-w-[24vw] items-center truncate rounded-full border border-border bg-bg-muted/80 px-4 text-sm font-medium text-ink-700 shadow-pop backdrop-blur-pill sm:flex"
         >

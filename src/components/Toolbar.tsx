@@ -796,12 +796,13 @@ export function Toolbar(props: ToolbarProps) {
   }
 
   if (isDesktop) {
-    // Left-pad the centering region past the menu + document-name cluster
-    // (left-4 + 44px menu + gap + up to ~30vw doc pill) so the centered pill
-    // can never overlap it and steal its taps. Right-pad symmetrically so the
-    // pill stays visually centered in the free space.
+    // Reserve a fixed strip on the left for the menu + document-name cluster
+    // (left-4 + 44px menu + gap + capped doc pill ≈ 13rem) so the pill can't
+    // overlap it — but ONLY the left, since the top-right is empty. The pill
+    // then gets the full remaining width and centres within it; overflow-x-auto
+    // is a last-resort fallback for genuinely narrow windows.
     return (
-      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-[max(4rem,30vw)]">
+      <div className="pointer-events-none absolute left-52 right-4 top-4 z-20 flex justify-center">
         <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
           {controls}
         </div>

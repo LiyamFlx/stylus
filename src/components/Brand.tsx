@@ -12,7 +12,7 @@
  */
 
 /** The orange app mark — a pen nib glyph on a rounded square. */
-function StylusMark({ size = 28 }: { size?: number }) {
+export function StylusMark({ size = 28 }: { size?: number }) {
   return (
     <svg
       viewBox="0 0 32 32"
@@ -40,32 +40,19 @@ function StylusMark({ size = 28 }: { size?: number }) {
   );
 }
 
-/** Top-left wordmark + subtitle. */
-export function BrandHeader() {
-  return (
-    <header className="pointer-events-none absolute left-4 top-4 z-10 flex flex-col gap-1 select-none sm:left-6 sm:top-6">
-      <div className="flex items-center gap-2.5">
-        <StylusMark size={28} />
-        <span className="text-[18px] font-semibold lowercase tracking-tight text-ink-900">
-          stylus
-        </span>
-      </div>
-      {/* Hidden until there's clearly room on the left of the centered toolbar
-          pill, so the two never collide. */}
-      <p className="ml-[38px] hidden text-[12px] leading-snug text-ink-400 2xl:block">
-        Write every thought. On every device.
-      </p>
-    </header>
-  );
-}
-
 /** Bottom-left product-family footer. */
 export function BrandFooter() {
   return (
-    <footer className="pointer-events-none absolute bottom-4 left-4 z-10 select-none sm:bottom-5 sm:left-6">
-      <p className="text-[11px] tracking-tight text-ink-400/70">
-        A Scanmarker product
-      </p>
+    <footer className="pointer-events-none absolute bottom-4 left-4 z-10 flex items-center gap-2 select-none sm:bottom-5 sm:left-6">
+      <StylusMark size={22} />
+      <div className="flex flex-col leading-none">
+        <span className="text-[14px] font-semibold lowercase tracking-tight text-ink-700">
+          stylus
+        </span>
+        <span className="mt-0.5 text-[10px] tracking-tight text-ink-400/70">
+          A Scanmarker product
+        </span>
+      </div>
     </footer>
   );
 }
