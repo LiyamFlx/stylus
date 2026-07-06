@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { PageNav } from './components/PageNav';
+import { NewDocDialog } from './components/NewDocDialog';
 import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
 import { modeConfig } from './lib/modes';
+import type { AppMode } from './lib/modes';
 import type { HistorySnapshot } from './hooks/useHistory';
 import type { Stroke } from './types';
 import { loadProfile, saveProfile } from './lib/profile';
@@ -111,10 +113,20 @@ export default function App() {
     [documents],
   );
 
+  // "New document" opens the mode picker; the document is created with the
+  // chosen mode (a document IS a mode — DocMeta.mode, set at creation).
+  const [newDocOpen, setNewDocOpen] = useState(false);
   const newDoc = useCallback(() => {
-    documents.create('Untitled');
+    setNewDocOpen(true);
     setSidebarOpen(false);
-  }, [documents]);
+  }, []);
+  const createWithMode = useCallback(
+    (mode: AppMode) => {
+      documents.create('Untitled', mode);
+      setNewDocOpen(false);
+    },
+    [documents],
+  );
 
   return (
     <EditingPrefsProvider>
@@ -175,6 +187,12 @@ export default function App() {
           onNewDoc={newDoc}
           onRenameDoc={documents.rename}
           onDeleteDoc={documents.remove}
+        />
+
+        <NewDocDialog
+          open={newDocOpen}
+          onCreate={createWithMode}
+          onCancel={() => setNewDocOpen(false)}
         />
 
         <Tour controller={tour} />

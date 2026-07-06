@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DocMeta } from '../lib/documents';
+import type { AppMode } from '../lib/modes';
 import {
   createDocument,
   deleteDocument,
@@ -14,7 +15,7 @@ export interface UseDocumentsResult {
   docs: DocMeta[];
   currentId: string | null;
   select: (id: string) => void;
-  create: (name?: string) => void;
+  create: (name?: string, mode?: AppMode) => void;
   rename: (id: string, name: string) => void;
   remove: (id: string) => void;
 }
@@ -42,8 +43,8 @@ export function useDocuments(): UseDocumentsResult {
   }, []);
 
   const create = useCallback(
-    (name?: string) => {
-      createDocument(name ?? 'Untitled', Date.now());
+    (name?: string, mode?: AppMode) => {
+      createDocument(name ?? 'Untitled', Date.now(), mode);
       refresh();
     },
     [refresh],

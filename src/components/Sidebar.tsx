@@ -162,6 +162,16 @@ export function Sidebar({
                     >
                       {doc.name}
                     </span>
+                    {doc.mode === 'notebook' && (
+                      <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-400">
+                        {doc.pageCount ? `${doc.pageCount} pg` : 'Notebook'}
+                      </span>
+                    )}
+                    {doc.mode === 'mobile' && (
+                      <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-400">
+                        Note
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
