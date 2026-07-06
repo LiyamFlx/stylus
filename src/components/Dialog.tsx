@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { buzz } from '../lib/haptics';
 import { TrashIcon } from './icons';
 
 /**
@@ -102,7 +103,10 @@ export function ConfirmDialog({
         <button
           ref={confirmRef}
           type="button"
-          onClick={onConfirm}
+          onClick={() => {
+            if (danger) buzz(); // Android haptic tick; silent no-op elsewhere
+            onConfirm();
+          }}
           className={[
             'rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors',
             danger ? 'bg-danger hover:bg-danger/90' : 'bg-brand-500 hover:bg-brand-600',

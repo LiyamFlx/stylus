@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { PaperStyle, PenSize, Tool } from '../types';
 import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
 import { PEN_TYPES, penProfile, type PenType } from '../lib/penProfiles';
@@ -81,6 +81,9 @@ interface ToolbarProps {
    * - 'restricted': exam lock — pen + undo + unlock only.
    */
   variant?: ToolbarVariant;
+  /** 'bottom' anchors the pill thumb-reachable with safe-area padding
+   *  (Phase 2 items 2+3+8); enables 44px touch targets. Default 'top'. */
+  position?: 'top' | 'bottom';
   /** Exam-lock state + toggle (notebook mode). Omit to hide the button. */
   examLock?: boolean;
   onToggleExamLock?: () => void;
@@ -135,6 +138,11 @@ function usePopover(open: boolean, setOpen: (open: boolean) => void) {
 
 const isHexColor = (c: string) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c);
 
+/** When true, IconButtons render at >=44px touch-target size (Phase 2). Set
+ *  once for the whole controls tree via context — 30+ call sites stay
+ *  untouched. */
+const LargeTargetsContext = createContext(false);
+
 /** A square icon button with active / disabled states. */
 function IconButton({
   label,
@@ -152,6 +160,7 @@ function IconButton({
   dataTour?: string;
   children: React.ReactNode;
 }) {
+  const large = useContext(LargeTargetsContext);
   return (
     <button
       type="button"
@@ -162,7 +171,8 @@ function IconButton({
       onClick={onClick}
       data-tour={dataTour}
       className={[
-        'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
+        large ? 'flex h-11 w-11 items-center justify-center rounded-full transition-colors'
+              : 'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-30',
         active
           ? 'bg-brand-500 text-white shadow-soft hover:bg-brand-600'
@@ -490,6 +500,7 @@ export function Toolbar(props: ToolbarProps) {
     palette,
     paletteOverride,
     variant = 'full',
+    position = 'top',
     examLock = false,
     onToggleExamLock,
     onHideChrome,
@@ -682,6 +693,23 @@ export function Toolbar(props: ToolbarProps) {
 
   // Only one variant is ever mounted now — no hidden duplicate toolbar
   // (and its popovers/effects) sitting in the DOM on the other breakpoint.
+  // Phase 2: bottom-anchored, thumb-reachable, 44px targets, notch-safe.
+  // Same `controls` JSX — position is a wrapper concern, never a fork.
+  if (position === 'bottom') {
+    return (
+      <LargeTargetsContext.Provider value={true}>
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-2"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
+        >
+          <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-panel border border-border bg-bg-muted/85 px-2 py-1.5 shadow-pop backdrop-blur-pill">
+            {controls}
+          </div>
+        </div>
+      </LargeTargetsContext.Provider>
+    );
+  }
+
   if (isDesktop) {
     return (
       <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center">

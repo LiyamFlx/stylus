@@ -26,6 +26,8 @@ import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
 import { A4_BOUNDS, eraserRadius, worldToScreen } from '../lib/geometry';
+import { effectiveTouchAction } from '../lib/modes';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { importChunk } from '../lib/chunkReload';
 import {
   inkKey,
@@ -622,6 +624,10 @@ export function Workspace({
   // the custom on-screen keyboard is a desktop/tablet affordance.
   const showKeyboard = tool === 'text' && appMode !== 'mobile';
   const isBlank = drawing.isEmpty && texts.length === 0;
+  const touchAction = effectiveTouchAction(appMode, tool);
+  // Portrait-only by spec (item 9): overlay, not a landscape layout.
+  const isLandscape = useMediaQuery('(orientation: landscape)');
+  const showRotateOverlay = appMode === 'mobile' && isLandscape;
 
   // Cursor tracks both tool and selection phase so it's always accurate.
   const canvasCursor = (() => {
@@ -644,6 +650,7 @@ export function Workspace({
         eraserRadius={eraserRadius(size)}
         scale={drawing.view.scale}
         cursor={canvasCursor}
+        touchAction={touchAction}
         onPointerDown={drawing.onPointerDown}
         onPointerMove={drawing.onPointerMove}
         onPointerUp={drawing.onPointerUp}
@@ -726,6 +733,7 @@ export function Workspace({
       <Toolbar
         paletteOverride={paletteOverride}
         variant={examLock ? 'restricted' : toolbarVariant}
+        position={appMode === 'mobile' ? 'bottom' : 'top'}
         examLock={examLock}
         onToggleExamLock={pageId ? () => setExamLock((v) => !v) : undefined}
         onHideChrome={() => setChromeHidden(true)}
@@ -884,6 +892,16 @@ export function Workspace({
         >
           ⌄
         </button>
+      )}
+
+      {showRotateOverlay && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-bg/95 px-8 text-center">
+          <span className="text-3xl" aria-hidden>⟳</span>
+          <p className="text-sm font-medium text-ink-900">Rotate your device</p>
+          <p className="text-xs leading-relaxed text-ink-400">
+            Quick notes are portrait-only. Turn your phone upright to keep writing.
+          </p>
+        </div>
       )}
 
       <Toaster />

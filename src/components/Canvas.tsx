@@ -19,6 +19,8 @@ interface CanvasProps {
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   /** Abort the in-flight gesture without committing (palm rejection etc.). */
   onPointerCancel: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
+  /** Mode-aware touch-action (Phase 2). Undefined keeps .ink-surface's none. */
+  touchAction?: 'none' | 'manipulation';
 }
 
 /**
@@ -47,6 +49,7 @@ export function Canvas({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  touchAction,
 }: CanvasProps) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const showRing = tool === 'eraser' && hoverPos !== null;
@@ -98,7 +101,13 @@ export function Canvas({
       <canvas
         ref={overlayCanvasRef}
         className="ink-surface absolute inset-0 h-full w-full"
-        style={{ cursor: resolvedCursor }}
+        style={{
+          cursor: resolvedCursor,
+          // Overrides .ink-surface's static touch-action:none. Derived in ONE
+          // place (effectiveTouchAction in modes.ts) — mobile typing scrolls,
+          // ink tools always own the gesture.
+          ...(touchAction ? { touchAction } : {}),
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={trackCursor}
         onPointerUp={onPointerUp}

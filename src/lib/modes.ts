@@ -97,3 +97,15 @@ export function resolveMode(mode: unknown): AppMode {
 export function modeConfig(mode: unknown): ModeConfig {
   return MODE_CONFIGS[resolveMode(mode)];
 }
+
+/**
+ * The single derivation of the canvas touch-action (Phase 2 item 5).
+ * NEVER a static per-mode constant: it's a function of (mode, tool) today and
+ * gains gesture-state inputs when Canvas Mode's multi-touch work lands
+ * (Phase 3 handoff contract). Only Mobile Mode relaxes to 'manipulation', and
+ * only for the typing tool — ink tools always own the gesture.
+ */
+export function effectiveTouchAction(mode: AppMode, tool: Tool): 'none' | 'manipulation' {
+  if (mode !== 'mobile') return 'none';
+  return tool === 'text' ? 'manipulation' : 'none';
+}

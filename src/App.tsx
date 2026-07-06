@@ -3,6 +3,8 @@ import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { PageNav } from './components/PageNav';
 import { NewDocDialog } from './components/NewDocDialog';
+import { InstallPrompt } from './components/InstallPrompt';
+import { useVisualViewport } from './hooks/useVisualViewport';
 import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
 import { modeConfig } from './lib/modes';
@@ -74,6 +76,9 @@ export default function App() {
 
   const activePage = pagesApi.pages.find((p) => p.id === pagesApi.activePageId);
   const docModeConfig = modeConfig(currentDoc?.mode);
+  const isMobileDoc = docModeConfig.id === 'mobile';
+  // Keyboard-safe layout height (--vvh) — only mobile-mode docs consume it.
+  useVisualViewport(isMobileDoc);
   const paletteOverride = docModeConfig.paletteOverride ?? undefined;
 
   // Auto-run the onboarding tour once for first-time visitors.
@@ -130,7 +135,11 @@ export default function App() {
 
   return (
     <EditingPrefsProvider>
-      <div className="relative h-full w-full overflow-hidden bg-bg">
+      <div
+        className="relative h-full w-full overflow-hidden bg-bg"
+        // iOS keyboards overlay 100% heights; visualViewport is the truth.
+        style={isMobileDoc ? { height: 'var(--vvh, 100%)' } : undefined}
+      >
         {documents.currentId && (!isNotebook || activePage) && (
           <Workspace
             // Page flips remount the editor — same mechanism as doc switches,
@@ -189,6 +198,8 @@ export default function App() {
           onRenameDoc={documents.rename}
           onDeleteDoc={documents.remove}
         />
+
+        {isMobileDoc && <InstallPrompt />}
 
         <NewDocDialog
           open={newDocOpen}

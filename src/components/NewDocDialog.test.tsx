@@ -37,6 +37,15 @@ describe('New document mode picker', () => {
     expect(screen.queryByRole('button', { name: 'Next page' })).toBeNull();
   });
 
+  it('creates a mobile doc: bottom toolbar, no custom on-screen keyboard', () => {
+    openPicker();
+    fireEvent.click(screen.getByRole('button', { name: /Quick note/ }));
+    expect(listDocuments()[0].mode).toBe('mobile');
+    // Text tool is the mobile default; the custom OSK must NOT render (the
+    // native keyboard comes from the focused TextInputProxy instead).
+    expect(screen.queryByRole('button', { name: /Close keyboard/i })).toBeNull();
+  });
+
   it('escape cancels without creating', () => {
     openPicker();
     fireEvent.keyDown(window, { key: 'Escape' });
