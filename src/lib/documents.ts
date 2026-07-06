@@ -28,6 +28,12 @@ export interface DocMeta {
    * consumer ever sees an undefined mode.
    */
   mode: AppMode;
+  /**
+   * Derived, denormalized page count (Phase 1) — sidebar display ONLY, never
+   * authoritative. `pagesKey` owns PageMeta[]; every page-mutating function
+   * updates both in the same call. Absent on non-notebook docs.
+   */
+  pageCount?: number;
 }
 
 export interface DocAux {
@@ -175,6 +181,16 @@ export function deleteDocument(id: string): string {
   const docs = idx.docs.filter((d) => d.id !== id);
 
   try {
+    // Sweep page payloads first (notebook docs) — an orphaned page blob is a
+    // silent quota leak identical to an orphaned doc blob.
+    const pageIdx = read<PageIndex>(pagesKey(id));
+    if (pageIdx && Array.isArray(pageIdx.pages)) {
+      for (const p of pageIdx.pages) {
+        localStorage.removeItem(pageInkKey(id, p.id));
+        localStorage.removeItem(pageAuxKey(id, p.id));
+      }
+    }
+    localStorage.removeItem(pagesKey(id));
     localStorage.removeItem(inkKey(id));
     localStorage.removeItem(auxKey(id));
   } catch {
@@ -204,4 +220,168 @@ export function readAux(id: string): DocAux {
 
 export function writeAux(id: string, aux: DocAux): void {
   write(auxKey(id), aux);
+}
+
+// ─── Pages (Notebook Mode, Phase 1) ──────────────────────────────────────────
+//
+// Notebook documents store one stroke array PER PAGE (`pageInkKey`) plus page
+// metadata under `pagesKey`. The drawing engine stays page-agnostic: useDrawing
+// just receives a different storageKey per active page. Mobile/Canvas docs
+// never touch any of this — they remain single-array (`inkKey`).
+//
+// Single source of truth: `pagesKey` owns `PageMeta[]`. `DocMeta.pageCount`
+// is a derived display value written alongside every mutation, never read as
+// authoritative.
+
+export interface PageMeta {
+  id: string;
+  /** Position in the notebook; contiguous from 0, maintained by reindexing. */
+  index: number;
+  /** Per-page paper override (e.g. one blank page in a ruled notebook). */
+  paper: PaperStyle;
+}
+
+export interface PageIndex {
+  version: 1;
+  pages: PageMeta[];
+}
+
+/** Per-page aux (Notebook): text items live per page, not per doc. The
+ *  per-doc `DocAux` stays as-is for Mobile/Canvas — two aux systems cleanly
+ *  partitioned by mode, not one with mode-conditional fields. */
+export interface PageAux {
+  texts: TextItem[];
+}
+
+export const pageInkKey = (docId: string, pageId: string) =>
+  `stylus.doc.v1.${docId}.page.${pageId}.ink`;
+
+export const pageAuxKey = (docId: string, pageId: string) =>
+  `stylus.doc.v1.${docId}.page.${pageId}.aux`;
+
+export const pagesKey = (docId: string) => `stylus.doc.v1.${docId}.pages`;
+
+const pageUid = () => createId('p_');
+
+const DEFAULT_PAGE_PAPER: PaperStyle = 'ruled'; // becomes 'notebook' in Phase 1 item 3
+
+function reindex(pages: PageMeta[]): PageMeta[] {
+  return pages.map((p, i) => (p.index === i ? p : { ...p, index: i }));
+}
+
+function readPageIndex(docId: string): PageIndex | null {
+  const idx = read<PageIndex>(pagesKey(docId));
+  if (!idx || idx.version !== 1 || !Array.isArray(idx.pages)) return null;
+  return idx;
+}
+
+/** Write the page index AND sync DocMeta.pageCount in the same call — the
+ *  invariant that keeps the denormalized count from drifting. */
+function writePageIndex(docId: string, pages: PageMeta[]): void {
+  write(pagesKey(docId), { version: 1, pages } satisfies PageIndex);
+  const idx = readIndex();
+  if (!idx) return;
+  writeIndex({
+    ...idx,
+    docs: idx.docs.map((d) => (d.id === docId ? { ...d, pageCount: pages.length } : d)),
+  });
+}
+
+/**
+ * Return the doc's pages, creating the first page if none exist. Notebook
+ * workspaces call this on mount — mirrors ensureIndex's "never zero" shape.
+ */
+export function ensurePages(docId: string, paper: PaperStyle = DEFAULT_PAGE_PAPER): PageMeta[] {
+  const existing = readPageIndex(docId);
+  if (existing && existing.pages.length > 0) return existing.pages;
+  const first: PageMeta = { id: pageUid(), index: 0, paper };
+  writePageIndex(docId, [first]);
+  return [first];
+}
+
+export function listPages(docId: string): PageMeta[] {
+  return readPageIndex(docId)?.pages ?? [];
+}
+
+/** Create a page at the end, or directly after `afterId` when given. */
+export function createPage(
+  docId: string,
+  opts: { paper?: PaperStyle; afterId?: string } = {},
+): PageMeta {
+  const pages = listPages(docId);
+  const page: PageMeta = {
+    id: pageUid(),
+    index: 0, // fixed by reindex below
+    paper: opts.paper ?? DEFAULT_PAGE_PAPER,
+  };
+  const at = opts.afterId ? pages.findIndex((p) => p.id === opts.afterId) : -1;
+  const next = at >= 0
+    ? [...pages.slice(0, at + 1), page, ...pages.slice(at + 1)]
+    : [...pages, page];
+  const reindexed = reindex(next);
+  writePageIndex(docId, reindexed);
+  return reindexed.find((p) => p.id === page.id)!;
+}
+
+/**
+ * Delete a page and BOTH its payload keys (ink + aux) — an orphaned blob is a
+ * silent quota leak. Guarantees ≥1 page remains (deleting the last page
+ * creates a fresh replacement), mirroring deleteDocument's ≥1-doc invariant.
+ * Returns the id of the page to activate next (the page now occupying the
+ * deleted slot, or the new last page).
+ */
+export function deletePage(docId: string, pageId: string): string {
+  const pages = listPages(docId);
+  const at = pages.findIndex((p) => p.id === pageId);
+  if (at < 0) return pages[0]?.id ?? ensurePages(docId)[0].id;
+
+  try {
+    localStorage.removeItem(pageInkKey(docId, pageId));
+    localStorage.removeItem(pageAuxKey(docId, pageId));
+  } catch {
+    // ignore
+  }
+
+  const remaining = pages.filter((p) => p.id !== pageId);
+  if (remaining.length === 0) {
+    const fresh: PageMeta = { id: pageUid(), index: 0, paper: DEFAULT_PAGE_PAPER };
+    writePageIndex(docId, [fresh]);
+    return fresh.id;
+  }
+  const reindexed = reindex(remaining);
+  writePageIndex(docId, reindexed);
+  return reindexed[Math.min(at, reindexed.length - 1)].id;
+}
+
+/**
+ * Reorder to the given id order. No-op unless `orderedIds` is exactly the
+ * current page-id set — a stale drag result must not drop or duplicate pages.
+ */
+export function reorderPages(docId: string, orderedIds: string[]): void {
+  const pages = listPages(docId);
+  if (orderedIds.length !== pages.length) return;
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  const next: PageMeta[] = [];
+  for (const id of orderedIds) {
+    const p = byId.get(id);
+    if (!p) return; // unknown id → reject wholesale
+    next.push(p);
+  }
+  writePageIndex(docId, reindex(next));
+}
+
+/** Per-page paper override. */
+export function setPagePaper(docId: string, pageId: string, paper: PaperStyle): void {
+  const pages = listPages(docId);
+  if (!pages.some((p) => p.id === pageId)) return;
+  writePageIndex(docId, pages.map((p) => (p.id === pageId ? { ...p, paper } : p)));
+}
+
+export function readPageAux(docId: string, pageId: string): PageAux {
+  const aux = read<Partial<PageAux>>(pageAuxKey(docId, pageId));
+  return { texts: Array.isArray(aux?.texts) ? (aux.texts as TextItem[]) : [] };
+}
+
+export function writePageAux(docId: string, pageId: string, aux: PageAux): void {
+  write(pageAuxKey(docId, pageId), aux);
 }
