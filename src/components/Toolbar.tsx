@@ -289,91 +289,121 @@ function ColorPicker({
 }) {
   const colors = paletteOverride ?? PRESET_COLORS;
   const isPreset = (colors as readonly string[]).includes(color);
+  const [open, setOpen] = useState(false);
+  const ref = usePopover(open, setOpen);
   const [wheelOpen, setWheelOpen] = useState(false);
-  const wheelRef = usePopover(wheelOpen, setWheelOpen);
+  const showCustom = paletteOverride === undefined;
+
   return (
-    <div className="flex items-center gap-1.5">
-      {colors.map((c) => (
-        <button
-          key={c}
-          type="button"
-          title={c}
-          aria-label={`Color ${c}`}
-          aria-pressed={color === c}
-          onClick={() => onColorChange(c)}
-          className={[
-            'h-6 w-6 rounded-full border transition-transform',
-            color === c
-              ? 'scale-110 border-bg ring-2 ring-brand-500'
-              : 'border-border-strong hover:scale-105',
-          ].join(' ')}
-          style={{ backgroundColor: c }}
-        />
-      ))}
-      {/* Custom color: the swatch shows the picked color when it's non-preset.
-          Hidden under a palette override — a classroom palette is closed. */}
-      {paletteOverride === undefined && (
-      <label
-        title="Custom color"
+    <div ref={ref} className="relative">
+      {/* Trigger: one swatch showing the current color — the 8+ swatches live
+          in the popover instead of eating toolbar width. */}
+      <button
+        type="button"
+        title="Color"
+        aria-label={`Color: ${color}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
         className={[
-          'relative h-6 w-6 cursor-pointer overflow-hidden rounded-full border',
-          !isPreset
-            ? 'scale-110 border-bg ring-2 ring-brand-500'
-            : 'border-border-strong hover:scale-105',
+          'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
+          open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]',
         ].join(' ')}
-        style={{
-          background: !isPreset
-            ? color
-            : 'conic-gradient(from 0deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #a855f7, #ef4444)',
-        }}
       >
-        <input
-          type="color"
-          // Show the real current color whenever it's valid hex — previously
-          // this forced #ffffff for presets, causing a jump on open.
-          value={isHexColor(color) ? color : '#ffffff'}
-          onChange={(e) => onColorChange(e.target.value)}
-          className="absolute inset-0 cursor-pointer opacity-0"
-          aria-label="Pick a custom color"
+        <span
+          className="h-6 w-6 rounded-full border border-border-strong ring-2 ring-brand-500/60"
+          style={{ backgroundColor: isHexColor(color) ? color : '#ffffff' }}
         />
-      </label>
-      )}
-      {enableWheel && paletteOverride === undefined && (
-        <div ref={wheelRef} className="relative">
-          <button
-            type="button"
-            title="Color wheel"
-            aria-label="Open color wheel"
-            aria-expanded={wheelOpen}
-            onClick={() => setWheelOpen((o) => !o)}
-            className={[
-              'flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold',
-              wheelOpen
-                ? 'border-brand-500 text-brand-300'
-                : 'border-border-strong text-ink-400 hover:border-ink-400',
-            ].join(' ')}
-          >
-            H
-          </button>
-          {wheelOpen && (
-            <div className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-3 shadow-pop backdrop-blur-pill">
-              <ColorWheel color={color} onColorChange={onColorChange} onCommit={onCustomColor} />
-              {customColors.length > 0 && (
-                <div className="mt-2 flex justify-center gap-1.5">
-                  {customColors.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      title={c}
-                      aria-label={`Saved color ${c}`}
-                      onClick={() => onColorChange(c)}
-                      className="h-5 w-5 rounded-full border border-border-strong hover:scale-110"
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="Colors"
+          className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-2.5 shadow-pop backdrop-blur-pill"
+        >
+          <div className="grid grid-cols-4 gap-2">
+            {colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                title={c}
+                aria-label={`Color ${c}`}
+                aria-pressed={color === c}
+                onClick={() => {
+                  onColorChange(c);
+                  setOpen(false);
+                }}
+                className={[
+                  'h-7 w-7 rounded-full border transition-transform',
+                  color === c
+                    ? 'scale-110 border-bg ring-2 ring-brand-500'
+                    : 'border-border-strong hover:scale-105',
+                ].join(' ')}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+            {/* Native custom-color input (closed under a palette override). */}
+            {showCustom && (
+              <label
+                title="Custom color"
+                className={[
+                  'relative h-7 w-7 cursor-pointer overflow-hidden rounded-full border',
+                  !isPreset
+                    ? 'scale-110 border-bg ring-2 ring-brand-500'
+                    : 'border-border-strong hover:scale-105',
+                ].join(' ')}
+                style={{
+                  background: !isPreset
+                    ? color
+                    : 'conic-gradient(from 0deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #a855f7, #ef4444)',
+                }}
+              >
+                <input
+                  type="color"
+                  value={isHexColor(color) ? color : '#ffffff'}
+                  onChange={(e) => onColorChange(e.target.value)}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  aria-label="Pick a custom color"
+                />
+              </label>
+            )}
+          </div>
+
+          {enableWheel && showCustom && (
+            <>
+              <button
+                type="button"
+                aria-expanded={wheelOpen}
+                onClick={() => setWheelOpen((o) => !o)}
+                className="mt-2 w-full rounded-lg py-1 text-[12px] font-medium text-ink-400 transition-colors hover:bg-white/[0.06] hover:text-ink-700"
+              >
+                {wheelOpen ? 'Hide color wheel' : 'Color wheel…'}
+              </button>
+              {wheelOpen && (
+                <div className="mt-2 flex flex-col items-center">
+                  <ColorWheel color={color} onColorChange={onColorChange} onCommit={onCustomColor} />
+                  {customColors.length > 0 && (
+                    <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                      {customColors.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          title={c}
+                          aria-label={`Saved color ${c}`}
+                          onClick={() => {
+                            onColorChange(c);
+                            setOpen(false);
+                          }}
+                          className="h-5 w-5 rounded-full border border-border-strong hover:scale-110"
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       )}

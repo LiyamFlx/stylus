@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { Toolbar } from './Toolbar';
 import type { ComponentProps } from 'react';
 
@@ -53,6 +53,8 @@ describe('Toolbar variants (Phase 1 item 7)', () => {
     expect(screen.queryByRole('button', { name: /Learning Mode/i })).toBeNull();
     // Core surface intact:
     expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument();
+    // Colors live in a dropdown now — open it, then the swatches show.
+    fireEvent.click(screen.getByRole('button', { name: /^Color:/i }));
     expect(screen.getAllByRole('button', { name: /^Color /i }).length).toBeGreaterThan(0);
   });
 
@@ -68,6 +70,9 @@ describe('Toolbar variants (Phase 1 item 7)', () => {
 
   it('paletteOverride closes the color set (no custom color input)', () => {
     renderToolbar({ paletteOverride: ['#2563eb', '#000000'] });
+    // Open the color dropdown; the override shows exactly its 2 swatches and
+    // no custom-color input (a classroom palette is a closed set).
+    fireEvent.click(screen.getByRole('button', { name: /^Color:/i }));
     expect(screen.getAllByRole('button', { name: /^Color /i })).toHaveLength(2);
     expect(screen.queryByLabelText(/Pick a custom color/i)).toBeNull();
   });
