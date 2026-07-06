@@ -16,11 +16,12 @@ import { duplicateStrokes, recolorStrokes, reconcileSelection } from '../lib/sel
 import { penProfile, type PenType } from '../lib/penProfiles';
 import { smoothPoint } from '../lib/stabilizer';
 import { createId } from '../lib/id';
-import type { Bounds } from '../lib/geometry';
+import type { Bounds, PinchSample, ZoomRange } from '../lib/geometry';
 import {
   applyMoveOffset,
   clampPanToBounds,
   clampScale,
+  pinchDelta,
   eraserRadius,
   hitsSelectionBounds,
   hitsStroke,
@@ -45,6 +46,8 @@ interface UseDrawingOptions {
    * pan, zoom-anchor and any future view mutation share one rule.
    */
   panBounds?: Bounds | null;
+  /** Mode zoom bounds (ModeConfig.zoomRange). Default keeps legacy MIN/MAX. */
+  zoomRange?: ZoomRange;
   /** Active pen type. Defaults to fountain when omitted. */
   penType?: PenType;
   /** When true, damp jitter on the live stroke (low-lag smoothing). */
@@ -150,6 +153,7 @@ export function useDrawing({
   paper,
   ruling = 'college',
   panBounds = null,
+  zoomRange,
   penType = 'fountain',
   stabilizer = false,
   storageKey,
@@ -180,6 +184,19 @@ export function useDrawing({
   // In-progress stroke + active-gesture bookkeeping.
   const liveStrokeRef = useRef<Stroke | null>(null);
   const activePointerId = useRef<number | null>(null);
+
+  // ── Two-finger pinch (Phase 3 item 2) ──
+  // Live touch points by pointerId; a pinch engages the moment a second touch
+  // lands, DISCARDING any nascent single-finger stroke (the classic pinch-
+  // starts-as-accidental-draw problem). Rotation is deliberately out of scope.
+  const touchPointsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchPrevRef = useRef<PinchSample | null>(null);
+
+  const currentPinchSample = useCallback((): PinchSample | null => {
+    const pts = [...touchPointsRef.current.values()];
+    if (pts.length < 2) return null;
+    return { ax: pts[0].x, ay: pts[0].y, bx: pts[1].x, by: pts[1].y };
+  }, []);
 
   // Palm rejection is per-instance: sharing this across canvases (split view,
   // multi-window) would let a pen lift in one instance reject touch in another.
@@ -545,11 +562,78 @@ export function useDrawing({
 
   // ─── Pointer event handlers ─────────────────────────────────────────────────
 
+  /**
+   * Discard all in-flight per-tool work without committing (none of it
+   * touches history). Shared by pointercancel AND the pinch entry path — a
+   * second finger landing means "this was navigation, not ink", the same
+   * semantics as the browser stealing the pointer.
+   */
+  const discardInFlightWork = useCallback(() => {
+    liveStrokeRef.current = null;
+    onPenEndRef.current?.();
+    eraseWorkingRef.current = null;
+    erasedDuringDrag.current = false;
+    moveOffsetRef.current = { dx: 0, dy: 0 };
+    moveOriginRef.current = null;
+    // A cancelled lasso drops back to no selection; a cancelled move keeps the
+    // existing selection but drops the offset. Either way, reset the phase.
+    if (selectionPhaseRef.current === 'lasso') {
+      lassoRef.current = [];
+    }
+    selectionPhaseRef.current = 'idle';
+    setSelectionPhase('idle');
+    // Repaint both layers back to committed ink.
+    scheduleStaticRender();
+    scheduleOverlayRender();
+  }, [scheduleOverlayRender, scheduleStaticRender]);
+
+  const commitView = useCallback(
+    (next: ViewTransform) => {
+      const bounds = panBoundsRef.current;
+      if (bounds) {
+        const canvas = canvasRef.current;
+        next = clampPanToBounds(
+          next,
+          bounds,
+          canvas?.clientWidth ?? window.innerWidth,
+          canvas?.clientHeight ?? window.innerHeight,
+        );
+      }
+      viewRef.current = next;
+      setView(next);
+      // Both layers depend on the transform — repaint each once.
+      scheduleStaticRender();
+      scheduleOverlayRender();
+    },
+    [scheduleStaticRender, scheduleOverlayRender],
+  );
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
-      if (activePointerId.current !== null) return;
       if (isPalmRejected(e.pointerType)) return;
+
+      // ── two-finger pinch entry ──
+      if (e.pointerType === 'touch') {
+        touchPointsRef.current.set(e.pointerId, getCanvasPoint(e));
+        if (touchPointsRef.current.size === 2) {
+          // Second finger = navigation, not ink. Discard the nascent
+          // single-finger gesture (same semantics as pointercancel).
+          if (activePointerId.current !== null) {
+            try {
+              e.currentTarget.releasePointerCapture(activePointerId.current);
+            } catch { /* ignore */ }
+            activePointerId.current = null;
+            discardInFlightWork();
+          }
+          pinchPrevRef.current = currentPinchSample();
+          return;
+        }
+        if (touchPointsRef.current.size > 2) return; // ignore extra fingers
+      }
+      if (pinchPrevRef.current) return; // pinch owns the surface
+
+      if (activePointerId.current !== null) return;
 
       if (e.pointerType === 'pen') activePenPointerTypeRef.current = 'pen';
 
@@ -619,11 +703,38 @@ export function useDrawing({
       onPenSampleRef.current?.(point);
       scheduleOverlayRender();
     },
-    [eraseAt, getCanvasPoint, getPoint, isPalmRejected, scheduleOverlayRender],
+    [currentPinchSample, discardInFlightWork, eraseAt, getCanvasPoint, getPoint, isPalmRejected, scheduleOverlayRender],
   );
 
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
+      // ── pinch update: zoom at the midpoint, follow its drag ──
+      if (
+        e.pointerType === 'touch' &&
+        pinchPrevRef.current &&
+        touchPointsRef.current.has(e.pointerId)
+      ) {
+        touchPointsRef.current.set(e.pointerId, getCanvasPoint(e));
+        const prev = pinchPrevRef.current;
+        const next = currentPinchSample();
+        if (next) {
+          const d = pinchDelta(prev, next);
+          const v = viewRef.current;
+          const scale = clampScale(v.scale * d.factor, zoomRangeRef.current);
+          // The world point under the PREVIOUS midpoint lands on the NEW
+          // midpoint — one formula covers both the zoom anchor and the drag.
+          const prevMidWorldX = (d.midX - d.panDx) / v.scale + v.panX;
+          const prevMidWorldY = (d.midY - d.panDy) / v.scale + v.panY;
+          commitView({
+            scale,
+            panX: prevMidWorldX - d.midX / scale,
+            panY: prevMidWorldY - d.midY / scale,
+          });
+          pinchPrevRef.current = next;
+        }
+        return;
+      }
+
       if (e.pointerId !== activePointerId.current) return;
 
       const { tool: activeTool, size: activeSize } = settingsRef.current;
@@ -680,11 +791,23 @@ export function useDrawing({
       }
       scheduleOverlayRender();
     },
-    [buildPoint, clientToWorld, eraseAt, scheduleOverlayRender, scheduleStaticRender],
+    [buildPoint, clientToWorld, commitView, currentPinchSample, eraseAt, getCanvasPoint, scheduleOverlayRender, scheduleStaticRender],
   );
 
   const endGesture = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
+      // ── pinch bookkeeping ──
+      if (e.pointerType === 'touch') {
+        touchPointsRef.current.delete(e.pointerId);
+        if (pinchPrevRef.current) {
+          // Down to one finger: end the pinch. The survivor does nothing
+          // until lifted — it never becomes a stroke mid-flight.
+          pinchPrevRef.current =
+            touchPointsRef.current.size >= 2 ? currentPinchSample() : null;
+          return;
+        }
+      }
+
       if (e.pointerId !== activePointerId.current) return;
       try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
       activePointerId.current = null;
@@ -773,7 +896,7 @@ export function useDrawing({
       // static layer via the history effect (avoids a one-frame double draw).
       scheduleOverlayRender();
     },
-    [history, scheduleOverlayRender, scheduleStaticRender],
+    [currentPinchSample, history, scheduleOverlayRender, scheduleStaticRender],
   );
 
   /**
@@ -784,6 +907,15 @@ export function useDrawing({
    */
   const cancelGesture = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
+      // Pinch bookkeeping mirrors endGesture: a cancelled touch leaves the map.
+      if (e.pointerType === 'touch') {
+        touchPointsRef.current.delete(e.pointerId);
+        if (pinchPrevRef.current) {
+          pinchPrevRef.current =
+            touchPointsRef.current.size >= 2 ? currentPinchSample() : null;
+          return;
+        }
+      }
       if (e.pointerId !== activePointerId.current) return;
       try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
       activePointerId.current = null;
@@ -793,27 +925,9 @@ export function useDrawing({
         activePenPointerTypeRef.current = null;
       }
 
-      // Discard any in-flight per-tool work (none of it touches history).
-      liveStrokeRef.current = null;
-      onPenEndRef.current?.();
-      eraseWorkingRef.current = null;
-      erasedDuringDrag.current = false;
-      moveOffsetRef.current = { dx: 0, dy: 0 };
-      moveOriginRef.current = null;
-      // A cancelled lasso drops back to no selection; a cancelled move keeps the
-      // existing selection but drops the offset. Either way, reset the phase.
-      if (selectionPhaseRef.current === 'lasso') {
-        lassoRef.current = [];
-      }
-      selectionPhaseRef.current = 'idle';
-      setSelectionPhase('idle');
-
-      // Repaint both layers back to committed ink (undoing any move preview /
-      // erase working copy shown mid-gesture).
-      scheduleStaticRender();
-      scheduleOverlayRender();
+      discardInFlightWork();
     },
-    [scheduleOverlayRender, scheduleStaticRender],
+    [currentPinchSample, discardInFlightWork],
   );
 
   // ─── Toolbar operations ─────────────────────────────────────────────────────
@@ -882,32 +996,13 @@ export function useDrawing({
   // Mirrored so commitView (stable) always reads the current bounds.
   const panBoundsRef = useRef<Bounds | null>(panBounds);
   panBoundsRef.current = panBounds;
-
-  const commitView = useCallback(
-    (next: ViewTransform) => {
-      const bounds = panBoundsRef.current;
-      if (bounds) {
-        const canvas = canvasRef.current;
-        next = clampPanToBounds(
-          next,
-          bounds,
-          canvas?.clientWidth ?? window.innerWidth,
-          canvas?.clientHeight ?? window.innerHeight,
-        );
-      }
-      viewRef.current = next;
-      setView(next);
-      // Both layers depend on the transform — repaint each once.
-      scheduleStaticRender();
-      scheduleOverlayRender();
-    },
-    [scheduleStaticRender, scheduleOverlayRender],
-  );
+  const zoomRangeRef = useRef<ZoomRange | undefined>(zoomRange);
+  zoomRangeRef.current = zoomRange;
 
   const zoomBy = useCallback(
     (factor: number, screenX?: number, screenY?: number) => {
       const prev = viewRef.current;
-      const scale = clampScale(prev.scale * factor);
+      const scale = clampScale(prev.scale * factor, zoomRangeRef.current);
       if (scale === prev.scale) return;
       // Keep the anchor point stationary on screen while zooming.
       const canvas = overlayRef.current;
@@ -949,7 +1044,7 @@ export function useDrawing({
       const sy = e.clientY - rect.top;
       const prev = viewRef.current;
       if (e.ctrlKey || e.metaKey) {
-        const scale = clampScale(prev.scale * Math.exp(-e.deltaY * 0.01));
+        const scale = clampScale(prev.scale * Math.exp(-e.deltaY * 0.01), zoomRangeRef.current);
         if (scale === prev.scale) return;
         const worldX = sx / prev.scale + prev.panX;
         const worldY = sy / prev.scale + prev.panY;

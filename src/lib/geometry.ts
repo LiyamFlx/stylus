@@ -51,8 +51,49 @@ export const IDENTITY_VIEW: ViewTransform = { scale: 1, panX: 0, panY: 0 };
 export const MIN_SCALE = 0.25;
 export const MAX_SCALE = 4;
 
-export function clampScale(scale: number): number {
-  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+export interface ZoomRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * Clamp zoom. The optional range widens/narrows per mode (Phase 3 item 2:
+ * Canvas wants 0.1–8x, Notebook's fixed page stays conservative) — one
+ * function, an explicit range, no parallel bounds checks.
+ */
+export function clampScale(scale: number, range?: ZoomRange): number {
+  const min = range?.min ?? MIN_SCALE;
+  const max = range?.max ?? MAX_SCALE;
+  return Math.max(min, Math.min(max, scale));
+}
+
+/** One two-finger frame: both touch points in screen coords. */
+export interface PinchSample {
+  ax: number; ay: number;
+  bx: number; by: number;
+}
+
+/**
+ * Pure pinch step between two samples: scale factor from the distance ratio,
+ * the current midpoint (zoom anchor), and the midpoint's screen movement
+ * (pan). Rotation is deliberately NOT derived here — it lands as its own
+ * transform-audit ticket, not a by-product of pinch.
+ */
+export function pinchDelta(prev: PinchSample, next: PinchSample): {
+  factor: number;
+  midX: number;
+  midY: number;
+  panDx: number;
+  panDy: number;
+} {
+  const prevDist = Math.hypot(prev.bx - prev.ax, prev.by - prev.ay);
+  const nextDist = Math.hypot(next.bx - next.ax, next.by - next.ay);
+  const factor = prevDist > 0 ? nextDist / prevDist : 1;
+  const prevMidX = (prev.ax + prev.bx) / 2;
+  const prevMidY = (prev.ay + prev.by) / 2;
+  const midX = (next.ax + next.bx) / 2;
+  const midY = (next.ay + next.by) / 2;
+  return { factor, midX, midY, panDx: midX - prevMidX, panDy: midY - prevMidY };
 }
 
 /** Convert a screen-space (canvas-relative) point to world space. */

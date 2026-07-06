@@ -37,6 +37,8 @@ export interface ModeConfig {
   toolbarPosition: 'top' | 'bottom';
   /** Tool selected when a document of this mode opens. */
   defaultTool: Tool;
+  /** Zoom bounds (Phase 3 item 2) — Canvas is wide, paged modes conservative. */
+  zoomRange: { min: number; max: number };
 }
 
 /** Classroom palette: blue + black pens, red correction, yellow highlighter. */
@@ -57,6 +59,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
     touchActionDefault: 'none',
     toolbarPosition: 'top',
     defaultTool: 'pen',
+    zoomRange: { min: 0.1, max: 8 },
   },
   notebook: {
     id: 'notebook',
@@ -67,6 +70,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
     touchActionDefault: 'none',
     toolbarPosition: 'top',
     defaultTool: 'pen',
+    zoomRange: { min: 0.5, max: 4 },
   },
   mobile: {
     id: 'mobile',
@@ -77,6 +81,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
     touchActionDefault: 'manipulation',
     toolbarPosition: 'bottom',
     defaultTool: 'text', // typing-first
+    zoomRange: { min: 0.5, max: 4 },
   },
 };
 

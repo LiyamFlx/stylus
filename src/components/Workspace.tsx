@@ -26,7 +26,7 @@ import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
 import { A4_BOUNDS, eraserRadius, worldToScreen } from '../lib/geometry';
-import { effectiveTouchAction } from '../lib/modes';
+import { effectiveTouchAction, modeConfig } from '../lib/modes';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { importChunk } from '../lib/chunkReload';
 import {
@@ -162,6 +162,7 @@ export function Workspace({
     storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
     // Notebook pages are A4-shaped: pan can't take the page fully off-screen.
     panBounds: pageId ? A4_BOUNDS : null,
+    zoomRange: modeConfig(appMode).zoomRange,
     initialHistory,
     onStrokeEnd: (stroke: Stroke) => {
       const el = drawing.canvasRef.current;

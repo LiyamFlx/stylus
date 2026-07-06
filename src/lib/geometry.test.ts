@@ -7,6 +7,8 @@ import {
   A4_BOUNDS,
   boundsIntersect,
   clampPanToBounds,
+  clampScale,
+  pinchDelta,
   inkBounds,
   MAX_SCALE,
   MIN_SCALE,
@@ -327,5 +329,45 @@ describe('clampPanToBounds', () => {
     const out = clampPanToBounds({ scale: 0.01, panX: 0, panY: 0 }, A4_BOUNDS, vp.w, vp.h);
     expect(Number.isFinite(out.panX)).toBe(true);
     expect(Number.isFinite(out.panY)).toBe(true);
+  });
+});
+
+// ─── clampScale range + pinchDelta (Phase 3 item 2) ──────────────────────────
+
+describe('clampScale with an explicit range', () => {
+  it('defaults preserve legacy bounds', () => {
+    expect(clampScale(100)).toBeLessThanOrEqual(4);
+    expect(clampScale(0.0001)).toBeGreaterThan(0.01);
+  });
+  it('a mode range widens or narrows the clamp', () => {
+    expect(clampScale(6, { min: 0.1, max: 8 })).toBe(6);
+    expect(clampScale(6, { min: 0.5, max: 4 })).toBe(4);
+    expect(clampScale(0.2, { min: 0.1, max: 8 })).toBe(0.2);
+  });
+});
+
+describe('pinchDelta', () => {
+  it('spreading fingers doubles the factor', () => {
+    const prev = { ax: 100, ay: 100, bx: 200, by: 100 };
+    const next = { ax: 50, ay: 100, bx: 250, by: 100 };
+    const d = pinchDelta(prev, next);
+    expect(d.factor).toBeCloseTo(2);
+    expect(d.midX).toBe(150); // midpoint unchanged
+    expect(d.panDx).toBe(0);
+  });
+
+  it('a parallel two-finger drag is pure pan (factor 1)', () => {
+    const prev = { ax: 100, ay: 100, bx: 200, by: 100 };
+    const next = { ax: 130, ay: 140, bx: 230, by: 140 };
+    const d = pinchDelta(prev, next);
+    expect(d.factor).toBeCloseTo(1);
+    expect(d.panDx).toBe(30);
+    expect(d.panDy).toBe(40);
+  });
+
+  it('degenerate zero-distance previous sample yields factor 1, not NaN', () => {
+    const prev = { ax: 100, ay: 100, bx: 100, by: 100 };
+    const next = { ax: 90, ay: 100, bx: 110, by: 100 };
+    expect(pinchDelta(prev, next).factor).toBe(1);
   });
 });
