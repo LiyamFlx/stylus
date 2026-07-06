@@ -21,8 +21,12 @@ import {
   PlayIcon,
   StopIcon,
   SparkleIcon,
+  FocusIcon,
+  LockIcon,
+  UnlockIcon,
 } from './icons';
 import type { PaletteId } from '../lib/kandinsky/audio';
+import type { ToolbarVariant } from '../lib/modes';
 
 /** Human-readable label for the current paper guide, used in the tooltip. */
 const PAPER_LABELS: Record<PaperStyle, string> = {
@@ -68,6 +72,20 @@ interface ToolbarProps {
   palette: PaletteId;
   /** Mode color-palette override (ModeConfig.paletteOverride). */
   paletteOverride?: readonly string[];
+  /**
+   * Toolbar composition (Phase 1 item 7):
+   * - 'full': everything (canvas / desktop default)
+   * - 'minimal': hides non-classroom, non-desktop peripheral groups —
+   *   pen-type picker, music/learning, scanner+BT input methods. Mobile Mode
+   *   (Phase 2) reuses this variant as-is; keep its scope generic.
+   * - 'restricted': exam lock — pen + undo + unlock only.
+   */
+  variant?: ToolbarVariant;
+  /** Exam-lock state + toggle (notebook mode). Omit to hide the button. */
+  examLock?: boolean;
+  onToggleExamLock?: () => void;
+  /** Distraction-free: hide all chrome (Phase 1 item 8). */
+  onHideChrome?: () => void;
   onCyclePalette: () => void;
 }
 
@@ -471,6 +489,10 @@ export function Toolbar(props: ToolbarProps) {
     onPlayToggle,
     palette,
     paletteOverride,
+    variant = 'full',
+    examLock = false,
+    onToggleExamLock,
+    onHideChrome,
     onCyclePalette,
   } = props;
 
@@ -492,6 +514,30 @@ export function Toolbar(props: ToolbarProps) {
     [onPenTypeChange, onToolChange],
   );
 
+  const minimal = variant !== 'full';
+
+  // Exam lock: pen + undo + unlock. Nothing else renders — a closed surface,
+  // not a styled-down full toolbar.
+  if (variant === 'restricted') {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
+          <IconButton label="Pen" active={tool === 'pen'} onClick={() => onToolChange('pen')}>
+            <PenIcon />
+          </IconButton>
+          <IconButton label="Undo" disabled={!canUndo} onClick={onUndo}>
+            <UndoIcon />
+          </IconButton>
+          {onToggleExamLock && (
+            <IconButton label="Exit exam lock" active onClick={onToggleExamLock}>
+              <UnlockIcon />
+            </IconButton>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const controls = (
     <>
       <IconButton
@@ -502,7 +548,7 @@ export function Toolbar(props: ToolbarProps) {
       >
         <PenIcon />
       </IconButton>
-      {tool === 'pen' && (
+      {tool === 'pen' && !minimal && (
         <PenTypePicker penType={penType} onPenTypeChange={handlePenTypeChange} />
       )}
       <IconButton
@@ -548,7 +594,7 @@ export function Toolbar(props: ToolbarProps) {
         <TrashIcon />
       </IconButton>
 
-      {inputMethodGroup}
+      {!minimal && inputMethodGroup}
 
       <Divider />
       <ConvertButton
@@ -563,6 +609,8 @@ export function Toolbar(props: ToolbarProps) {
         <FileIcon />
       </IconButton>
 
+      {!minimal && (
+      <>
       <Divider />
       <IconButton
         label={musicMode ? 'Turn music mode off' : 'Turn music mode on'}
@@ -610,6 +658,24 @@ export function Toolbar(props: ToolbarProps) {
             />
           </button>
         </>
+      )}
+      </>
+      )}
+
+      {(onToggleExamLock || onHideChrome) && <Divider />}
+      {onToggleExamLock && (
+        <IconButton
+          label={examLock ? 'Exit exam lock' : 'Exam lock — pen and undo only'}
+          active={examLock}
+          onClick={onToggleExamLock}
+        >
+          <LockIcon />
+        </IconButton>
+      )}
+      {onHideChrome && (
+        <IconButton label="Distraction-free — hide all controls" onClick={onHideChrome}>
+          <FocusIcon />
+        </IconButton>
       )}
     </>
   );

@@ -19,6 +19,7 @@ import type { RefineAction } from '../lib/ai';
 import { copyText } from '../lib/clipboard';
 import { createId } from '../lib/id';
 import { useEditingPrefs } from '../lib/editingPrefsContext';
+import { loadStrokes } from '../hooks/useLocalStorage';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -26,6 +27,7 @@ import { A4_BOUNDS, eraserRadius, worldToScreen } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
 import {
   inkKey,
+  listPages,
   pageInkKey,
   readAux,
   readPageAux,
@@ -35,6 +37,7 @@ import {
   writePageAux,
 } from '../lib/documents';
 import type { HistorySnapshot } from '../hooks/useHistory';
+import type { ToolbarVariant } from '../lib/modes';
 import type { RulingDensity, PaperStyle, Stroke, TextItem } from '../types';
 
 interface WorkspaceProps {
@@ -56,6 +59,9 @@ interface WorkspaceProps {
   pageNav?: React.ReactNode;
   /** Mode color palette (ModeConfig.paletteOverride) — closed set when given. */
   paletteOverride?: readonly string[];
+  /** Base toolbar composition from ModeConfig; exam lock overrides to
+   *  'restricted' locally. */
+  toolbarVariant?: ToolbarVariant;
   /** Undo/redo seed from the page-flip history cache. */
   initialHistory?: HistorySnapshot<Stroke[]>;
   /** Called on unmount so App can cache this page's undo/redo stacks. */
@@ -79,6 +85,7 @@ export function Workspace({
   pagePaper,
   pageNav,
   paletteOverride,
+  toolbarVariant = 'full',
   initialHistory,
   onHistorySnapshot,
 }: WorkspaceProps) {
@@ -117,6 +124,21 @@ export function Workspace({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Exam lock (item 7): overrides the mode's toolbar variant to 'restricted'.
+  // Notebook-only affordance — gated on pageId at the render site.
+  const [examLock, setExamLock] = useState(false);
+  // Distraction-free (item 8): one boolean, chrome fades via CSS — not a
+  // separate component tree.
+  const [chromeHidden, setChromeHidden] = useState(false);
+  useEffect(() => {
+    if (!chromeHidden) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChromeHidden(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [chromeHidden]);
 
   const music = useMusicMode();
   const learningAudio = useLearningAudio();
@@ -341,9 +363,25 @@ export function Workspace({
   }, [drawing.strokes, exportOpts]);
 
   const handleExportPDF = useCallback(async () => {
-    const { exportPDF } = await importChunk(() => import('../lib/export'));
-    exportPDF(drawing.strokes, exportOpts());
-  }, [drawing.strokes, exportOpts]);
+    const mod = await importChunk(() => import('../lib/export'));
+    if (!pageId) {
+      mod.exportPDF(drawing.strokes, exportOpts());
+      return;
+    }
+    // Notebook doc: one true-A4 PDF page per notebook page. Only the active
+    // page lives in memory — every other page's ink/texts load from storage.
+    // FULL, unculled reads by design: this is an export, not a viewport paint
+    // (see RenderOptions.cull). Loading stays inside this async chunk
+    // boundary so a large notebook never blocks the UI thread.
+    const pages = listPages(documentId).map((p) => ({
+      strokes:
+        p.id === pageId ? drawing.strokes : loadStrokes(pageInkKey(documentId, p.id)),
+      paper: p.paper,
+      ruling,
+      texts: p.id === pageId ? texts : readPageAux(documentId, p.id).texts,
+    }));
+    mod.exportPDFPages(pages);
+  }, [pageId, documentId, ruling, texts, drawing.strokes, exportOpts]);
 
   const handleRecognize = useCallback(() => {
     setPanelAutoAction(null);
@@ -643,6 +681,17 @@ export function Workspace({
         />
       )}
 
+      {/* Chrome layer — distraction-free fades it out as one unit and kills
+          pointer events on everything inside (children set their own
+          pointer-events, hence the descendant override). */}
+      <div
+        className={
+          chromeHidden
+            ? 'pointer-events-none opacity-0 transition-opacity duration-300 [&_*]:!pointer-events-none'
+            : 'transition-opacity duration-300'
+        }
+        aria-hidden={chromeHidden}
+      >
       {/* Sidebar opener + current document name */}
       <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
         <button
@@ -668,6 +717,10 @@ export function Workspace({
 
       <Toolbar
         paletteOverride={paletteOverride}
+        variant={examLock ? 'restricted' : toolbarVariant}
+        examLock={examLock}
+        onToggleExamLock={pageId ? () => setExamLock((v) => !v) : undefined}
+        onHideChrome={() => setChromeHidden(true)}
         tool={tool}
         color={color}
         size={size}
@@ -797,6 +850,20 @@ export function Workspace({
       {pageNav}
 
       <BrandFooter />
+      </div>
+
+      {/* Distraction-free recall: the one element that survives the fade. */}
+      {chromeHidden && (
+        <button
+          type="button"
+          aria-label="Show controls"
+          title="Show controls (Esc)"
+          onClick={() => setChromeHidden(false)}
+          className="absolute inset-x-0 top-0 z-30 mx-auto h-6 w-24 rounded-b-lg border border-t-0 border-border bg-bg-muted/60 text-[10px] text-ink-400/70 backdrop-blur-pill transition-colors hover:bg-bg-muted"
+        >
+          ⌄
+        </button>
+      )}
 
       <Toaster />
     </main>

@@ -243,3 +243,26 @@ export const GlobeIcon = ({ size = 20, className }: IconProps) => (
     <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" />
   </svg>
 );
+
+export const LockIcon = ({ size = 20, className }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 018 0v4" />
+  </svg>
+);
+
+export const UnlockIcon = ({ size = 20, className }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 017.7-1.5" />
+  </svg>
+);
+
+export const FocusIcon = ({ size = 20, className }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M8 3H5a2 2 0 00-2 2v3" />
+    <path d="M16 3h3a2 2 0 012 2v3" />
+    <path d="M8 21H5a2 2 0 01-2-2v-3" />
+    <path d="M16 21h3a2 2 0 002-2v-3" />
+  </svg>
+);
