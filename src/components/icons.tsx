@@ -31,6 +31,13 @@ export const PenIcon = ({ size = 20, className }: IconProps) => (
   </svg>
 );
 
+/** Small downward caret — a dropdown affordance (e.g. the pen-type picker). */
+export const ChevronDownIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
 export const EraserIcon = ({ size = 20, className }: IconProps) => (
   <svg {...svgProps(size, className)}>
     <path d="M20 20H7L3 16a2 2 0 010-3l9-9a2 2 0 013 0l5 5a2 2 0 010 3l-7 7" />

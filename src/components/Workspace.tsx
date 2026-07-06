@@ -792,7 +792,7 @@ export function Workspace({
           title={documentName}
           aria-label={`Current document: ${documentName} — open menu`}
           onClick={onOpenSidebar}
-          className="hidden h-11 max-w-[40vw] items-center truncate rounded-full border border-border bg-bg-muted/80 px-4 text-sm font-medium text-ink-700 shadow-pop backdrop-blur-pill sm:flex"
+          className="hidden h-11 max-w-[24vw] items-center truncate rounded-full border border-border bg-bg-muted/80 px-4 text-sm font-medium text-ink-700 shadow-pop backdrop-blur-pill sm:flex"
         >
           <span className="truncate">{documentName}</span>
         </button>

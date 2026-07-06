@@ -4,6 +4,7 @@ import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
 import { PEN_TYPES, penProfile, type PenType } from '../lib/penProfiles';
 import {
   PenIcon,
+  ChevronDownIcon,
   EraserIcon,
   TypeIcon,
   UndoIcon,
@@ -484,13 +485,23 @@ function PenTypePicker({
 
   return (
     <div ref={ref} className="relative">
-      <IconButton
-        label={`Pen: ${penProfile(penType).label}`}
-        active={open}
+      {/* A compact caret — the pen-*type* dropdown, distinct from the Pen tool
+          button beside it (both used to render an identical PenIcon, which read
+          as a duplicated pen). */}
+      <button
+        type="button"
+        title={`Pen: ${penProfile(penType).label}`}
+        aria-label={`Pen type: ${penProfile(penType).label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
+        className={[
+          'flex h-9 w-6 items-center justify-center rounded-full transition-colors',
+          open ? 'bg-white/[0.08] text-ink-900' : 'text-ink-700 hover:bg-white/[0.06]',
+        ].join(' ')}
       >
-        <PenIcon />
-      </IconButton>
+        <ChevronDownIcon size={16} />
+      </button>
       {open && (
         <div
           role="menu"
@@ -785,9 +796,13 @@ export function Toolbar(props: ToolbarProps) {
   }
 
   if (isDesktop) {
+    // Left-pad the centering region past the menu + document-name cluster
+    // (left-4 + 44px menu + gap + up to ~30vw doc pill) so the centered pill
+    // can never overlap it and steal its taps. Right-pad symmetrically so the
+    // pill stays visually centered in the free space.
     return (
-      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center">
-        <div className="pointer-events-auto flex max-w-[calc(100vw-152px)] items-center gap-1 overflow-x-auto rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
+      <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-[max(4rem,30vw)]">
+        <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill">
           {controls}
         </div>
       </div>
