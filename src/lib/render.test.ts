@@ -21,7 +21,11 @@ function mockCtx() {
     stroke: vi.fn(),
     clearRect: vi.fn(),
     fillRect: vi.fn(),
+    strokeRect: vi.fn(),
     drawImage: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
+    translate: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
   };
@@ -130,5 +134,39 @@ describe('renderAll', () => {
     });
     expect(ctx.drawImage).not.toHaveBeenCalled();
     expect(ctx.stroke).not.toHaveBeenCalled();
+  });
+
+  describe('bounded page (notebook A4)', () => {
+    const pageBounds = { minX: 0, minY: 0, maxX: 794, maxY: 1123 };
+    const viewRect = { minX: -100, minY: -50, maxX: 900, maxY: 700 };
+
+    it('fills a backdrop, clips to the page, and strokes the page edge', () => {
+      const ctx = mockCtx();
+      renderAll(ctx as unknown as CanvasRenderingContext2D, [], 1000, 700, {
+        paper: 'notebook',
+        pageBounds,
+        viewRect,
+      });
+      // Backdrop covers the visible rect.
+      expect(ctx.fillRect).toHaveBeenCalledWith(-100, -50, 1000, 750);
+      // Paper is clipped to the page rect and offset to its origin.
+      expect(ctx.clip).toHaveBeenCalled();
+      expect(ctx.translate).toHaveBeenCalledWith(0, 0);
+      // The page gets a visible edge.
+      expect(ctx.strokeRect).toHaveBeenCalledWith(0.5, 0.5, 793, 1122);
+    });
+
+    it('fills the sheet cream even for a blank notebook page', () => {
+      const ctx = mockCtx();
+      renderAll(ctx as unknown as CanvasRenderingContext2D, [], 1000, 700, {
+        paper: 'blank',
+        pageBounds,
+        viewRect,
+      });
+      // A blank bounded page is still a cream sheet, not the dark canvas.
+      expect(ctx.fillStyle).toBeTypeOf('string');
+      expect(ctx.clip).toHaveBeenCalled();
+      expect(ctx.strokeRect).toHaveBeenCalled();
+    });
   });
 });

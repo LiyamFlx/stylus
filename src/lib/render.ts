@@ -107,7 +107,21 @@ export interface RenderOptions {
   cull?: Bounds | null;
   /** Line spacing for the 'notebook' paper. Ignored by other styles. */
   ruling?: RulingDensity;
+  /**
+   * Bounded page rect (world coords) — the notebook A4 sheet. When set, the
+   * paper is drawn ONLY inside this rect (as a real page with edges) and the
+   * area around it gets a neutral backdrop, instead of the paper bleeding to
+   * every window edge. `viewRect` (the visible world region) sizes the
+   * backdrop. Omit for the infinite canvas (paper fills the whole surface).
+   */
+  pageBounds?: Bounds | null;
+  /** Visible world rect, needed to size the backdrop around a bounded page. */
+  viewRect?: Bounds | null;
 }
+
+/** Backdrop behind a bounded page, and the page's own edge. */
+const PAGE_BACKDROP = '#111114';
+const PAGE_EDGE = 'rgba(0, 0, 0, 0.55)';
 
 /**
  * Cache the rendered paper guide as an offscreen bitmap so we don't re-stroke
@@ -156,14 +170,55 @@ export function renderAll(
   strokes: Stroke[],
   width: number,
   height: number,
-  { paper = 'blank', background, cull = null, ruling = 'college' }: RenderOptions = {},
+  {
+    paper = 'blank',
+    background,
+    cull = null,
+    ruling = 'college',
+    pageBounds = null,
+    viewRect = null,
+  }: RenderOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
   if (background) {
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, width, height);
   }
-  if (paper !== 'blank') {
+
+  if (pageBounds) {
+    // Bounded page (notebook A4): neutral backdrop around the sheet, then the
+    // paper drawn only inside the page rect, with an edge line so it reads as a
+    // real vertical A4 sheet floating on the canvas.
+    const pw = pageBounds.maxX - pageBounds.minX;
+    const ph = pageBounds.maxY - pageBounds.minY;
+    if (viewRect) {
+      ctx.fillStyle = PAGE_BACKDROP;
+      ctx.fillRect(
+        viewRect.minX,
+        viewRect.minY,
+        viewRect.maxX - viewRect.minX,
+        viewRect.maxY - viewRect.minY,
+      );
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pageBounds.minX, pageBounds.minY, pw, ph);
+    ctx.clip();
+    ctx.translate(pageBounds.minX, pageBounds.minY);
+    if (paper !== 'blank') {
+      const bitmap = getPaperBitmap(paper, pw, ph, ruling);
+      if (bitmap) ctx.drawImage(bitmap, 0, 0, pw, ph);
+      else drawPaper(ctx, paper, pw, ph, ruling);
+    } else {
+      // A blank notebook page is still a white-ish sheet, not the dark canvas.
+      ctx.fillStyle = '#FDF6E3';
+      ctx.fillRect(0, 0, pw, ph);
+    }
+    ctx.restore();
+    ctx.strokeStyle = PAGE_EDGE;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pageBounds.minX + 0.5, pageBounds.minY + 0.5, pw - 1, ph - 1);
+  } else if (paper !== 'blank') {
     const bitmap = getPaperBitmap(paper, width, height, ruling);
     if (bitmap) {
       ctx.drawImage(bitmap, 0, 0, width, height);
@@ -171,6 +226,7 @@ export function renderAll(
       drawPaper(ctx, paper, width, height, ruling);
     }
   }
+
   for (const stroke of strokes) {
     if (cull) {
       const b = cachedStrokeBounds(stroke);

@@ -173,6 +173,10 @@ export function useDrawing({
   // ─── View (zoom + pan) ────────────────────────────────────────────────────────
   // Ref is authoritative for the render/input hot paths; state drives the UI.
   const viewRef = useRef<ViewTransform>(IDENTITY_VIEW);
+  // Page rect for bounded modes (notebook A4). Declared early because both the
+  // render path (paintStatic) and the pan clamp read it.
+  const panBoundsRef = useRef<Bounds | null>(panBounds);
+  panBoundsRef.current = panBounds;
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW);
   const { save, load } = useLocalStorage(storageKey);
 
@@ -309,10 +313,15 @@ export function useDrawing({
       // RenderOptions.cull).
       const tl = screenToWorld(0, 0, viewRef.current);
       const br = screenToWorld(canvas.clientWidth, canvas.clientHeight, viewRef.current);
+      const viewRect = { minX: tl.x, minY: tl.y, maxX: br.x, maxY: br.y };
       renderAll(ctx, source ?? strokesRef.current, canvas.clientWidth, canvas.clientHeight, {
         paper: settingsRef.current.paper,
         ruling: settingsRef.current.ruling,
-        cull: { minX: tl.x, minY: tl.y, maxX: br.x, maxY: br.y },
+        cull: viewRect,
+        // Notebook: draw the paper as a bounded A4 page (panBounds IS the page
+        // rect) with a backdrop around it, not bled to the window edges.
+        pageBounds: panBoundsRef.current,
+        viewRect,
       });
     },
     [applyTransform, clearDevice],
@@ -338,6 +347,30 @@ export function useDrawing({
     window.addEventListener('resize', resizeCanvas);
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [resizeCanvas]);
+
+  // Center a bounded page (notebook A4) horizontally in the viewport on mount,
+  // so it opens like a document sheet rather than pinned to the left edge. Runs
+  // once per page instance (Workspace remounts per page/doc). No-op for the
+  // infinite canvas.
+  const didCenterRef = useRef(false);
+  useLayoutEffect(() => {
+    if (didCenterRef.current) return;
+    const bounds = panBoundsRef.current;
+    const canvas = overlayRef.current;
+    if (!bounds || !canvas) return;
+    didCenterRef.current = true;
+    const pageW = bounds.maxX - bounds.minX;
+    const vw = canvas.clientWidth;
+    const scale = viewRef.current.scale;
+    // panX such that the page is centered: screen = (world - pan) * scale.
+    const panX = bounds.minX - (vw / scale - pageW) / 2;
+    const next = { ...viewRef.current, panX };
+    viewRef.current = next;
+    setView(next);
+    scheduleStaticRender();
+    scheduleOverlayRender();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Render loop ────────────────────────────────────────────────────────────
 
@@ -993,9 +1026,7 @@ export function useDrawing({
 
   // ─── View controls (zoom + pan) ───────────────────────────────────────────────
 
-  // Mirrored so commitView (stable) always reads the current bounds.
-  const panBoundsRef = useRef<Bounds | null>(panBounds);
-  panBoundsRef.current = panBounds;
+  // panBoundsRef declared earlier (both render + pan clamp read it).
   const zoomRangeRef = useRef<ZoomRange | undefined>(zoomRange);
   zoomRangeRef.current = zoomRange;
 
