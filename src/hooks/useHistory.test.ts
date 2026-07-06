@@ -106,3 +106,43 @@ describe('useHistory', () => {
     expect(result.current.canRedo).toBe(false);
   });
 });
+
+describe('snapshot + seed (notebook page-flip cache)', () => {
+  it('snapshot captures past/present/future exactly', () => {
+    const { result } = renderHook(() => useHistory<number[]>([]));
+    act(() => result.current.set([1]));
+    act(() => result.current.set([1, 2]));
+    act(() => result.current.undo());
+    const snap = result.current.snapshot();
+    expect(snap.past).toEqual([[]]);
+    expect(snap.present).toEqual([1]);
+    expect(snap.future).toEqual([[1, 2]]);
+  });
+
+  it('a seeded instance restores undo AND redo across a remount', () => {
+    const a = renderHook(() => useHistory<number[]>([]));
+    act(() => a.result.current.set([1]));
+    act(() => a.result.current.set([1, 2]));
+    act(() => a.result.current.undo());
+    const snap = a.result.current.snapshot();
+    a.unmount();
+
+    // "Flip back to the page": new instance seeded from the cached snapshot.
+    const b = renderHook(() => useHistory<number[]>([], snap));
+    expect(b.result.current.present).toEqual([1]);
+    expect(b.result.current.canUndo).toBe(true);
+    expect(b.result.current.canRedo).toBe(true);
+    act(() => b.result.current.redo());
+    expect(b.result.current.present).toEqual([1, 2]);
+    act(() => b.result.current.undo());
+    act(() => b.result.current.undo());
+    expect(b.result.current.present).toEqual([]);
+  });
+
+  it('an undefined seed behaves exactly like no seed', () => {
+    const { result } = renderHook(() => useHistory<number[]>([7], undefined));
+    expect(result.current.present).toEqual([7]);
+    expect(result.current.canUndo).toBe(false);
+    expect(result.current.canRedo).toBe(false);
+  });
+});

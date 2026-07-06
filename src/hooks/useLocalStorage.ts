@@ -62,6 +62,32 @@ function writeNow(key: string, strokes: Stroke[]): void {
  * write is flushed on `pagehide` and on unmount so nothing is lost when the tab
  * closes inside the debounce window.
  */
+/**
+ * Pure one-shot stroke load for an arbitrary key — used by page thumbnails
+ * and the multi-page export loader, which read pages that are NOT the mounted
+ * document. Same validation as the hook's `load`.
+ */
+export function loadStrokes(key: string): Stroke[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      (parsed as PersistedDrawing).version !== 1
+    ) {
+      return [];
+    }
+    const strokes = (parsed as PersistedDrawing).strokes;
+    if (!Array.isArray(strokes)) return [];
+    return strokes.filter(isStroke);
+  } catch (err) {
+    console.warn('[stylus] restore failed', err);
+    return [];
+  }
+}
+
 export function useLocalStorage(storageKey: string = DEFAULT_STORAGE_KEY) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Stroke[] | null>(null);
@@ -89,26 +115,7 @@ export function useLocalStorage(storageKey: string = DEFAULT_STORAGE_KEY) {
     [flush],
   );
 
-  const load = useCallback((): Stroke[] => {
-    try {
-      const raw = localStorage.getItem(keyRef.current);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as unknown;
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        (parsed as PersistedDrawing).version !== 1
-      ) {
-        return [];
-      }
-      const strokes = (parsed as PersistedDrawing).strokes;
-      if (!Array.isArray(strokes)) return [];
-      return strokes.filter(isStroke);
-    } catch (err) {
-      console.warn('[stylus] restore failed', err);
-      return [];
-    }
-  }, []);
+  const load = useCallback((): Stroke[] => loadStrokes(keyRef.current), []);
 
   const clear = useCallback(() => {
     pending.current = null;

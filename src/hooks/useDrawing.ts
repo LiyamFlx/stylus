@@ -9,6 +9,7 @@ import {
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
+import type { HistorySnapshot } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
 import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
 import { duplicateStrokes, recolorStrokes, reconcileSelection } from '../lib/selectionOps';
@@ -41,6 +42,14 @@ interface UseDrawingOptions {
   stabilizer?: boolean;
   /** localStorage key for this document's strokes. */
   storageKey?: string;
+  /**
+   * Seed the undo/redo history instead of starting empty (notebook page-flip
+   * cache). When provided, the storage load is skipped — the seed IS the
+   * page's state, including its undo stacks. Constructor input only; no
+   * internal engine logic changes (the sanctioned exception to "don't touch
+   * useDrawing for pagination").
+   */
+  initialHistory?: HistorySnapshot<Stroke[]>;
   /** Fired the moment a pen stroke commits — used for live music feedback. */
   onStrokeEnd?: (stroke: Stroke) => void;
   /** Optional live side-channel for per-sample pen feedback (Learning Mode
@@ -88,6 +97,8 @@ export interface UseDrawingResult {
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   /** Abort the in-flight gesture without committing (pointercancel). */
   onPointerCancel: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
+  /** Capture the current undo/redo history (notebook page-flip cache). */
+  getHistorySnapshot: () => HistorySnapshot<Stroke[]>;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -135,10 +146,14 @@ export function useDrawing({
   onPenStart,
   onPenSample,
   onPenEnd,
+  initialHistory,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const history = useHistory<Stroke[]>([]);
+  // Captured once — a history seed only makes sense at mount (the page this
+  // instance was created for). Later prop changes are ignored by design.
+  const initialHistoryRef = useRef<HistorySnapshot<Stroke[]> | null>(initialHistory ?? null);
+  const history = useHistory<Stroke[]>([], initialHistoryRef.current ?? undefined);
 
   // ─── View (zoom + pan) ────────────────────────────────────────────────────────
   // Ref is authoritative for the render/input hot paths; state drives the UI.
@@ -356,6 +371,9 @@ export function useDrawing({
   // ─── Restore from storage ───────────────────────────────────────────────────
 
   useEffect(() => {
+    // Seeded from the page-flip history cache → the seed is authoritative;
+    // do not overwrite it with the (possibly staler) storage payload.
+    if (initialHistoryRef.current) return;
     const restored = load();
     if (restored.length > 0) {
       history.reset(restored);
@@ -969,6 +987,7 @@ export function useDrawing({
       onPointerMove,
       onPointerUp: endGesture,
       onPointerCancel: cancelGesture,
+      getHistorySnapshot: history.snapshot,
       undo,
       redo,
       canUndo: history.canUndo,
@@ -991,7 +1010,6 @@ export function useDrawing({
       clear,
       isEmpty,
       selectionState,
-      viewState,
-    ],
+      viewState, history.snapshot,],
   );
 }

@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
+import { PageNav } from './components/PageNav';
 import { useDocuments } from './hooks/useDocuments';
+import { usePages } from './hooks/usePages';
+import type { HistorySnapshot } from './hooks/useHistory';
+import type { Stroke } from './types';
 import { loadProfile, saveProfile } from './lib/profile';
 import { EditingPrefsProvider } from './lib/editingPrefs';
 import { Tour } from './components/Tour';
@@ -26,6 +30,46 @@ export default function App() {
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
   const tour = useTour();
+
+  // ── Notebook pagination (Phase 1) ──
+  // Page state lives here — above Workspace — because flipping pages remounts
+  // Workspace (keyed below), and the state must survive that.
+  const isNotebook = currentDoc?.mode === 'notebook';
+  const pagesApi = usePages(documents.currentId, isNotebook);
+
+  // Page-flip undo/redo cache (capped LRU): flip to page 2 and back, and
+  // Cmd+Z still works. Keyed per doc+page; cap keeps a 60-page notebook from
+  // pinning 60 undo stacks in memory.
+  const HISTORY_CACHE_MAX = 8;
+  const historyCache = useRef(new Map<string, HistorySnapshot<Stroke[]>>());
+  const cacheKey = useCallback(
+    (pageId: string) => `${documents.currentId}:${pageId}`,
+    [documents.currentId],
+  );
+  const cachePageHistory = useCallback(
+    (pageId: string, snap: HistorySnapshot<Stroke[]>) => {
+      const cache = historyCache.current;
+      const key = cacheKey(pageId);
+      cache.delete(key); // re-insert to refresh LRU position
+      cache.set(key, snap);
+      while (cache.size > HISTORY_CACHE_MAX) {
+        const oldest = cache.keys().next().value;
+        if (oldest === undefined) break;
+        cache.delete(oldest);
+      }
+    },
+    [cacheKey],
+  );
+  const removeActivePage = useCallback(() => {
+    // Evict the deleted page's cached history so a recreated page id can never
+    // be seeded with a dead page's stacks.
+    if (pagesApi.activePageId) {
+      historyCache.current.delete(cacheKey(pagesApi.activePageId));
+    }
+    pagesApi.removeActive();
+  }, [pagesApi, cacheKey]);
+
+  const activePage = pagesApi.pages.find((p) => p.id === pagesApi.activePageId);
 
   // Auto-run the onboarding tour once for first-time visitors.
   useEffect(() => {
@@ -72,14 +116,38 @@ export default function App() {
   return (
     <EditingPrefsProvider>
       <div className="relative h-full w-full overflow-hidden bg-bg">
-        {documents.currentId && (
+        {documents.currentId && (!isNotebook || activePage) && (
           <Workspace
-            key={documents.currentId}
+            // Page flips remount the editor — same mechanism as doc switches,
+            // one level deeper (spec: "nothing new to invent").
+            key={`${documents.currentId}:${activePage?.id ?? 'single'}`}
             documentId={documents.currentId}
             documentName={currentDoc?.name ?? 'Untitled'}
             stabilizer={stabilizer}
             nightMode={nightMode}
             onOpenSidebar={() => setSidebarOpen(true)}
+            pageId={activePage?.id ?? null}
+            pagePaper={activePage?.paper}
+            initialHistory={
+              activePage
+                ? historyCache.current.get(cacheKey(activePage.id))
+                : undefined
+            }
+            onHistorySnapshot={cachePageHistory}
+            pageNav={
+              isNotebook && activePage ? (
+                <PageNav
+                  docId={documents.currentId}
+                  pages={pagesApi.pages}
+                  activePageId={pagesApi.activePageId}
+                  onSelect={pagesApi.goTo}
+                  onPrev={pagesApi.prev}
+                  onNext={pagesApi.next}
+                  onAdd={() => pagesApi.add()}
+                  onDeleteActive={removeActivePage}
+                />
+              ) : undefined
+            }
           />
         )}
 

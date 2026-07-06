@@ -24,7 +24,17 @@ import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
 import { eraserRadius, worldToScreen } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
-import { inkKey, readAux, touchDocument, writeAux } from '../lib/documents';
+import {
+  inkKey,
+  pageInkKey,
+  readAux,
+  readPageAux,
+  setPagePaper,
+  touchDocument,
+  writeAux,
+  writePageAux,
+} from '../lib/documents';
+import type { HistorySnapshot } from '../hooks/useHistory';
 import type { PaperStyle, Stroke, TextItem } from '../types';
 
 interface WorkspaceProps {
@@ -33,6 +43,21 @@ interface WorkspaceProps {
   stabilizer: boolean;
   nightMode: boolean;
   onOpenSidebar: () => void;
+  /**
+   * Notebook mode (Phase 1): the active page. When set, strokes persist under
+   * pageInkKey and texts under pageAuxKey; `pagePaper` seeds the paper state
+   * from PageMeta. The engine stays page-agnostic — this component just hands
+   * it a different storageKey. Workspace is keyed by `${docId}:${pageId}` in
+   * App, so a page flip is a remount (same pattern as doc switching).
+   */
+  pageId?: string | null;
+  pagePaper?: PaperStyle;
+  /** Page navigation UI, built in App where page state lives. */
+  pageNav?: React.ReactNode;
+  /** Undo/redo seed from the page-flip history cache. */
+  initialHistory?: HistorySnapshot<Stroke[]>;
+  /** Called on unmount so App can cache this page's undo/redo stacks. */
+  onHistorySnapshot?: (pageId: string, snap: HistorySnapshot<Stroke[]>) => void;
 }
 
 const textId = () => createId('t_');
@@ -48,6 +73,11 @@ export function Workspace({
   stabilizer,
   nightMode,
   onOpenSidebar,
+  pageId = null,
+  pagePaper,
+  pageNav,
+  initialHistory,
+  onHistorySnapshot,
 }: WorkspaceProps) {
   const {
     tool,
@@ -60,7 +90,13 @@ export function Workspace({
     setPenType: onPenTypeChange,
   } = useEditingPrefs();
 
-  const initialAux = useRef(readAux(documentId)).current;
+  // Notebook pages read per-page aux (texts) + PageMeta paper; single-array
+  // docs keep the per-doc aux exactly as before.
+  const initialAux = useRef(
+    pageId
+      ? { paper: pagePaper ?? ('ruled' as PaperStyle), texts: readPageAux(documentId, pageId).texts }
+      : readAux(documentId),
+  ).current;
   const [paper, setPaper] = useState<PaperStyle>(initialAux.paper);
   const [texts, setTexts] = useState<TextItem[]>(initialAux.texts);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
@@ -75,7 +111,8 @@ export function Workspace({
     paper,
     penType,
     stabilizer,
-    storageKey: inkKey(documentId),
+    storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
+    initialHistory,
     onStrokeEnd: (stroke: Stroke) => {
       const el = drawing.canvasRef.current;
       music.handleStrokeEnd(
@@ -97,6 +134,21 @@ export function Workspace({
   // through a ref instead and keep the effect deps on stable primitives.
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
+
+  // Notebook page-flip history cache: capture this page's undo/redo stacks at
+  // unmount (page flip = remount with a new key). Reads through refs so the
+  // cleanup closure never goes stale; empty deps = runs exactly once.
+  const snapshotCbRef = useRef(onHistorySnapshot);
+  snapshotCbRef.current = onHistorySnapshot;
+  const pageIdRef = useRef(pageId);
+  pageIdRef.current = pageId;
+  useEffect(() => {
+    return () => {
+      const pid = pageIdRef.current;
+      const cb = snapshotCbRef.current;
+      if (pid && cb) cb(pid, drawingRef.current.getHistorySnapshot());
+    };
+  }, []);
 
   // Surface an audio-load failure (offline / stale chunk) instead of a silently
   // dead toggle button.
@@ -135,9 +187,14 @@ export function Workspace({
       hydrated.current = true;
       return;
     }
-    writeAux(documentId, { paper, texts });
+    if (pageId) {
+      writePageAux(documentId, pageId, { texts });
+      setPagePaper(documentId, pageId, paper);
+    } else {
+      writeAux(documentId, { paper, texts });
+    }
     touchDocument(documentId, Date.now());
-  }, [documentId, paper, texts]);
+  }, [documentId, pageId, paper, texts]);
 
   /* ------------------------------- text edit ------------------------------ */
 
@@ -715,6 +772,8 @@ export function Workspace({
       )}
 
       {music.welcome && <KandinskyWelcome />}
+
+      {pageNav}
 
       <BrandFooter />
 

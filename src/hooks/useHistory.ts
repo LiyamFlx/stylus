@@ -11,6 +11,14 @@ import { useCallback, useRef, useState } from 'react';
  * `reset` is used on localStorage restore so a restored drawing starts a fresh
  * history (you can't undo past the restore point).
  */
+/** Serializable capture of a full history — used by the notebook page-flip
+ *  cache so returning to a page restores its undo/redo stacks. */
+export interface HistorySnapshot<T> {
+  past: T[];
+  present: T;
+  future: T[];
+}
+
 export interface History<T> {
   /** Current snapshot. */
   present: T;
@@ -24,17 +32,24 @@ export interface History<T> {
   canRedo: boolean;
   /** Clear history and seed a new present. */
   reset: (value: T) => void;
+  /** Capture the full history (for the notebook page-flip cache). */
+  snapshot: () => HistorySnapshot<T>;
 }
 
-export function useHistory<T>(initial: T): History<T> {
-  const [past, setPast] = useState<T[]>([]);
-  const [present, setPresent] = useState<T>(initial);
-  const [future, setFuture] = useState<T[]>([]);
+export function useHistory<T>(initial: T, seed?: HistorySnapshot<T>): History<T> {
+  const [past, setPast] = useState<T[]>(() => seed?.past ?? []);
+  const [present, setPresent] = useState<T>(() => (seed ? seed.present : initial));
+  const [future, setFuture] = useState<T[]>(() => seed?.future ?? []);
 
   // Mirror `present` in a ref so callbacks can read the latest value without
   // being re-created on every change (keeps event handlers stable).
   const presentRef = useRef<T>(present);
   presentRef.current = present;
+  // Stack mirrors for snapshot() — same render-mirror pattern as presentRef.
+  const pastRef = useRef<T[]>(past);
+  pastRef.current = past;
+  const futureRef = useRef<T[]>(future);
+  futureRef.current = future;
 
   const set = useCallback((next: T | ((prev: T) => T)) => {
     const prev = presentRef.current;
@@ -86,6 +101,15 @@ export function useHistory<T>(initial: T): History<T> {
     presentRef.current = value;
   }, []);
 
+  const snapshot = useCallback(
+    (): HistorySnapshot<T> => ({
+      past: pastRef.current,
+      present: presentRef.current,
+      future: futureRef.current,
+    }),
+    [],
+  );
+
   return {
     present,
     set,
@@ -95,5 +119,6 @@ export function useHistory<T>(initial: T): History<T> {
     canUndo: past.length > 0,
     canRedo: future.length > 0,
     reset,
+    snapshot,
   };
 }
