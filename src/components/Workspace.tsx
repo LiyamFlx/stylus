@@ -6,6 +6,7 @@ import { StudioPanel } from './StudioPanel';
 import { TextLayer } from './TextLayer';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
 import { TextInputProxy } from './TextInputProxy';
+import { ReplayOverlay } from './ReplayOverlay';
 import type { TextInputProxyHandle } from './TextInputProxy';
 import { Toaster } from './Toaster';
 import { toast } from '../lib/toast';
@@ -149,6 +150,9 @@ export function Workspace({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [chromeHidden]);
+
+  // Stroke replay (Phase 3 item 6).
+  const [replayOpen, setReplayOpen] = useState(false);
 
   // Canvas Mode custom palette (Phase 3 item 3) — per-doc, capped, persisted.
   const [customColors, setCustomColors] = useState<string[]>(() =>
@@ -746,6 +750,7 @@ export function Workspace({
         paletteOverride={paletteOverride}
         variant={examLock ? 'restricted' : toolbarVariant}
         position={appMode === 'mobile' ? 'bottom' : 'top'}
+        onReplay={appMode === 'canvas' ? () => setReplayOpen(true) : undefined}
         enableColorWheel={appMode === 'canvas'}
         customColors={customColors}
         onCustomColor={saveCustomColor}
@@ -907,6 +912,10 @@ export function Workspace({
         >
           ⌄
         </button>
+      )}
+
+      {replayOpen && (
+        <ReplayOverlay strokes={drawing.strokes} onClose={() => setReplayOpen(false)} />
       )}
 
       {showRotateOverlay && (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { penProfile, PEN_TYPES, type PenType } from './penProfiles';
+import { penProfile, PEN_TYPES } from './penProfiles';
 
 describe('penProfile', () => {
   it('defines a profile for every pen type', () => {

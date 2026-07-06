@@ -90,6 +90,8 @@ interface ToolbarProps {
   onToggleExamLock?: () => void;
   /** Distraction-free: hide all chrome (Phase 1 item 8). */
   onHideChrome?: () => void;
+  /** Stroke replay (Phase 3 item 6) — canvas-mode full toolbar only. */
+  onReplay?: () => void;
   /** Canvas Mode color wheel (Phase 3 item 3). */
   enableColorWheel?: boolean;
   customColors?: readonly string[];
@@ -559,6 +561,7 @@ export function Toolbar(props: ToolbarProps) {
     examLock = false,
     onToggleExamLock,
     onHideChrome,
+    onReplay,
     enableColorWheel = false,
     customColors,
     onCustomColor,
@@ -736,6 +739,12 @@ export function Toolbar(props: ToolbarProps) {
         </>
       )}
       </>
+      )}
+
+      {onReplay && !minimal && (
+        <IconButton label="Replay drawing" disabled={isEmpty} onClick={onReplay}>
+          <PlayIcon />
+        </IconButton>
       )}
 
       {(onToggleExamLock || onHideChrome) && <Divider />}
