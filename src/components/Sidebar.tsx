@@ -196,7 +196,8 @@ export function Sidebar({
         </ul>
 
         <div className="border-t border-border p-4 text-[11px] leading-relaxed text-ink-400">
-          Stylus — universal digital ink. Saved locally on this device.
+          Stylus — write every thought, on every device. Saved locally on this
+          device.
         </div>
       </aside>
 

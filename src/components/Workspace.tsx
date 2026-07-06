@@ -697,9 +697,13 @@ export function Workspace({
   const showKeyboard = tool === 'text' && appMode !== 'mobile';
   const isBlank = drawing.isEmpty && texts.length === 0;
   const touchAction = effectiveTouchAction(appMode, tool);
-  // Portrait-only by spec (item 9): overlay, not a landscape layout.
+  // Portrait-only by spec (item 9): overlay, not a landscape layout — but ONLY
+  // on actual phones. A desktop is always "landscape"; without the coarse-
+  // pointer + small-screen guard, opening a Quick note on a laptop wrongly
+  // demanded "rotate your device".
   const isLandscape = useMediaQuery('(orientation: landscape)');
-  const showRotateOverlay = appMode === 'mobile' && isLandscape;
+  const isPhone = useMediaQuery('(pointer: coarse) and (max-width: 820px)');
+  const showRotateOverlay = appMode === 'mobile' && isLandscape && isPhone;
 
   // Cursor tracks both tool and selection phase so it's always accurate.
   const canvasCursor = (() => {

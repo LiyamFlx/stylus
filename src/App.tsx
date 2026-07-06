@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { PageNav } from './components/PageNav';
 import { NewDocDialog } from './components/NewDocDialog';
+import { ModeTabs } from './components/ModeTabs';
 import { InstallPrompt } from './components/InstallPrompt';
 import { useVisualViewport } from './hooks/useVisualViewport';
 import { useDocuments } from './hooks/useDocuments';
@@ -133,6 +134,32 @@ export default function App() {
     [documents],
   );
 
+  // ── Mode tabs (browser-tab behaviour) ──
+  // Switching to a mode reopens that mode's most-recently-touched document,
+  // exactly as it was left (docs persist their full state). If none exists yet,
+  // one is created. `updatedAt` is the recency signal — no extra storage.
+  const currentMode = docModeConfig.id;
+  const switchToMode = useCallback(
+    (mode: AppMode) => {
+      if (mode === currentMode) return;
+      const latest = documents.docs
+        .filter((d) => d.mode === mode)
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (latest) {
+        documents.select(latest.id);
+      } else {
+        documents.create(defaultDocName(mode), mode);
+      }
+    },
+    [currentMode, documents],
+  );
+
+  // "NEW" — save the current doc (it auto-persists) and open a fresh one in the
+  // SAME mode, giving a clean slate without leaving the current workspace type.
+  const newInCurrentMode = useCallback(() => {
+    documents.create(defaultDocName(currentMode), currentMode);
+  }, [currentMode, documents]);
+
   return (
     <EditingPrefsProvider>
       <div
@@ -176,6 +203,19 @@ export default function App() {
               ) : undefined
             }
           />
+        )}
+
+        {/* Mode tabs: fast browser-tab switching between the three document
+            modes, plus a New button. Top-centre, above the toolbar, so it's the
+            same prominent control in every mode. */}
+        {documents.currentId && (
+          <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center">
+            <ModeTabs
+              current={currentMode}
+              onSwitch={switchToMode}
+              onNew={newInCurrentMode}
+            />
+          </div>
         )}
 
         <Sidebar

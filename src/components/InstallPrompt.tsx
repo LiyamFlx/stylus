@@ -52,7 +52,12 @@ export function InstallPrompt() {
   };
 
   return (
-    <div className="pointer-events-auto fixed inset-x-3 top-3 z-40 mx-auto flex max-w-sm items-center gap-3 rounded-panel border border-border bg-bg-muted/95 p-3 shadow-pop backdrop-blur-pill">
+    <div
+      className="pointer-events-auto fixed inset-x-3 z-40 mx-auto flex max-w-sm items-center gap-3 rounded-panel border border-border bg-bg-muted/95 p-3 shadow-pop backdrop-blur-pill"
+      // Sit above the bottom toolbar (mobile) so it never covers the mode tabs
+      // at the top; safe-area-aware so it clears the home indicator.
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4.5rem)' }}
+    >
       <div className="min-w-0 flex-1 text-xs leading-relaxed text-ink-700">
         {deferred ? (
           <>Install Stylus for quicker capture — works offline.</>
