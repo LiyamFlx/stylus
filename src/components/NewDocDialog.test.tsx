@@ -41,8 +41,8 @@ describe('New document mode picker', () => {
     openPicker();
     fireEvent.click(screen.getByRole('button', { name: /Quick note/ }));
     expect(listDocuments()[0].mode).toBe('mobile');
-    // Text tool is the mobile default; the custom OSK must NOT render (the
-    // native keyboard comes from the focused TextInputProxy instead).
+    // No custom on-screen keyboard: text entry uses the active box's real
+    // <textarea>, which summons the native OS keyboard on phones.
     expect(screen.queryByRole('button', { name: /Close keyboard/i })).toBeNull();
   });
 

@@ -4,11 +4,8 @@ import { Toolbar } from './Toolbar';
 import { ConfirmDialog } from './Dialog';
 import { StudioPanel } from './StudioPanel';
 import { TextLayer } from './TextLayer';
-import { OnScreenKeyboard } from './OnScreenKeyboard';
-import { TextInputProxy } from './TextInputProxy';
 import { ReplayOverlay } from './ReplayOverlay';
 import { ImageLayer } from './ImageLayer';
-import type { TextInputProxyHandle } from './TextInputProxy';
 import { Toaster } from './Toaster';
 import { toast } from '../lib/toast';
 import { InputMethodGroup } from './ToolbarInputMethods';
@@ -70,8 +67,8 @@ interface WorkspaceProps {
   /** Base toolbar composition from ModeConfig; exam lock overrides to
    *  'restricted' locally. */
   toolbarVariant?: ToolbarVariant;
-  /** The document's mode (Phase 2): gates the on-screen keyboard (mobile uses
-   *  the native OS keyboard via TextInputProxy), touch-action, orientation. */
+  /** The document's mode (Phase 2): drives touch-action and orientation. Text
+   *  entry uses the active box's real <textarea> (native OS keyboard on phones). */
   appMode?: AppMode;
   /** Undo/redo seed from the page-flip history cache. */
   initialHistory?: HistorySnapshot<Stroke[]>;
@@ -304,7 +301,6 @@ export function Workspace({
 
   // Full-value replacement for the hidden textarea (IME/autocorrect emit
   // value changes, not per-character keys).
-  const proxyRef = useRef<TextInputProxyHandle>(null);
   const setActiveText = useCallback((next: string) => {
     const id = activeIdRef.current;
     if (!id) return;
@@ -592,9 +588,9 @@ export function Workspace({
         target?.isContentEditable === true;
       const meta = e.metaKey || e.ctrlKey;
 
-      // Text entry lives in the hidden TextInputProxy textarea (IME-safe);
-      // no per-character synthesis here. It has focus while a box is active,
-      // so these window-level shortcuts naturally skip via the `typing` guard.
+      // Text entry lives in the active box's real <textarea> (see TextLayer).
+      // While it has focus the `typing` guard below skips these window-level
+      // tool shortcuts, so typing never triggers them.
 
       if (!meta) {
         if (typing) return;
@@ -692,9 +688,6 @@ export function Workspace({
     return () => window.removeEventListener('paste', onPaste);
   }, [tool, onToolChange, pasteText]);
 
-  // Mobile-mode docs use the native OS keyboard (TextInputProxy holds focus);
-  // the custom on-screen keyboard is a desktop/tablet affordance.
-  const showKeyboard = tool === 'text' && appMode !== 'mobile';
   const isBlank = drawing.isEmpty && texts.length === 0;
   const touchAction = effectiveTouchAction(appMode, tool);
   // Portrait-only by spec (item 9): overlay, not a landscape layout — but ONLY
@@ -756,6 +749,8 @@ export function Workspace({
         onCreate={createText}
         onSelect={setActiveTextId}
         onMove={moveText}
+        onEdit={setActiveText}
+        onDone={finishText}
       />
 
       {tool === 'select' && (
@@ -874,30 +869,9 @@ export function Workspace({
         onCancel={() => setClearConfirmOpen(false)}
       />
 
-      {/* Hidden IME-safe text input — owns all typing for the active box and
-          summons the native keyboard on phones. Keyed by item id so switching
-          boxes re-focuses. */}
-      {activeTextId && (
-        <TextInputProxy
-          key={activeTextId}
-          ref={proxyRef}
-          value={texts.find((t) => t.id === activeTextId)?.text ?? ''}
-          onChange={setActiveText}
-          onDone={finishText}
-        />
-      )}
-
-      {/* On-screen keyboard for the text tool. */}
-      {showKeyboard && (
-        <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3">
-          <OnScreenKeyboard
-            onInput={(s) => { editActive((t) => t + s); proxyRef.current?.focus(); }}
-            onBackspace={() => { editActive((t) => t.slice(0, -1)); proxyRef.current?.focus(); }}
-            onEnter={() => { editActive((t) => t + '\n'); proxyRef.current?.focus(); }}
-            onClose={finishText}
-          />
-        </div>
-      )}
+      {/* The active box is now a real in-place <textarea> (see TextLayer), so
+          it owns typing, the caret, selection, clipboard and the native OS
+          keyboard directly — no hidden proxy or custom on-screen keyboard. */}
 
       {isBlank && (
         <p className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center text-sm text-ink-400/60">
