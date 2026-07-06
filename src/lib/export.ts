@@ -83,14 +83,25 @@ function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
+/** Render to a PNG Blob — the shareable unit (navigator.share needs bytes,
+ *  not a triggered download). */
+export function buildPNGBlob(strokes: Stroke[], opts: ExportOptions): Promise<Blob> {
+  const canvas = renderToCanvas(strokes, opts);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('PNG encode failed'))),
+      'image/png',
+    );
+  });
+}
+
 /** Download the drawing as a PNG. */
 export function exportPNG(strokes: Stroke[], opts: ExportOptions): void {
   const canvas = renderToCanvas(strokes, opts);
   triggerDownload(canvas.toDataURL('image/png'), `stylus-${timestamp()}.png`);
 }
 
-/** Download the drawing as a single-page PDF sized to the canvas. */
-export function exportPDF(strokes: Stroke[], opts: ExportOptions): void {
+function buildSinglePagePDF(strokes: Stroke[], opts: ExportOptions): jsPDF {
   const { width, height } = opts;
   const canvas = renderToCanvas(strokes, { ...opts, scale: opts.scale ?? 2 });
   const imgData = canvas.toDataURL('image/png');
@@ -103,7 +114,17 @@ export function exportPDF(strokes: Stroke[], opts: ExportOptions): void {
     compress: true,
   });
   pdf.addImage(imgData, 'PNG', 0, 0, width, height);
-  pdf.save(`stylus-${timestamp()}.pdf`);
+  return pdf;
+}
+
+/** Render to a PDF Blob (share path). */
+export function buildPDFBlob(strokes: Stroke[], opts: ExportOptions): Blob {
+  return buildSinglePagePDF(strokes, opts).output('blob');
+}
+
+/** Download the drawing as a single-page PDF sized to the canvas. */
+export function exportPDF(strokes: Stroke[], opts: ExportOptions): void {
+  buildSinglePagePDF(strokes, opts).save(`stylus-${timestamp()}.pdf`);
 }
 
 /** One notebook page bound for export. */
@@ -127,7 +148,17 @@ export interface ExportPage {
  * never anything that went through a culled read path.
  */
 export function exportPDFPages(pages: ExportPage[]): void {
-  if (pages.length === 0) return;
+  const pdf = buildPagesPDF(pages);
+  if (pdf) pdf.save(`stylus-${timestamp()}.pdf`);
+}
+
+/** Multi-page PDF as a Blob (share path). Null for zero pages. */
+export function buildPDFPagesBlob(pages: ExportPage[]): Blob | null {
+  return buildPagesPDF(pages)?.output('blob') ?? null;
+}
+
+function buildPagesPDF(pages: ExportPage[]): jsPDF | null {
+  if (pages.length === 0) return null;
   const pageW = A4_BOUNDS.maxX - A4_BOUNDS.minX;
   const pageH = A4_BOUNDS.maxY - A4_BOUNDS.minY;
 
@@ -154,5 +185,5 @@ export function exportPDFPages(pages: ExportPage[]): void {
     pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, 297);
   });
 
-  pdf.save(`stylus-${timestamp()}.pdf`);
+  return pdf;
 }

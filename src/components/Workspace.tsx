@@ -373,13 +373,24 @@ export function Workspace({
   }, [drawing.canvasRef, paper, texts]);
 
   const handleExportPNG = useCallback(async () => {
-    const { exportPNG } = await importChunk(() => import('../lib/export'));
-    exportPNG(drawing.strokes, exportOpts());
-  }, [drawing.strokes, exportOpts]);
+    const mod = await importChunk(() => import('../lib/export'));
+    if (appMode === 'mobile') {
+      // Phone-native: OS share sheet first, download only when unsupported.
+      const { shareFile } = await import('../lib/share');
+      const blob = await mod.buildPNGBlob(drawing.strokes, exportOpts());
+      if (await shareFile(blob, 'stylus.png')) return;
+    }
+    mod.exportPNG(drawing.strokes, exportOpts());
+  }, [appMode, drawing.strokes, exportOpts]);
 
   const handleExportPDF = useCallback(async () => {
     const mod = await importChunk(() => import('../lib/export'));
     if (!pageId) {
+      if (appMode === 'mobile') {
+        const { shareFile } = await import('../lib/share');
+        const blob = mod.buildPDFBlob(drawing.strokes, exportOpts());
+        if (await shareFile(blob, 'stylus.pdf')) return;
+      }
       mod.exportPDF(drawing.strokes, exportOpts());
       return;
     }
@@ -396,7 +407,7 @@ export function Workspace({
       texts: p.id === pageId ? texts : readPageAux(documentId, p.id).texts,
     }));
     mod.exportPDFPages(pages);
-  }, [pageId, documentId, ruling, texts, drawing.strokes, exportOpts]);
+  }, [pageId, appMode, documentId, ruling, texts, drawing.strokes, exportOpts]);
 
   const handleRecognize = useCallback(() => {
     setPanelAutoAction(null);
