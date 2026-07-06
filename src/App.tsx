@@ -144,6 +144,7 @@ export default function App() {
             pageId={activePage?.id ?? null}
             paletteOverride={paletteOverride}
             toolbarVariant={docModeConfig.toolbarVariant}
+            appMode={docModeConfig.id}
             pagePaper={activePage?.paper}
             initialHistory={
               activePage

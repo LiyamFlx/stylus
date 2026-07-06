@@ -5,6 +5,8 @@ import { ConfirmDialog } from './Dialog';
 import { StudioPanel } from './StudioPanel';
 import { TextLayer } from './TextLayer';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
+import { TextInputProxy } from './TextInputProxy';
+import type { TextInputProxyHandle } from './TextInputProxy';
 import { Toaster } from './Toaster';
 import { toast } from '../lib/toast';
 import { InputMethodGroup } from './ToolbarInputMethods';
@@ -37,7 +39,7 @@ import {
   writePageAux,
 } from '../lib/documents';
 import type { HistorySnapshot } from '../hooks/useHistory';
-import type { ToolbarVariant } from '../lib/modes';
+import type { AppMode, ToolbarVariant } from '../lib/modes';
 import type { RulingDensity, PaperStyle, Stroke, TextItem } from '../types';
 
 interface WorkspaceProps {
@@ -62,6 +64,9 @@ interface WorkspaceProps {
   /** Base toolbar composition from ModeConfig; exam lock overrides to
    *  'restricted' locally. */
   toolbarVariant?: ToolbarVariant;
+  /** The document's mode (Phase 2): gates the on-screen keyboard (mobile uses
+   *  the native OS keyboard via TextInputProxy), touch-action, orientation. */
+  appMode?: AppMode;
   /** Undo/redo seed from the page-flip history cache. */
   initialHistory?: HistorySnapshot<Stroke[]>;
   /** Called on unmount so App can cache this page's undo/redo stacks. */
@@ -86,6 +91,7 @@ export function Workspace({
   pageNav,
   paletteOverride,
   toolbarVariant = 'full',
+  appMode = 'canvas',
   initialHistory,
   onHistorySnapshot,
 }: WorkspaceProps) {
@@ -258,6 +264,15 @@ export function Workspace({
     },
     [color, size],
   );
+
+  // Full-value replacement for the hidden textarea (IME/autocorrect emit
+  // value changes, not per-character keys).
+  const proxyRef = useRef<TextInputProxyHandle>(null);
+  const setActiveText = useCallback((next: string) => {
+    const id = activeIdRef.current;
+    if (!id) return;
+    setTexts((t) => t.map((it) => (it.id === id ? { ...it, text: next } : it)));
+  }, []);
 
   const editActive = useCallback((fn: (text: string) => string) => {
     const id = activeIdRef.current;
@@ -529,29 +544,9 @@ export function Workspace({
         target?.isContentEditable === true;
       const meta = e.metaKey || e.ctrlKey;
 
-      // Physical typing into the active text box.
-      if (tool === 'text' && activeIdRef.current && !meta && !typing) {
-        if (e.key === 'Backspace') {
-          e.preventDefault();
-          editActive((t) => t.slice(0, -1));
-          return;
-        }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          editActive((t) => t + '\n');
-          return;
-        }
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          finishText();
-          return;
-        }
-        if (e.key.length === 1) {
-          e.preventDefault();
-          editActive((t) => t + e.key);
-          return;
-        }
-      }
+      // Text entry lives in the hidden TextInputProxy textarea (IME-safe);
+      // no per-character synthesis here. It has focus while a box is active,
+      // so these window-level shortcuts naturally skip via the `typing` guard.
 
       if (!meta) {
         if (typing) return;
@@ -612,7 +607,9 @@ export function Workspace({
     return () => window.removeEventListener('paste', onPaste);
   }, [tool, onToolChange, pasteText]);
 
-  const showKeyboard = tool === 'text';
+  // Mobile-mode docs use the native OS keyboard (TextInputProxy holds focus);
+  // the custom on-screen keyboard is a desktop/tablet affordance.
+  const showKeyboard = tool === 'text' && appMode !== 'mobile';
   const isBlank = drawing.isEmpty && texts.length === 0;
 
   // Cursor tracks both tool and selection phase so it's always accurate.
@@ -773,13 +770,26 @@ export function Workspace({
         onCancel={() => setClearConfirmOpen(false)}
       />
 
+      {/* Hidden IME-safe text input — owns all typing for the active box and
+          summons the native keyboard on phones. Keyed by item id so switching
+          boxes re-focuses. */}
+      {activeTextId && (
+        <TextInputProxy
+          key={activeTextId}
+          ref={proxyRef}
+          value={texts.find((t) => t.id === activeTextId)?.text ?? ''}
+          onChange={setActiveText}
+          onDone={finishText}
+        />
+      )}
+
       {/* On-screen keyboard for the text tool. */}
       {showKeyboard && (
         <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3">
           <OnScreenKeyboard
-            onInput={(s) => editActive((t) => t + s)}
-            onBackspace={() => editActive((t) => t.slice(0, -1))}
-            onEnter={() => editActive((t) => t + '\n')}
+            onInput={(s) => { editActive((t) => t + s); proxyRef.current?.focus(); }}
+            onBackspace={() => { editActive((t) => t.slice(0, -1)); proxyRef.current?.focus(); }}
+            onEnter={() => { editActive((t) => t + '\n'); proxyRef.current?.focus(); }}
             onClose={finishText}
           />
         </div>
