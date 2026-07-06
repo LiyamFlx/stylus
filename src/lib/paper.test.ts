@@ -14,6 +14,7 @@ function mockCtx() {
     stroke: vi.fn(),
     arc: vi.fn(),
     fill: vi.fn(),
+    fillRect: vi.fn(),
   };
 }
 
@@ -81,5 +82,25 @@ describe('drawPaper', () => {
     const c = mockCtx();
     drawPaper(c as unknown as CanvasRenderingContext2D, 'grid', 10, 10);
     expect(c.moveTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("drawPaper('notebook')", () => {
+  it('draws the opaque cream page, rules, and margin line', () => {
+    const c = mockCtx();
+    drawPaper(c as unknown as CanvasRenderingContext2D, 'notebook', 200, 300);
+    // Opaque page fill covers the full surface, beneath the lines.
+    expect(c.fillRect).toHaveBeenCalledWith(0, 0, 200, 300);
+    expect(c.stroke).toHaveBeenCalled();
+  });
+
+  it('ruling density changes the number of rules drawn', () => {
+    const count = (ruling: 'narrow' | 'wide') => {
+      const c = mockCtx();
+      drawPaper(c as unknown as CanvasRenderingContext2D, 'notebook', 200, 600, ruling);
+      // Each horizontal rule is one moveTo; +1 for the vertical margin line.
+      return c.moveTo.mock.calls.length;
+    };
+    expect(count('narrow')).toBeGreaterThan(count('wide'));
   });
 });

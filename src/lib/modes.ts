@@ -60,8 +60,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
   },
   notebook: {
     id: 'notebook',
-    // Becomes the 'notebook' PaperStyle (cream, A4 ruling) in Phase 1.
-    defaultPaper: 'ruled',
+    defaultPaper: 'notebook',
     paletteOverride: NOTEBOOK_COLORS,
     toolbarVariant: 'full',
     layout: 'paginated',

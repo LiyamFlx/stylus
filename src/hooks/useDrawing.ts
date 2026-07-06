@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { InkPoint, PaperStyle, Stroke, Tool } from '../types';
+import type { RulingDensity, InkPoint, PaperStyle, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import type { HistorySnapshot } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
@@ -36,6 +36,8 @@ interface UseDrawingOptions {
   color: string;
   size: number;
   paper: PaperStyle;
+  /** Line spacing for the 'notebook' paper. Ignored by other styles. */
+  ruling?: RulingDensity;
   /** Active pen type. Defaults to fountain when omitted. */
   penType?: PenType;
   /** When true, damp jitter on the live stroke (low-lag smoothing). */
@@ -139,6 +141,7 @@ export function useDrawing({
   color,
   size,
   paper,
+  ruling = 'college',
   penType = 'fountain',
   stabilizer = false,
   storageKey,
@@ -183,8 +186,8 @@ export function useDrawing({
   const overlayRafId = useRef<number | null>(null);
 
   // Toolbar settings mirrored so handlers always read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, penType, stabilizer });
-  settingsRef.current = { tool, color, size, paper, penType, stabilizer };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, ruling, penType, stabilizer });
+  settingsRef.current = { tool, color, size, paper, ruling, penType, stabilizer };
   // Previous smoothed world point for the stabilizer; reset at each stroke start.
   const smoothPrevRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -283,6 +286,7 @@ export function useDrawing({
       const br = screenToWorld(canvas.clientWidth, canvas.clientHeight, viewRef.current);
       renderAll(ctx, source ?? strokesRef.current, canvas.clientWidth, canvas.clientHeight, {
         paper: settingsRef.current.paper,
+        ruling: settingsRef.current.ruling,
         cull: { minX: tl.x, minY: tl.y, maxX: br.x, maxY: br.y },
       });
     },

@@ -32,6 +32,7 @@ const PAPER_LABELS: Record<PaperStyle, string> = {
   dots: 'Dots',
   cornell: 'Cornell',
   isometric: 'Isometric',
+  notebook: 'Notebook',
 };
 
 interface ToolbarProps {
@@ -308,6 +309,11 @@ const SWATCH_BG: Record<PaperStyle, React.CSSProperties> = {
   },
   isometric: {
     backgroundImage: `repeating-linear-gradient(0deg, ${SWATCH_LINE}), repeating-linear-gradient(60deg, ${SWATCH_LINE}), repeating-linear-gradient(120deg, ${SWATCH_LINE})`,
+  },
+  notebook: {
+    backgroundColor: '#FDF6E3',
+    backgroundImage:
+      'repeating-linear-gradient(0deg, rgba(107,138,188,0.5) 0 1px, transparent 1px 7px), linear-gradient(90deg, transparent 6px, rgba(217,84,79,0.6) 6px 7px, transparent 7px)',
   },
 };
 

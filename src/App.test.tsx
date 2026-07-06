@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import App from './App';
+import { PAPER_STYLES } from './types';
 
 /**
  * Integration coverage for App's global keyboard shortcuts. The canvas itself
@@ -71,9 +72,9 @@ describe('App keyboard shortcuts', () => {
     const paperBtn = () => screen.getByRole('button', { name: /^Paper:/ });
     expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
 
-    // Opening the picker reveals the six paper options.
+    // Opening the picker reveals every paper option.
     fireEvent.click(paperBtn());
-    expect(screen.getAllByRole('menuitemradio')).toHaveLength(6);
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(PAPER_STYLES.length);
 
     // Selecting one applies it and closes the menu.
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Grid/i }));

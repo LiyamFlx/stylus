@@ -1,4 +1,4 @@
-import type { InkPoint, PaperStyle, Stroke } from '../types';
+import type { InkPoint, PaperStyle, RulingDensity, Stroke } from '../types';
 import type { Bounds } from './geometry';
 import { boundsIntersect, strokeBounds } from './geometry';
 import { drawPaper } from './paper';
@@ -99,6 +99,8 @@ export interface RenderOptions {
    * ────────────────────────────────────────────────────────────────────────
    */
   cull?: Bounds | null;
+  /** Line spacing for the 'notebook' paper. Ignored by other styles. */
+  ruling?: RulingDensity;
 }
 
 /**
@@ -116,9 +118,11 @@ function getPaperBitmap(
   style: PaperStyle,
   width: number,
   height: number,
+  ruling: RulingDensity,
 ): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null; // no DOM (non-browser)
-  const key = `${style}|${width}|${height}`;
+  // Ruling is part of the key: a density change must rebuild the bitmap.
+  const key = `${style}|${width}|${height}|${ruling}`;
   if (paperCache && paperCache.key === key) return paperCache.canvas;
   try {
     const off = document.createElement('canvas');
@@ -128,7 +132,7 @@ function getPaperBitmap(
     // Guard for stub canvas implementations (e.g. jsdom) where the 2D context
     // lacks path methods — fall back to drawing the guide directly.
     if (!offCtx || typeof offCtx.lineTo !== 'function') return null;
-    drawPaper(offCtx, style, width, height);
+    drawPaper(offCtx, style, width, height, ruling);
     paperCache = { key, canvas: off };
     return off;
   } catch {
@@ -146,7 +150,7 @@ export function renderAll(
   strokes: Stroke[],
   width: number,
   height: number,
-  { paper = 'blank', background, cull = null }: RenderOptions = {},
+  { paper = 'blank', background, cull = null, ruling = 'college' }: RenderOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
   if (background) {
@@ -154,11 +158,11 @@ export function renderAll(
     ctx.fillRect(0, 0, width, height);
   }
   if (paper !== 'blank') {
-    const bitmap = getPaperBitmap(paper, width, height);
+    const bitmap = getPaperBitmap(paper, width, height, ruling);
     if (bitmap) {
       ctx.drawImage(bitmap, 0, 0, width, height);
     } else {
-      drawPaper(ctx, paper, width, height);
+      drawPaper(ctx, paper, width, height, ruling);
     }
   }
   for (const stroke of strokes) {

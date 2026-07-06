@@ -35,7 +35,7 @@ import {
   writePageAux,
 } from '../lib/documents';
 import type { HistorySnapshot } from '../hooks/useHistory';
-import type { PaperStyle, Stroke, TextItem } from '../types';
+import type { RulingDensity, PaperStyle, Stroke, TextItem } from '../types';
 
 interface WorkspaceProps {
   documentId: string;
@@ -98,6 +98,10 @@ export function Workspace({
       : readAux(documentId),
   ).current;
   const [paper, setPaper] = useState<PaperStyle>(initialAux.paper);
+  // Ruling density for 'notebook' paper (Phase 1 item 4). State lives here so
+  // the exam-lock/toolbar work (item 7) can surface a picker without touching
+  // the engine; persistence rides with PageMeta when the picker lands.
+  const [ruling] = useState<RulingDensity>('college');
   const [texts, setTexts] = useState<TextItem[]>(initialAux.texts);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
@@ -109,6 +113,7 @@ export function Workspace({
     color,
     size,
     paper,
+    ruling,
     penType,
     stabilizer,
     storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
