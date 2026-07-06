@@ -114,7 +114,7 @@ describe('documents', () => {
     });
 
     it('defaults to blank paper + no texts when nothing is stored', () => {
-      expect(readAux('missing')).toEqual({ paper: 'blank', texts: [] });
+      expect(readAux('missing')).toEqual({ paper: 'blank', texts: [], images: [] });
     });
   });
 });

@@ -7,6 +7,7 @@ import { TextLayer } from './TextLayer';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
 import { TextInputProxy } from './TextInputProxy';
 import { ReplayOverlay } from './ReplayOverlay';
+import { ImageLayer } from './ImageLayer';
 import type { TextInputProxyHandle } from './TextInputProxy';
 import { Toaster } from './Toaster';
 import { toast } from '../lib/toast';
@@ -45,7 +46,7 @@ import {
 } from '../lib/documents';
 import type { HistorySnapshot } from '../hooks/useHistory';
 import type { AppMode, ToolbarVariant } from '../lib/modes';
-import type { RulingDensity, PaperStyle, Stroke, TextItem } from '../types';
+import type { ImageItem, RulingDensity, PaperStyle, Stroke, TextItem } from '../types';
 
 interface WorkspaceProps {
   documentId: string;
@@ -124,6 +125,7 @@ export function Workspace({
   // the engine; persistence rides with PageMeta when the picker lands.
   const [ruling] = useState<RulingDensity>('college');
   const [texts, setTexts] = useState<TextItem[]>(initialAux.texts);
+  const [images, setImages] = useState<ImageItem[]>(initialAux.images ?? []);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
   // A palette override is a closed set: if the sticky editing-prefs color
@@ -150,6 +152,16 @@ export function Workspace({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [chromeHidden]);
+
+  const removeImage = useCallback((id: string) => {
+    setImages((imgs) => {
+      const target = imgs.find((i) => i.id === id);
+      if (target) {
+        void import('../lib/imageStore').then((m) => m.deleteImages([target.imageId]));
+      }
+      return imgs.filter((i) => i.id !== id);
+    });
+  }, []);
 
   // Stroke replay (Phase 3 item 6).
   const [replayOpen, setReplayOpen] = useState(false);
@@ -254,13 +266,13 @@ export function Workspace({
       return;
     }
     if (pageId) {
-      writePageAux(documentId, pageId, { texts });
+      writePageAux(documentId, pageId, { texts, images });
       setPagePaper(documentId, pageId, paper);
     } else {
-      writeAux(documentId, { paper, texts });
+      writeAux(documentId, { paper, texts, images });
     }
     touchDocument(documentId, Date.now());
-  }, [documentId, pageId, paper, texts]);
+  }, [documentId, pageId, paper, texts, images]);
 
   /* ------------------------------- text edit ------------------------------ */
 
@@ -625,6 +637,43 @@ export function Workspace({
       ) {
         return;
       }
+      // Image paste (Phase 3 item 5): bytes -> IndexedDB, metadata -> aux.
+      const file = Array.from(e.clipboardData?.files ?? []).find((f) =>
+        f.type.startsWith('image/'),
+      );
+      if (file) {
+        e.preventDefault();
+        void (async () => {
+          const { putImage } = await import('../lib/imageStore');
+          const imageId = createId('img_');
+          await putImage(imageId, file);
+          // Natural size, fitted into the viewport center, in world coords.
+          const bmp = await createImageBitmap(file).catch(() => null);
+          const view = drawingRef.current.view;
+          const el = drawingRef.current.canvasRef.current;
+          const vw = (el?.clientWidth ?? 800) / view.scale;
+          const vh = (el?.clientHeight ?? 600) / view.scale;
+          const natW = bmp?.width ?? 400;
+          const natH = bmp?.height ?? 300;
+          bmp?.close();
+          const fit = Math.min((vw * 0.7) / natW, (vh * 0.7) / natH, 1);
+          const w = natW * fit;
+          const h = natH * fit;
+          setImages((imgs) => [
+            ...imgs,
+            {
+              id: createId('iu_'),
+              imageId,
+              x: view.panX + (vw - w) / 2,
+              y: view.panY + (vh - h) / 2,
+              w,
+              h,
+            },
+          ]);
+        })();
+        return;
+      }
+
       const text = e.clipboardData?.getData('text/plain');
       if (!text) return;
       e.preventDefault();
@@ -659,6 +708,9 @@ export function Workspace({
 
   return (
     <main className="relative h-full w-full overflow-hidden bg-bg">
+      {/* Reference underlay — beneath the ink, never exported. */}
+      <ImageLayer items={images} view={drawing.view} onRemove={removeImage} />
+
       <Canvas
         baseCanvasRef={drawing.canvasRef}
         overlayCanvasRef={drawing.overlayRef}

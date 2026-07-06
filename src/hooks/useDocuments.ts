@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { DocMeta } from '../lib/documents';
 import type { AppMode } from '../lib/modes';
 import {
+  collectImageIds,
   createDocument,
   deleteDocument,
   ensureIndex,
@@ -60,6 +61,12 @@ export function useDocuments(): UseDocumentsResult {
 
   const remove = useCallback(
     (id: string) => {
+      // Collect BEFORE deletion (the aux keys are about to vanish), then
+      // best-effort async cleanup of IndexedDB bitmaps.
+      const imageIds = collectImageIds(id);
+      if (imageIds.length > 0) {
+        void import('../lib/imageStore').then((m) => m.deleteImages(imageIds));
+      }
       // deleteDocument guarantees a document always remains (recreating one when
       // the last is deleted), so we can just re-read the store.
       deleteDocument(id);

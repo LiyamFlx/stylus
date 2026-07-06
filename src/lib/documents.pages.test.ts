@@ -124,7 +124,7 @@ describe('pages', () => {
   describe('page aux', () => {
     it('defaults to empty texts and round-trips', () => {
       const [docId, ids] = notebook(1);
-      expect(readPageAux(docId, ids[0])).toEqual({ texts: [] });
+      expect(readPageAux(docId, ids[0])).toEqual({ texts: [], images: [] });
       const texts = [{ id: 't1', x: 1, y: 2, text: 'hi', color: '#fff', size: 20 }];
       writePageAux(docId, ids[0], { texts });
       expect(readPageAux(docId, ids[0]).texts).toEqual(texts);
@@ -133,7 +133,7 @@ describe('pages', () => {
     it('survives corrupt aux payloads', () => {
       const [docId, ids] = notebook(1);
       localStorage.setItem(pageAuxKey(docId, ids[0]), '{"texts": 42}');
-      expect(readPageAux(docId, ids[0])).toEqual({ texts: [] });
+      expect(readPageAux(docId, ids[0])).toEqual({ texts: [], images: [] });
     });
   });
 

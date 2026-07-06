@@ -1,4 +1,4 @@
-import type { PaperStyle, TextItem } from '../types';
+import type { ImageItem, PaperStyle, TextItem } from '../types';
 import { createId } from './id';
 import { resolveMode } from './modes';
 import type { AppMode } from './modes';
@@ -39,6 +39,8 @@ export interface DocMeta {
 export interface DocAux {
   paper: PaperStyle;
   texts: TextItem[];
+  /** Image-underlay metadata (bitmaps in IndexedDB — see lib/imageStore). */
+  images?: ImageItem[];
 }
 
 interface DocIndex {
@@ -216,6 +218,7 @@ export function readAux(id: string): DocAux {
   return {
     paper: aux?.paper ?? DEFAULT_AUX.paper,
     texts: Array.isArray(aux?.texts) ? (aux!.texts as TextItem[]) : [],
+    images: Array.isArray(aux?.images) ? (aux!.images as ImageItem[]) : [],
   };
 }
 
@@ -252,6 +255,8 @@ export interface PageIndex {
  *  partitioned by mode, not one with mode-conditional fields. */
 export interface PageAux {
   texts: TextItem[];
+  /** Image-underlay metadata (bitmaps in IndexedDB — see lib/imageStore). */
+  images?: ImageItem[];
 }
 
 export const pageInkKey = (docId: string, pageId: string) =>
@@ -380,7 +385,10 @@ export function setPagePaper(docId: string, pageId: string, paper: PaperStyle): 
 
 export function readPageAux(docId: string, pageId: string): PageAux {
   const aux = read<Partial<PageAux>>(pageAuxKey(docId, pageId));
-  return { texts: Array.isArray(aux?.texts) ? (aux.texts as TextItem[]) : [] };
+  return {
+    texts: Array.isArray(aux?.texts) ? (aux.texts as TextItem[]) : [],
+    images: Array.isArray(aux?.images) ? (aux.images as ImageItem[]) : [],
+  };
 }
 
 export function writePageAux(docId: string, pageId: string, aux: PageAux): void {
@@ -406,4 +414,15 @@ export function pushCustomColor(docId: string, color: string): string[] {
   );
   write(customColorsKey(docId), next);
   return next;
+}
+
+/** All image-underlay ids referenced by a document (doc aux + every page
+ *  aux). Used for best-effort IndexedDB cleanup on document deletion. */
+export function collectImageIds(docId: string): string[] {
+  const ids: string[] = [];
+  for (const img of readAux(docId).images ?? []) ids.push(img.imageId);
+  for (const page of listPages(docId)) {
+    for (const img of readPageAux(docId, page.id).images ?? []) ids.push(img.imageId);
+  }
+  return ids;
 }

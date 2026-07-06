@@ -42,6 +42,25 @@ export interface TextItem {
   size: number;
 }
 
+/**
+ * A reference image beneath the ink (Phase 3 item 5). METADATA ONLY — the
+ * bitmap lives in IndexedDB under `imageId` (see lib/imageStore). Underlays
+ * are non-exporting and non-selectable by design: reference material, not
+ * artwork. Kept as a distinctly-typed item in an ordered array so Phase 4
+ * can fold it into Layer[] as a data-shape merge, not a rewrite.
+ */
+export interface ImageItem {
+  id: string;
+  /** IndexedDB key of the bitmap. */
+  imageId: string;
+  /** Top-left, world coords. */
+  x: number;
+  y: number;
+  /** Display size, world units. */
+  w: number;
+  h: number;
+}
+
 /** One continuous pointer-down → pointer-up gesture. */
 export interface Stroke {
   /** Stable id, used for hit-testing / erasing. */
