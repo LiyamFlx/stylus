@@ -79,7 +79,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
     toolbarVariant: 'minimal',
     layout: 'infinite',
     touchActionDefault: 'manipulation',
-    toolbarPosition: 'bottom',
+    toolbarPosition: 'top', // uniform with the other modes
     defaultTool: 'text', // typing-first
     zoomRange: { min: 0.5, max: 4 },
   },

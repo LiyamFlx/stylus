@@ -809,7 +809,7 @@ export function Workspace({
       <Toolbar
         paletteOverride={paletteOverride}
         variant={examLock ? 'restricted' : toolbarVariant}
-        position={appMode === 'mobile' ? 'bottom' : 'top'}
+        position="top"
         onReplay={appMode === 'canvas' ? () => setReplayOpen(true) : undefined}
         enableColorWheel={appMode === 'canvas'}
         customColors={customColors}

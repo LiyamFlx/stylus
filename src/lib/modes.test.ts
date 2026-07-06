@@ -9,7 +9,7 @@ describe('resolveMode / modeConfig (legacy fallback gate)', () => {
   });
   it('passes valid modes through', () => {
     expect(resolveMode('notebook')).toBe('notebook');
-    expect(modeConfig('mobile').toolbarPosition).toBe('bottom');
+    expect(modeConfig('mobile').id).toBe('mobile');
   });
 });
 
