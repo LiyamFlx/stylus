@@ -1,5 +1,7 @@
 import type { PaperStyle, TextItem } from '../types';
 import { createId } from './id';
+import { resolveMode } from './modes';
+import type { AppMode } from './modes';
 
 /**
  * Local, offline-first multi-document store (no backend, no login).
@@ -19,6 +21,13 @@ export interface DocMeta {
   name: string;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Which face of the app this document uses (Phase 0). Required in memory;
+   * legacy docs on disk lack it and are normalized to 'canvas' in readIndex —
+   * the single choke point every read passes through, so no downstream
+   * consumer ever sees an undefined mode.
+   */
+  mode: AppMode;
 }
 
 export interface DocAux {
@@ -62,7 +71,12 @@ function write(key: string, value: unknown): void {
 function readIndex(): DocIndex | null {
   const idx = read<DocIndex>(INDEX_KEY);
   if (!idx || idx.version !== 1 || !Array.isArray(idx.docs)) return null;
-  return idx;
+  // Normalize legacy docs (no mode field) to 'canvas' at the one choke point
+  // every read passes through. Do NOT scatter per-site fallbacks.
+  return {
+    ...idx,
+    docs: idx.docs.map((d) => ({ ...d, mode: resolveMode((d as Partial<DocMeta>).mode) })),
+  };
 }
 
 function writeIndex(idx: DocIndex): void {
@@ -79,7 +93,7 @@ export function ensureIndex(now: number): DocIndex {
   if (existing && existing.docs.length > 0) return existing;
 
   const id = uid();
-  const meta: DocMeta = { id, name: 'My notes', createdAt: now, updatedAt: now };
+  const meta: DocMeta = { id, name: 'My notes', createdAt: now, updatedAt: now, mode: 'canvas' };
 
   // Adopt a legacy single-drawing payload, if present, into this document.
   const legacy = localStorage.getItem(LEGACY_INK_KEY);
@@ -111,13 +125,14 @@ export function setCurrentId(id: string): void {
   writeIndex({ ...idx, currentId: id });
 }
 
-export function createDocument(name: string, now: number): DocMeta {
+export function createDocument(name: string, now: number, mode: AppMode = 'canvas'): DocMeta {
   const idx = readIndex() ?? { version: 1, currentId: null, docs: [] };
   const meta: DocMeta = {
     id: uid(),
     name: name.trim() || 'Untitled',
     createdAt: now,
     updatedAt: now,
+    mode,
   };
   writeIndex({ ...idx, currentId: meta.id, docs: [meta, ...idx.docs] });
   write(auxKey(meta.id), DEFAULT_AUX);
@@ -168,7 +183,7 @@ export function deleteDocument(id: string): string {
 
   if (docs.length === 0) {
     const now = Date.now();
-    const meta: DocMeta = { id: uid(), name: 'My notes', createdAt: now, updatedAt: now };
+    const meta: DocMeta = { id: uid(), name: 'My notes', createdAt: now, updatedAt: now, mode: 'canvas' };
     write(auxKey(meta.id), DEFAULT_AUX);
     writeIndex({ version: 1, currentId: meta.id, docs: [meta] });
     return meta.id;

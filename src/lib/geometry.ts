@@ -74,25 +74,50 @@ export function worldToScreen(
 }
 
 /**
- * Axis-aligned bounding box of all ink, padded for stroke width. Returns `null`
- * when there are no points (an "empty" drawing), so callers can short-circuit.
+ * Axis-aligned bounding box of a single stroke, padded for stroke width.
+ * Returns `null` for a pointless stroke. Pure — per-frame consumers (viewport
+ * culling) cache the result per committed stroke in render.ts.
  */
-export function inkBounds(strokes: Stroke[]): Bounds | null {
+export function strokeBounds(stroke: Stroke): Bounds | null {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const stroke of strokes) {
-    const half = Math.max(stroke.size, MIN_STROKE_WIDTH) / 2;
-    for (const p of stroke.points) {
-      minX = Math.min(minX, p.x - half);
-      minY = Math.min(minY, p.y - half);
-      maxX = Math.max(maxX, p.x + half);
-      maxY = Math.max(maxY, p.y + half);
-    }
+  const half = Math.max(stroke.size, MIN_STROKE_WIDTH) / 2;
+  for (const p of stroke.points) {
+    minX = Math.min(minX, p.x - half);
+    minY = Math.min(minY, p.y - half);
+    maxX = Math.max(maxX, p.x + half);
+    maxY = Math.max(maxY, p.y + half);
   }
   if (!Number.isFinite(minX)) return null;
   return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Axis-aligned bounding box of all ink, padded for stroke width. Returns `null`
+ * when there are no points (an "empty" drawing), so callers can short-circuit.
+ */
+export function inkBounds(strokes: Stroke[]): Bounds | null {
+  let acc: Bounds | null = null;
+  for (const stroke of strokes) {
+    const b = strokeBounds(stroke);
+    if (!b) continue;
+    if (!acc) {
+      acc = { ...b };
+    } else {
+      acc.minX = Math.min(acc.minX, b.minX);
+      acc.minY = Math.min(acc.minY, b.minY);
+      acc.maxX = Math.max(acc.maxX, b.maxX);
+      acc.maxY = Math.max(acc.maxY, b.maxY);
+    }
+  }
+  return acc;
+}
+
+/** True when two bounds rects overlap (touching edges count as overlap). */
+export function boundsIntersect(a: Bounds, b: Bounds): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
 
 /** Eraser contact radius scales with the selected size, with a usable floor. */

@@ -46,6 +46,14 @@ export interface TextItem {
 export interface Stroke {
   /** Stable id, used for hit-testing / erasing. */
   id: string;
+  /**
+   * Absolute wall-clock ms (`Date.now()`) when the stroke began. Optional for
+   * back-compat — strokes saved before Phase 0 don't have it. Together with
+   * the per-point relative `t`, this makes stroke replay (Phase 3) possible:
+   * `t` alone can't order strokes or reconstruct inter-stroke gaps. Replay
+   * treats missing `startedAt` as "sequence by array order".
+   */
+  startedAt?: number;
   /** Hex color, e.g. "#ffffff". */
   color: string;
   /** Base line width in CSS px before pressure scaling. */

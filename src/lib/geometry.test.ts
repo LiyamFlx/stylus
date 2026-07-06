@@ -4,12 +4,14 @@ import {
   distanceToSegment,
   eraserRadius,
   hitsStroke,
+  boundsIntersect,
   inkBounds,
   MAX_SCALE,
   MIN_SCALE,
   MIN_STROKE_WIDTH,
   pointInPolygon,
   screenToWorld,
+  strokeBounds,
   strokeInLasso,
   worldToScreen,
 } from './geometry';
@@ -244,5 +246,42 @@ describe('strokeInLasso', () => {
 
   it('returns false for an empty stroke', () => {
     expect(strokeInLasso(stroke([]), box)).toBe(false);
+  });
+});
+
+// ─── strokeBounds / boundsIntersect (Phase 0 — culling primitives) ───────────
+
+describe('strokeBounds', () => {
+  it('returns null for a pointless stroke', () => {
+    expect(strokeBounds(stroke([]))).toBeNull();
+  });
+
+  it('pads by half the stroke width, floored at MIN_STROKE_WIDTH', () => {
+    const s = stroke([[10, 10], [20, 10]], { size: 10 });
+    expect(strokeBounds(s)).toEqual({ minX: 5, minY: 5, maxX: 25, maxY: 15 });
+  });
+
+  it('agrees with inkBounds for a single stroke', () => {
+    const s = stroke([[0, 0], [30, 40]], { size: 8 });
+    expect(strokeBounds(s)).toEqual(inkBounds([s]));
+  });
+});
+
+describe('boundsIntersect', () => {
+  const a = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+
+  it('detects overlap and containment', () => {
+    expect(boundsIntersect(a, { minX: 5, minY: 5, maxX: 15, maxY: 15 })).toBe(true);
+    expect(boundsIntersect(a, { minX: 2, minY: 2, maxX: 4, maxY: 4 })).toBe(true);
+    expect(boundsIntersect({ minX: 2, minY: 2, maxX: 4, maxY: 4 }, a)).toBe(true);
+  });
+
+  it('counts touching edges as intersecting (edge-of-viewport strokes must draw)', () => {
+    expect(boundsIntersect(a, { minX: 10, minY: 0, maxX: 20, maxY: 10 })).toBe(true);
+  });
+
+  it('rejects disjoint rects on each axis', () => {
+    expect(boundsIntersect(a, { minX: 11, minY: 0, maxX: 20, maxY: 10 })).toBe(false);
+    expect(boundsIntersect(a, { minX: 0, minY: 11, maxX: 10, maxY: 20 })).toBe(false);
   });
 });

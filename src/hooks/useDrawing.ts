@@ -261,8 +261,14 @@ export function useDrawing({
       const dpr = window.devicePixelRatio || 1;
       clearDevice(ctx, canvas);
       applyTransform(ctx, dpr);
+      // Viewport culling: the visible rect, inverse-transformed into world
+      // space. On-screen paint only — export paths must NOT cull (see
+      // RenderOptions.cull).
+      const tl = screenToWorld(0, 0, viewRef.current);
+      const br = screenToWorld(canvas.clientWidth, canvas.clientHeight, viewRef.current);
       renderAll(ctx, source ?? strokesRef.current, canvas.clientWidth, canvas.clientHeight, {
         paper: settingsRef.current.paper,
+        cull: { minX: tl.x, minY: tl.y, maxX: br.x, maxY: br.y },
       });
     },
     [applyTransform, clearDevice],
@@ -575,6 +581,8 @@ export function useDrawing({
         color: activeColor,
         size: activeSize,
         penType: settingsRef.current.penType ?? 'fountain',
+        // Capture-time replay anchor (Phase 3) — cannot be backfilled later.
+        startedAt: Date.now(),
         points: [point],
       };
       onPenStartRef.current?.();

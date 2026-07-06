@@ -1,6 +1,28 @@
 import type { InkPoint, PaperStyle, Stroke } from '../types';
 import type { Bounds } from './geometry';
+import { boundsIntersect, strokeBounds } from './geometry';
 import { drawPaper } from './paper';
+
+/**
+ * Per-stroke bounds cache for viewport culling (Phase 0). Keyed on stroke
+ * identity: committed strokes are immutable references, so an entry stays
+ * valid for the stroke's lifetime; geometry-changing ops (move) produce NEW
+ * stroke objects, which miss the cache and recompute. WeakMap so dropped
+ * strokes (undo, erase, clear) free their entries automatically.
+ *
+ * The cache is what keeps the cull O(strokes) instead of O(points) — without
+ * it, per-frame bounds recomputation would re-create the exact cost culling
+ * exists to remove.
+ */
+const strokeBoundsCache = new WeakMap<Stroke, Bounds>();
+
+function cachedStrokeBounds(stroke: Stroke): Bounds | null {
+  const hit = strokeBoundsCache.get(stroke);
+  if (hit) return hit;
+  const b = strokeBounds(stroke);
+  if (b) strokeBoundsCache.set(stroke, b);
+  return b;
+}
 
 /**
  * Canvas rendering helpers.
@@ -62,6 +84,21 @@ export interface RenderOptions {
    *  sits over a CSS background); set it for exports so the bitmap isn't
    *  transparent. */
   background?: string;
+  /**
+   * Viewport culling (Phase 0). Visible region in WORLD coordinates — strokes
+   * whose cached bounds don't intersect it are skipped entirely. On-screen
+   * callers pass the viewport inverse-transformed through the view (see
+   * paintStatic in useDrawing); if rotation ever lands, pass the AABB of the
+   * rotated viewport quad.
+   *
+   * ── EXPORT BYPASS — DO NOT "OPTIMIZE" ──────────────────────────────────
+   * Omit (or pass null) to render EVERYTHING. Export/thumbnail paths MUST
+   * NOT cull: culling is a render-time visible-region optimization; an
+   * export needs the complete document regardless of what was on-screen.
+   * Routing an export through a culled render silently truncates output.
+   * ────────────────────────────────────────────────────────────────────────
+   */
+  cull?: Bounds | null;
 }
 
 /**
@@ -109,7 +146,7 @@ export function renderAll(
   strokes: Stroke[],
   width: number,
   height: number,
-  { paper = 'blank', background }: RenderOptions = {},
+  { paper = 'blank', background, cull = null }: RenderOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
   if (background) {
@@ -125,6 +162,11 @@ export function renderAll(
     }
   }
   for (const stroke of strokes) {
+    if (cull) {
+      const b = cachedStrokeBounds(stroke);
+      // Zero-point strokes have no bounds and nothing to draw either way.
+      if (!b || !boundsIntersect(b, cull)) continue;
+    }
     drawStroke(ctx, stroke);
   }
 }

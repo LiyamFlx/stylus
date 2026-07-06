@@ -59,6 +59,8 @@ function renderToCanvas(
   ctx.scale(scale, scale);
   // renderAll applies the opaque background (after its clear) and the paper
   // guide, then the strokes — so the export matches what's on screen.
+  // EXPORT PATH — intentionally NO `cull` option: exports need the complete
+  // document, never the visible viewport (see RenderOptions.cull).
   renderAll(ctx, strokes, width, height, { paper, background });
   drawTexts(ctx, texts);
   return canvas;
