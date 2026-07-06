@@ -27,6 +27,7 @@ import {
 } from './icons';
 import type { PaletteId } from '../lib/kandinsky/audio';
 import type { ToolbarVariant } from '../lib/modes';
+import { ColorWheel } from './ColorWheel';
 
 /** Human-readable label for the current paper guide, used in the tooltip. */
 const PAPER_LABELS: Record<PaperStyle, string> = {
@@ -89,6 +90,10 @@ interface ToolbarProps {
   onToggleExamLock?: () => void;
   /** Distraction-free: hide all chrome (Phase 1 item 8). */
   onHideChrome?: () => void;
+  /** Canvas Mode color wheel (Phase 3 item 3). */
+  enableColorWheel?: boolean;
+  customColors?: readonly string[];
+  onCustomColor?: (hex: string) => void;
   onCyclePalette: () => void;
 }
 
@@ -263,15 +268,26 @@ function ColorPicker({
   color,
   onColorChange,
   paletteOverride,
+  enableWheel = false,
+  customColors = [],
+  onCustomColor,
 }: {
   color: string;
   onColorChange: (c: string) => void;
   /** Mode palette override (e.g. NOTEBOOK_COLORS). Undefined = full presets
    *  plus the custom-color input; an override is a closed set by design. */
   paletteOverride?: readonly string[];
+  /** Canvas Mode: HSB wheel + EyeDropper as an alternate view (item 3). */
+  enableWheel?: boolean;
+  /** Per-doc saved custom colors, shown inside the wheel popover. */
+  customColors?: readonly string[];
+  /** Persist a committed wheel/eyedropper color. */
+  onCustomColor?: (hex: string) => void;
 }) {
   const colors = paletteOverride ?? PRESET_COLORS;
   const isPreset = (colors as readonly string[]).includes(color);
+  const [wheelOpen, setWheelOpen] = useState(false);
+  const wheelRef = usePopover(wheelOpen, setWheelOpen);
   return (
     <div className="flex items-center gap-1.5">
       {colors.map((c) => (
@@ -318,6 +334,45 @@ function ColorPicker({
           aria-label="Pick a custom color"
         />
       </label>
+      )}
+      {enableWheel && paletteOverride === undefined && (
+        <div ref={wheelRef} className="relative">
+          <button
+            type="button"
+            title="Color wheel"
+            aria-label="Open color wheel"
+            aria-expanded={wheelOpen}
+            onClick={() => setWheelOpen((o) => !o)}
+            className={[
+              'flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold',
+              wheelOpen
+                ? 'border-brand-500 text-brand-300'
+                : 'border-border-strong text-ink-400 hover:border-ink-400',
+            ].join(' ')}
+          >
+            H
+          </button>
+          {wheelOpen && (
+            <div className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-3 shadow-pop backdrop-blur-pill">
+              <ColorWheel color={color} onColorChange={onColorChange} onCommit={onCustomColor} />
+              {customColors.length > 0 && (
+                <div className="mt-2 flex justify-center gap-1.5">
+                  {customColors.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      title={c}
+                      aria-label={`Saved color ${c}`}
+                      onClick={() => onColorChange(c)}
+                      className="h-5 w-5 rounded-full border border-border-strong hover:scale-110"
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -504,6 +559,9 @@ export function Toolbar(props: ToolbarProps) {
     examLock = false,
     onToggleExamLock,
     onHideChrome,
+    enableColorWheel = false,
+    customColors,
+    onCustomColor,
     onCyclePalette,
   } = props;
 
@@ -589,7 +647,14 @@ export function Toolbar(props: ToolbarProps) {
       <SizePicker size={size} onSizeChange={onSizeChange} />
 
       <Divider />
-      <ColorPicker color={color} onColorChange={onColorChange} paletteOverride={paletteOverride} />
+      <ColorPicker
+        color={color}
+        onColorChange={onColorChange}
+        paletteOverride={paletteOverride}
+        enableWheel={enableColorWheel}
+        customColors={customColors}
+        onCustomColor={onCustomColor}
+      />
 
       <Divider />
       <PaperPicker paper={paper} onPaperSelect={onPaperSelect} />

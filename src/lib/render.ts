@@ -2,6 +2,7 @@ import type { InkPoint, PaperStyle, RulingDensity, Stroke } from '../types';
 import type { Bounds } from './geometry';
 import { boundsIntersect, strokeBounds } from './geometry';
 import { drawPaper } from './paper';
+import { penProfile } from './penProfiles';
 
 /**
  * Per-stroke bounds cache for viewport culling (Phase 0). Keyed on stroke
@@ -41,7 +42,10 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   // so they read correctly over any background — including the opaque export
   // fill. We deliberately do NOT use a 'multiply' blend: against the dark export
   // background multiply collapses highlights to near-black.
-  ctx.globalCompositeOperation = 'source-over'; // never inherit a stray blend
+  // Per-stroke blend from the pen profile (Phase 3 brushes). Reset below —
+  // and see the Phase 4 note in penProfiles: layer compositing supersedes this.
+  const blend = stroke.penType ? penProfile(stroke.penType).blend : undefined;
+  ctx.globalCompositeOperation = blend ?? 'source-over';
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineCap = 'round';
@@ -55,6 +59,7 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
     ctx.arc(p.x, p.y, pointWidth(p, size) / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     return;
   }
 
@@ -75,6 +80,7 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 export interface RenderOptions {

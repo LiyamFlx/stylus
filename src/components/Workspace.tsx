@@ -32,6 +32,8 @@ import { importChunk } from '../lib/chunkReload';
 import {
   inkKey,
   listPages,
+  pushCustomColor,
+  readCustomColors,
   pageInkKey,
   readAux,
   readPageAux,
@@ -147,6 +149,15 @@ export function Workspace({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [chromeHidden]);
+
+  // Canvas Mode custom palette (Phase 3 item 3) — per-doc, capped, persisted.
+  const [customColors, setCustomColors] = useState<string[]>(() =>
+    readCustomColors(documentId),
+  );
+  const saveCustomColor = useCallback(
+    (hex: string) => setCustomColors(pushCustomColor(documentId, hex)),
+    [documentId],
+  );
 
   const music = useMusicMode();
   const learningAudio = useLearningAudio();
@@ -735,6 +746,9 @@ export function Workspace({
         paletteOverride={paletteOverride}
         variant={examLock ? 'restricted' : toolbarVariant}
         position={appMode === 'mobile' ? 'bottom' : 'top'}
+        enableColorWheel={appMode === 'canvas'}
+        customColors={customColors}
+        onCustomColor={saveCustomColor}
         examLock={examLock}
         onToggleExamLock={pageId ? () => setExamLock((v) => !v) : undefined}
         onHideChrome={() => setChromeHidden(true)}

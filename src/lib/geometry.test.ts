@@ -7,7 +7,6 @@ import {
   A4_BOUNDS,
   boundsIntersect,
   clampPanToBounds,
-  clampScale,
   pinchDelta,
   inkBounds,
   MAX_SCALE,

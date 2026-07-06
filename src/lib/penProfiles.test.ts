@@ -37,12 +37,25 @@ describe('penProfile', () => {
 });
 
 describe('PEN_TYPES', () => {
-  it('lists the four pens in order', () => {
-    expect(PEN_TYPES).toEqual<PenType[]>([
-      'fountain',
-      'ballpoint',
-      'brush',
-      'highlighter',
-    ]);
+  it('lists every pen exactly once, fountain first', () => {
+    expect(PEN_TYPES[0]).toBe('fountain');
+    expect(new Set(PEN_TYPES).size).toBe(PEN_TYPES.length);
+    // Every entry must have a working profile (compile-time Record + runtime).
+    for (const t of PEN_TYPES) expect(penProfile(t).label).toBeTruthy();
+  });
+});
+
+describe('phase 3 brushes', () => {
+  it('pencil is semi-opaque and pressure-sensitive', () => {
+    const p = penProfile('pencil');
+    expect(p.opacity).toBeLessThan(1);
+    expect(p.widthFor(1, 4)).toBeGreaterThan(p.widthFor(0, 4));
+    expect(p.blend).toBeUndefined();
+  });
+  it('neon carries the screen blend; all others default to source-over', () => {
+    expect(penProfile('neon').blend).toBe('screen');
+    for (const t of ['fountain', 'ballpoint', 'brush', 'highlighter', 'pencil'] as const) {
+      expect(penProfile(t).blend).toBeUndefined();
+    }
   });
 });

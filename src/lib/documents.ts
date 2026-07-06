@@ -191,6 +191,7 @@ export function deleteDocument(id: string): string {
       }
     }
     localStorage.removeItem(pagesKey(id));
+    localStorage.removeItem(customColorsKey(id));
     localStorage.removeItem(inkKey(id));
     localStorage.removeItem(auxKey(id));
   } catch {
@@ -384,4 +385,25 @@ export function readPageAux(docId: string, pageId: string): PageAux {
 
 export function writePageAux(docId: string, pageId: string, aux: PageAux): void {
   write(pageAuxKey(docId, pageId), aux);
+}
+
+// ─── Custom colors (Canvas Mode, Phase 3 item 3) ─────────────────────────────
+
+export const customColorsKey = (docId: string) => `stylus.doc.v1.${docId}.colors`;
+
+const MAX_CUSTOM_COLORS = 8;
+
+export function readCustomColors(docId: string): string[] {
+  const v = read<unknown>(customColorsKey(docId));
+  return Array.isArray(v) ? (v.filter((c) => typeof c === 'string') as string[]) : [];
+}
+
+/** Prepend a color (deduped, capped). Returns the new list. */
+export function pushCustomColor(docId: string, color: string): string[] {
+  const next = [color, ...readCustomColors(docId).filter((c) => c !== color)].slice(
+    0,
+    MAX_CUSTOM_COLORS,
+  );
+  write(customColorsKey(docId), next);
+  return next;
 }
