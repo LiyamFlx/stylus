@@ -19,6 +19,7 @@ import { createId } from '../lib/id';
 import type { Bounds } from '../lib/geometry';
 import {
   applyMoveOffset,
+  clampPanToBounds,
   clampScale,
   eraserRadius,
   hitsSelectionBounds,
@@ -38,6 +39,12 @@ interface UseDrawingOptions {
   paper: PaperStyle;
   /** Line spacing for the 'notebook' paper. Ignored by other styles. */
   ruling?: RulingDensity;
+  /**
+   * World-space rect the view must keep on screen (notebook page bounds).
+   * `null`/omitted = infinite canvas, no clamping. Enforced in commitView so
+   * pan, zoom-anchor and any future view mutation share one rule.
+   */
+  panBounds?: Bounds | null;
   /** Active pen type. Defaults to fountain when omitted. */
   penType?: PenType;
   /** When true, damp jitter on the live stroke (low-lag smoothing). */
@@ -142,6 +149,7 @@ export function useDrawing({
   size,
   paper,
   ruling = 'college',
+  panBounds = null,
   penType = 'fountain',
   stabilizer = false,
   storageKey,
@@ -871,8 +879,22 @@ export function useDrawing({
 
   // ─── View controls (zoom + pan) ───────────────────────────────────────────────
 
+  // Mirrored so commitView (stable) always reads the current bounds.
+  const panBoundsRef = useRef<Bounds | null>(panBounds);
+  panBoundsRef.current = panBounds;
+
   const commitView = useCallback(
     (next: ViewTransform) => {
+      const bounds = panBoundsRef.current;
+      if (bounds) {
+        const canvas = canvasRef.current;
+        next = clampPanToBounds(
+          next,
+          bounds,
+          canvas?.clientWidth ?? window.innerWidth,
+          canvas?.clientHeight ?? window.innerHeight,
+        );
+      }
       viewRef.current = next;
       setView(next);
       // Both layers depend on the transform — repaint each once.

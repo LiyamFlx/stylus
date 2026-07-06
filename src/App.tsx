@@ -4,6 +4,7 @@ import { Workspace } from './components/Workspace';
 import { PageNav } from './components/PageNav';
 import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
+import { modeConfig } from './lib/modes';
 import type { HistorySnapshot } from './hooks/useHistory';
 import type { Stroke } from './types';
 import { loadProfile, saveProfile } from './lib/profile';
@@ -70,6 +71,7 @@ export default function App() {
   }, [pagesApi, cacheKey]);
 
   const activePage = pagesApi.pages.find((p) => p.id === pagesApi.activePageId);
+  const paletteOverride = modeConfig(currentDoc?.mode).paletteOverride ?? undefined;
 
   // Auto-run the onboarding tour once for first-time visitors.
   useEffect(() => {
@@ -127,6 +129,7 @@ export default function App() {
             nightMode={nightMode}
             onOpenSidebar={() => setSidebarOpen(true)}
             pageId={activePage?.id ?? null}
+            paletteOverride={paletteOverride}
             pagePaper={activePage?.paper}
             initialHistory={
               activePage

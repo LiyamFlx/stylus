@@ -66,6 +66,8 @@ interface ToolbarProps {
   playing: boolean;
   onPlayToggle: () => void;
   palette: PaletteId;
+  /** Mode color-palette override (ModeConfig.paletteOverride). */
+  paletteOverride?: readonly string[];
   onCyclePalette: () => void;
 }
 
@@ -232,14 +234,19 @@ function SizePicker({
 function ColorPicker({
   color,
   onColorChange,
+  paletteOverride,
 }: {
   color: string;
   onColorChange: (c: string) => void;
+  /** Mode palette override (e.g. NOTEBOOK_COLORS). Undefined = full presets
+   *  plus the custom-color input; an override is a closed set by design. */
+  paletteOverride?: readonly string[];
 }) {
-  const isPreset = (PRESET_COLORS as readonly string[]).includes(color);
+  const colors = paletteOverride ?? PRESET_COLORS;
+  const isPreset = (colors as readonly string[]).includes(color);
   return (
     <div className="flex items-center gap-1.5">
-      {PRESET_COLORS.map((c) => (
+      {colors.map((c) => (
         <button
           key={c}
           type="button"
@@ -256,7 +263,9 @@ function ColorPicker({
           style={{ backgroundColor: c }}
         />
       ))}
-      {/* Custom color: the swatch shows the picked color when it's non-preset. */}
+      {/* Custom color: the swatch shows the picked color when it's non-preset.
+          Hidden under a palette override — a classroom palette is closed. */}
+      {paletteOverride === undefined && (
       <label
         title="Custom color"
         className={[
@@ -281,6 +290,7 @@ function ColorPicker({
           aria-label="Pick a custom color"
         />
       </label>
+      )}
     </div>
   );
 }
@@ -460,6 +470,7 @@ export function Toolbar(props: ToolbarProps) {
     playing,
     onPlayToggle,
     palette,
+    paletteOverride,
     onCyclePalette,
   } = props;
 
@@ -521,7 +532,7 @@ export function Toolbar(props: ToolbarProps) {
       <SizePicker size={size} onSizeChange={onSizeChange} />
 
       <Divider />
-      <ColorPicker color={color} onColorChange={onColorChange} />
+      <ColorPicker color={color} onColorChange={onColorChange} paletteOverride={paletteOverride} />
 
       <Divider />
       <PaperPicker paper={paper} onPaperSelect={onPaperSelect} />

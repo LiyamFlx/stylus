@@ -115,6 +115,46 @@ export function inkBounds(strokes: Stroke[]): Bounds | null {
   return acc;
 }
 
+/** A4 page rect in CSS px at 96dpi (210mm × 297mm) — the world-space page
+ *  bounds for notebook documents. */
+export const A4_BOUNDS: Bounds = { minX: 0, minY: 0, maxX: 794, maxY: 1123 };
+
+/** Minimum px of the bounds rect that must stay visible on each axis. */
+const MIN_BOUNDS_VISIBLE = 48;
+
+/**
+ * Clamp a view's pan so `bounds` can never be panned fully off-screen
+ * (Phase 1 item 5 — notebook fixed-page feel). Pure: returns the same object
+ * when no clamping is needed. Applied at the commitView choke point so zoom
+ * anchoring and pan share one rule; `null` bounds = infinite modes, no-op.
+ */
+export function clampPanToBounds(
+  view: { scale: number; panX: number; panY: number },
+  bounds: Bounds,
+  viewportW: number,
+  viewportH: number,
+): { scale: number; panX: number; panY: number } {
+  const { scale } = view;
+  const mv = MIN_BOUNDS_VISIBLE;
+
+  // panX range keeping ≥mv px of bounds on screen horizontally.
+  const minPanX = bounds.minX - (viewportW - mv) / scale;
+  const maxPanX = bounds.maxX - mv / scale;
+  const minPanY = bounds.minY - (viewportH - mv) / scale;
+  const maxPanY = bounds.maxY - mv / scale;
+
+  // Degenerate window (extreme zoom): pin to the range midpoint.
+  const panX = minPanX > maxPanX
+    ? (minPanX + maxPanX) / 2
+    : Math.min(Math.max(view.panX, minPanX), maxPanX);
+  const panY = minPanY > maxPanY
+    ? (minPanY + maxPanY) / 2
+    : Math.min(Math.max(view.panY, minPanY), maxPanY);
+
+  if (panX === view.panX && panY === view.panY) return view;
+  return { scale, panX, panY };
+}
+
 /** True when two bounds rects overlap (touching edges count as overlap). */
 export function boundsIntersect(a: Bounds, b: Bounds): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;

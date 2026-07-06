@@ -22,7 +22,7 @@ import { useEditingPrefs } from '../lib/editingPrefsContext';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
-import { eraserRadius, worldToScreen } from '../lib/geometry';
+import { A4_BOUNDS, eraserRadius, worldToScreen } from '../lib/geometry';
 import { importChunk } from '../lib/chunkReload';
 import {
   inkKey,
@@ -54,6 +54,8 @@ interface WorkspaceProps {
   pagePaper?: PaperStyle;
   /** Page navigation UI, built in App where page state lives. */
   pageNav?: React.ReactNode;
+  /** Mode color palette (ModeConfig.paletteOverride) — closed set when given. */
+  paletteOverride?: readonly string[];
   /** Undo/redo seed from the page-flip history cache. */
   initialHistory?: HistorySnapshot<Stroke[]>;
   /** Called on unmount so App can cache this page's undo/redo stacks. */
@@ -76,6 +78,7 @@ export function Workspace({
   pageId = null,
   pagePaper,
   pageNav,
+  paletteOverride,
   initialHistory,
   onHistorySnapshot,
 }: WorkspaceProps) {
@@ -105,6 +108,16 @@ export function Workspace({
   const [texts, setTexts] = useState<TextItem[]>(initialAux.texts);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
+  // A palette override is a closed set: if the sticky editing-prefs color
+  // isn't in it (e.g. white ink from a canvas doc, invisible on cream paper),
+  // snap to the palette's first entry once on mount.
+  useEffect(() => {
+    if (paletteOverride && !paletteOverride.includes(color)) {
+      onColorChange(paletteOverride[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const music = useMusicMode();
   const learningAudio = useLearningAudio();
 
@@ -117,6 +130,8 @@ export function Workspace({
     penType,
     stabilizer,
     storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
+    // Notebook pages are A4-shaped: pan can't take the page fully off-screen.
+    panBounds: pageId ? A4_BOUNDS : null,
     initialHistory,
     onStrokeEnd: (stroke: Stroke) => {
       const el = drawing.canvasRef.current;
@@ -652,6 +667,7 @@ export function Workspace({
       </div>
 
       <Toolbar
+        paletteOverride={paletteOverride}
         tool={tool}
         color={color}
         size={size}

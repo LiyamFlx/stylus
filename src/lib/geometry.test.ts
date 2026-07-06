@@ -4,7 +4,9 @@ import {
   distanceToSegment,
   eraserRadius,
   hitsStroke,
+  A4_BOUNDS,
   boundsIntersect,
+  clampPanToBounds,
   inkBounds,
   MAX_SCALE,
   MIN_SCALE,
@@ -283,5 +285,47 @@ describe('boundsIntersect', () => {
   it('rejects disjoint rects on each axis', () => {
     expect(boundsIntersect(a, { minX: 11, minY: 0, maxX: 20, maxY: 10 })).toBe(false);
     expect(boundsIntersect(a, { minX: 0, minY: 11, maxX: 10, maxY: 20 })).toBe(false);
+  });
+});
+
+// ─── clampPanToBounds (Phase 1 — notebook fixed-page pan) ────────────────────
+
+describe('clampPanToBounds', () => {
+  const vp = { w: 800, h: 600 };
+
+  it('returns the same object when no clamping is needed', () => {
+    const view = { scale: 1, panX: 0, panY: 0 };
+    expect(clampPanToBounds(view, A4_BOUNDS, vp.w, vp.h)).toBe(view);
+  });
+
+  it('clamps a pan that pushes the page fully off the right edge', () => {
+    // panX far negative → page drifts right out of view.
+    const view = { scale: 1, panX: -10_000, panY: 0 };
+    const out = clampPanToBounds(view, A4_BOUNDS, vp.w, vp.h);
+    // Left page edge on screen: (minX - panX) * scale ≤ vp.w - 48.
+    expect((A4_BOUNDS.minX - out.panX) * out.scale).toBeLessThanOrEqual(vp.w - 48);
+  });
+
+  it('clamps a pan that pushes the page fully off the left edge', () => {
+    const view = { scale: 1, panX: 10_000, panY: 0 };
+    const out = clampPanToBounds(view, A4_BOUNDS, vp.w, vp.h);
+    // Right page edge on screen: (maxX - panX) * scale ≥ 48.
+    expect((A4_BOUNDS.maxX - out.panX) * out.scale).toBeGreaterThanOrEqual(48);
+  });
+
+  it('clamps vertically the same way', () => {
+    const out = clampPanToBounds({ scale: 1, panX: 0, panY: 10_000 }, A4_BOUNDS, vp.w, vp.h);
+    expect((A4_BOUNDS.maxY - out.panY) * out.scale).toBeGreaterThanOrEqual(48);
+  });
+
+  it('respects zoom: at 2x the same world pan maps differently', () => {
+    const out = clampPanToBounds({ scale: 2, panX: 10_000, panY: 0 }, A4_BOUNDS, vp.w, vp.h);
+    expect((A4_BOUNDS.maxX - out.panX) * 2).toBeGreaterThanOrEqual(48);
+  });
+
+  it('never returns NaN for a degenerate window (extreme zoom-out)', () => {
+    const out = clampPanToBounds({ scale: 0.01, panX: 0, panY: 0 }, A4_BOUNDS, vp.w, vp.h);
+    expect(Number.isFinite(out.panX)).toBe(true);
+    expect(Number.isFinite(out.panY)).toBe(true);
   });
 });
