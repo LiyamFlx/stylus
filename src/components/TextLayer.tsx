@@ -112,15 +112,19 @@ export function TextLayer({
 
   const onPlacePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      // Tapping empty space places a new box, and focuses the input in the SAME
-      // gesture so the mobile keyboard opens.
-      if (e.target === e.currentTarget) {
-        const w = toWorld(e.clientX, e.clientY);
-        onCreate(w.x, w.y);
-        focusInput();
+      if (e.target !== e.currentTarget) return; // clicked a box, not empty space
+      // If a box is being edited, an empty-space tap FINISHES it (like any
+      // editor) instead of dropping a second box on top — that mismatch was the
+      // bug. Only when nothing is active does a tap place a new box.
+      if (activeId) {
+        onSelect(null);
+        return;
       }
+      const w = toWorld(e.clientX, e.clientY);
+      onCreate(w.x, w.y);
+      focusInput();
     },
-    [onCreate, focusInput, toWorld],
+    [activeId, onSelect, onCreate, focusInput, toWorld],
   );
 
   const activeItem = items.find((i) => i.id === activeId) ?? null;
@@ -160,7 +164,8 @@ export function TextLayer({
         )}
 
         {/* The single editing surface for the active box. Kept mounted in text
-            mode (even with no active box) so it can be focused inside a tap. */}
+            mode (even with no active box) so it can be focused inside a tap. A
+            drag handle lets you reposition it without fighting text selection. */}
         {textMode && (
           <ActiveTextArea
             ref={inputRef}
@@ -168,6 +173,9 @@ export function TextLayer({
             onEdit={onEdit}
             onDone={onDone}
             onExtent={onActiveExtent}
+            onHandleDown={activeItem ? (e) => startDrag(e, activeItem) : undefined}
+            onHandleMove={onItemMove}
+            onHandleUp={endDrag}
           />
         )}
       </div>
@@ -225,6 +233,10 @@ interface ActiveTextAreaProps {
   onDone: () => void;
   /** Report the box's bottom edge (world-Y) as it auto-sizes. */
   onExtent?: (bottomWorldY: number) => void;
+  /** Drag handle: move the active box without disturbing text selection. */
+  onHandleDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onHandleMove?: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onHandleUp?: (e: ReactPointerEvent<HTMLDivElement>) => void;
 }
 
 /**
@@ -234,7 +246,7 @@ interface ActiveTextAreaProps {
  */
 const ActiveTextArea = memo(
   forwardRef<HTMLTextAreaElement, ActiveTextAreaProps>(function ActiveTextArea(
-    { item, onEdit, onDone, onExtent },
+    { item, onEdit, onDone, onExtent, onHandleDown, onHandleMove, onHandleUp },
     ref,
   ) {
     const localRef = useRef<HTMLTextAreaElement | null>(null);
@@ -275,42 +287,72 @@ const ActiveTextArea = memo(
     }, [item]);
 
     return (
-      <textarea
-        ref={setRefs}
-        value={item?.text ?? ''}
-        onChange={(e) => onEdit(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            onDone();
-          }
-          // Don't let the canvas' window-level tool hotkeys fire while typing.
-          e.stopPropagation();
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-        rows={1}
-        spellCheck={false}
-        autoCapitalize="sentences"
-        aria-label="Edit text"
-        className={[
-          'absolute resize-none overflow-hidden whitespace-pre-wrap break-words rounded-sm',
-          'border-0 bg-transparent leading-tight outline-none',
-          item ? 'pointer-events-auto ring-2 ring-brand-500' : 'pointer-events-none',
-        ].join(' ')}
-        style={{
-          // Parked off-view (but mounted + focusable) when nothing is active.
-          left: item ? item.x : -9999,
-          top: item ? item.y : -9999,
-          color: item?.color ?? 'transparent',
-          fontSize: item?.size ?? 20,
-          caretColor: item?.color ?? 'transparent',
-          minWidth: '8ch',
-          width: 'auto',
-          padding: 2,
-          margin: -2,
-          opacity: item ? 1 : 0,
-        }}
-      />
+      <>
+        {/* Drag handle: a small grip above the active box. Dragging it moves the
+            box; the textarea itself keeps native text selection intact. */}
+        {item && onHandleDown && (
+          <div
+            role="button"
+            aria-label="Move text box"
+            title="Drag to move"
+            onPointerDown={onHandleDown}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            onPointerCancel={onHandleUp}
+            className="pointer-events-auto absolute flex cursor-move items-center justify-center rounded-full bg-brand-500 text-white shadow-soft"
+            style={{
+              left: item.x,
+              top: item.y - 22,
+              width: 22,
+              height: 18,
+              touchAction: 'none',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+              <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+              <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+            </svg>
+          </div>
+        )}
+
+        <textarea
+          ref={setRefs}
+          value={item?.text ?? ''}
+          onChange={(e) => onEdit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onDone();
+            }
+            // Don't let the canvas' window-level tool hotkeys fire while typing.
+            e.stopPropagation();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          rows={1}
+          spellCheck={false}
+          autoCapitalize="sentences"
+          aria-label="Edit text"
+          className={[
+            'absolute resize-none overflow-hidden whitespace-pre-wrap break-words rounded-sm',
+            'border-0 bg-transparent leading-tight outline-none',
+            item ? 'pointer-events-auto ring-2 ring-brand-500' : 'pointer-events-none',
+          ].join(' ')}
+          style={{
+            // Parked off-view (but mounted + focusable) when nothing is active.
+            left: item ? item.x : -9999,
+            top: item ? item.y : -9999,
+            color: item?.color ?? 'transparent',
+            fontSize: item?.size ?? 20,
+            caretColor: item?.color ?? 'transparent',
+            minWidth: '8ch',
+            width: 'auto',
+            padding: 2,
+            margin: -2,
+            opacity: item ? 1 : 0,
+          }}
+        />
+      </>
     );
   }),
 );

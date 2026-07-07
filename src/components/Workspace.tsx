@@ -393,6 +393,12 @@ export function Workspace({
     }
   }, [tool, pruneEmpty]);
 
+  // Deselecting a box (tap empty space) drops it if it was left empty — no
+  // stray zero-content boxes accumulate.
+  useEffect(() => {
+    if (activeTextId === null) pruneEmpty();
+  }, [activeTextId, pruneEmpty]);
+
   /* --------------------------- export + recognize ------------------------- */
 
   const exportOpts = useCallback(() => {
