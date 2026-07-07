@@ -369,9 +369,13 @@ export function useDrawing({
     const pageW = bounds.maxX - bounds.minX;
     const vw = canvas.clientWidth;
     const scale = viewRef.current.scale;
-    // panX such that the page is centered: screen = (world - pan) * scale.
+    // panX centers horizontally; panY opens the page top just BELOW the toolbar
+    // (which floats at the top of the screen) so it never overlaps what you
+    // write near the top. screen = (world - pan) * scale.
+    const TOP_GAP = 132; // clears the floating toolbar + a little breathing room
     const panX = bounds.minX - (vw / scale - pageW) / 2;
-    const next = { ...viewRef.current, panX };
+    const panY = bounds.minY - TOP_GAP / scale;
+    const next = { ...viewRef.current, panX, panY };
     viewRef.current = next;
     setView(next);
     scheduleStaticRender();
