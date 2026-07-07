@@ -112,6 +112,9 @@ export interface UseDrawingResult {
   onPointerCancel: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   /** Capture the current undo/redo history (notebook page-flip cache). */
   getHistorySnapshot: () => HistorySnapshot<Stroke[]>;
+  /** Scroll a bounded page so a world-Y position stays comfortably in view
+   *  (notebook "focus follows writing"; no-op on the infinite canvas). */
+  scrollToKeepVisible: (worldY: number) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -654,42 +657,51 @@ export function useDrawing({
    * margin (a finished line), advance an extra ruling so the next line lands in
    * view. commitView clamps to the page, so this never scrolls past the sheet.
    */
-  const autoScroll = useCallback(
-    (stroke: Stroke) => {
+  /**
+   * Core "focus follows writing": if a world-Y write head sits below a comfort
+   * band on screen, pan down so it rises to ~42% of the viewport. Only active
+   * for a bounded page (notebook); commitView clamps to the page so it never
+   * scrolls past the sheet. Shared by pen strokes and text editing.
+   */
+  const scrollToKeepVisible = useCallback(
+    (worldY: number, extraLines = 0) => {
       const bounds = panBoundsRef.current;
       const canvas = canvasRef.current;
-      if (!bounds || !canvas || stroke.points.length === 0) return;
-
+      if (!bounds || !canvas) return;
       const view = viewRef.current;
       const vh = canvas.clientHeight;
-      // Write head = lowest (max y) ink of this stroke, in world space.
+      const screenY = (worldY - view.panY) * view.scale;
+
+      const comfortLine = vh * 0.62;
+      const target = vh * 0.42;
+      let deltaScreenY = screenY > comfortLine ? screenY - target : 0;
+      if (extraLines > 0) {
+        deltaScreenY += extraLines * RULING_SPACING[settingsRef.current.ruling ?? 'college'] * view.scale;
+      }
+      if (deltaScreenY < 1) return;
+      commitView({ ...view, panY: view.panY + deltaScreenY / view.scale });
+    },
+    [commitView],
+  );
+
+  const autoScroll = useCallback(
+    (stroke: Stroke) => {
+      if (stroke.points.length === 0) return;
+      const bounds = panBoundsRef.current;
+      if (!bounds) return;
+      // Write head = lowest (max y) ink; a line ending near the right margin
+      // advances one extra ruling so the next line lands in view.
       let baseY = -Infinity;
       let maxX = -Infinity;
       for (const p of stroke.points) {
         if (p.y > baseY) baseY = p.y;
         if (p.x > maxX) maxX = p.x;
       }
-      // Its current screen position.
-      const screenY = (baseY - view.panY) * view.scale;
-
-      const comfortLine = vh * 0.62; // below here → nudge up
-      const target = vh * 0.42; // bring the write head to here
-      let deltaScreenY = 0;
-      if (screenY > comfortLine) deltaScreenY = screenY - target;
-
-      // Finished a line (reached the right margin) → advance one ruling so the
-      // next line is comfortably visible.
       const pageW = bounds.maxX - bounds.minX;
       const atRightMargin = maxX >= bounds.minX + pageW * 0.9;
-      if (atRightMargin) {
-        deltaScreenY += RULING_SPACING[settingsRef.current.ruling ?? 'college'] * view.scale;
-      }
-
-      if (deltaScreenY < 1) return; // nothing worth moving
-      // Pan down: increasing panY scrolls the content up.
-      commitView({ ...view, panY: view.panY + deltaScreenY / view.scale });
+      scrollToKeepVisible(baseY, atRightMargin ? 1 : 0);
     },
-    [commitView],
+    [scrollToKeepVisible],
   );
   autoScrollRef.current = autoScroll;
 
@@ -1196,6 +1208,7 @@ export function useDrawing({
       onPointerUp: endGesture,
       onPointerCancel: cancelGesture,
       getHistorySnapshot: history.snapshot,
+      scrollToKeepVisible,
       undo,
       redo,
       canUndo: history.canUndo,
@@ -1218,6 +1231,6 @@ export function useDrawing({
       clear,
       isEmpty,
       selectionState,
-      viewState, history.snapshot,],
+      viewState, history.snapshot, scrollToKeepVisible,],
   );
 }

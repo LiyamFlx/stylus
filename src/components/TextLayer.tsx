@@ -17,6 +17,9 @@ interface TextLayerProps {
   onEdit: (text: string) => void;
   /** Finish editing (Escape). */
   onDone: () => void;
+  /** The active box's bottom edge in WORLD-Y, reported as it grows — lets the
+   *  parent keep the writing position on a bounded page (notebook). */
+  onActiveExtent?: (bottomWorldY: number) => void;
 }
 
 interface DragState {
@@ -53,6 +56,7 @@ export function TextLayer({
   onMove,
   onEdit,
   onDone,
+  onActiveExtent,
 }: TextLayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -163,6 +167,7 @@ export function TextLayer({
             item={activeItem}
             onEdit={onEdit}
             onDone={onDone}
+            onExtent={onActiveExtent}
           />
         )}
       </div>
@@ -218,6 +223,8 @@ interface ActiveTextAreaProps {
   item: TextItem | null;
   onEdit: (text: string) => void;
   onDone: () => void;
+  /** Report the box's bottom edge (world-Y) as it auto-sizes. */
+  onExtent?: (bottomWorldY: number) => void;
 }
 
 /**
@@ -227,7 +234,7 @@ interface ActiveTextAreaProps {
  */
 const ActiveTextArea = memo(
   forwardRef<HTMLTextAreaElement, ActiveTextAreaProps>(function ActiveTextArea(
-    { item, onEdit, onDone },
+    { item, onEdit, onDone, onExtent },
     ref,
   ) {
     const localRef = useRef<HTMLTextAreaElement | null>(null);
@@ -248,7 +255,10 @@ const ActiveTextArea = memo(
       if (!el) return;
       el.style.height = 'auto';
       el.style.height = `${el.scrollHeight}px`;
-    }, [item?.text, item?.size]);
+      // The textarea lives inside the world-transformed wrapper, so offsetHeight
+      // is in world units — report the box's bottom so the page can follow it.
+      if (item && onExtent) onExtent(item.y + el.offsetHeight);
+    }, [item?.text, item?.size, item, onExtent]);
 
     const activeIdRef = useRef<string | null>(null);
     useEffect(() => {

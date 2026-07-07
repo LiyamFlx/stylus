@@ -751,6 +751,7 @@ export function Workspace({
         onMove={moveText}
         onEdit={setActiveText}
         onDone={finishText}
+        onActiveExtent={drawing.scrollToKeepVisible}
       />
 
       {tool === 'select' && (
