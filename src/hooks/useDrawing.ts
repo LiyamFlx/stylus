@@ -826,11 +826,17 @@ export function useDrawing({
           // midpoint — one formula covers both the zoom anchor and the drag.
           const prevMidWorldX = (d.midX - d.panDx) / v.scale + v.panX;
           const prevMidWorldY = (d.midY - d.panDy) / v.scale + v.panY;
-          commitView({
-            scale,
-            panX: prevMidWorldX - d.midX / scale,
-            panY: prevMidWorldY - d.midY / scale,
-          });
+          const nextPanX = prevMidWorldX - d.midX / scale;
+          const nextPanY = prevMidWorldY - d.midY / scale;
+          // Bounded page (notebook): keep the sheet horizontally centered on
+          // zoom — no sideways drift; only vertical follows the pinch.
+          const bounded = panBoundsRef.current;
+          const cw = canvasRef.current?.clientWidth;
+          const centeredPanX =
+            bounded && cw != null
+              ? bounded.minX - (cw / scale - (bounded.maxX - bounded.minX)) / 2
+              : nextPanX;
+          commitView({ scale, panX: centeredPanX, panY: nextPanY });
           pinchPrevRef.current = next;
         }
         return;
@@ -1153,8 +1159,12 @@ export function useDrawing({
         const worldY = sy / prev.scale + prev.panY;
         commitView({ scale, panX: worldX - sx / scale, panY: worldY - sy / scale });
       } else {
-        const dx = e.shiftKey ? e.deltaY : e.deltaX;
-        const dy = e.shiftKey ? 0 : e.deltaY;
+        // On a bounded page (notebook), the sheet is glued: no horizontal drift
+        // — it stays centered — and the wheel only scrolls DOWN the page, like
+        // reading real paper. The infinite canvas still pans both axes.
+        const bounded = panBoundsRef.current !== null;
+        const dx = bounded ? 0 : e.shiftKey ? e.deltaY : e.deltaX;
+        const dy = bounded ? e.deltaY : e.shiftKey ? 0 : e.deltaY;
         commitView({
           ...prev,
           panX: prev.panX + dx / prev.scale,
