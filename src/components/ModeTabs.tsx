@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { AppMode } from '../lib/modes';
 import { PaperIcon, TypeIcon, PlusIcon, LassoIcon } from './icons';
 
@@ -22,7 +23,7 @@ const TABS: { mode: AppMode; label: string; short: string; Icon: typeof PaperIco
  * button opens a fresh document in the current mode. Sits centred at the top,
  * below the toolbar, out of the way of the drawing surface.
  */
-export function ModeTabs({ current, onSwitch, onNew }: ModeTabsProps) {
+export const ModeTabs = memo(function ModeTabs({ current, onSwitch, onNew }: ModeTabsProps) {
   return (
     <div
       role="tablist"
@@ -69,4 +70,4 @@ export function ModeTabs({ current, onSwitch, onNew }: ModeTabsProps) {
       </button>
     </div>
   );
-}
+});

@@ -352,7 +352,34 @@ export function useDrawing({
   useLayoutEffect(() => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+
+    // Container-driven size changes (mode chrome, split view, sidebar toggle)
+    // never fire window `resize` — observe the element itself. Without this the
+    // backing store stays at the stale size and ink renders squashed/blurry.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => resizeCanvas()) : null;
+    if (canvasRef.current && ro) ro.observe(canvasRef.current);
+
+    // DPR changes (window dragged between monitors) change neither the window
+    // nor the element's CSS size, so neither listener above fires. Standard
+    // trick: subscribe a matchMedia query pinned to the CURRENT dpr; it fires
+    // exactly when dpr stops matching, then re-pin to the new value.
+    let mql: MediaQueryList | null = null;
+    const onDprChange = () => {
+      resizeCanvas();
+      watchDpr();
+    };
+    function watchDpr() {
+      mql?.removeEventListener('change', onDprChange);
+      mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mql.addEventListener('change', onDprChange);
+    }
+    watchDpr();
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      ro?.disconnect();
+      mql?.removeEventListener('change', onDprChange);
+    };
   }, [resizeCanvas]);
 
   // Center a bounded page (notebook A4) horizontally in the viewport on mount,
@@ -625,8 +652,12 @@ export function useDrawing({
    * semantics as the browser stealing the pointer.
    */
   const discardInFlightWork = useCallback(() => {
-    liveStrokeRef.current = null;
-    onPenEndRef.current?.();
+    // Pair onPenEnd with an actual onPenStart: only a live pen stroke opened a
+    // pen session (Learning Mode audio must never see an unmatched end).
+    if (liveStrokeRef.current) {
+      liveStrokeRef.current = null;
+      onPenEndRef.current?.();
+    }
     eraseWorkingRef.current = null;
     erasedDuringDrag.current = false;
     moveOffsetRef.current = { dx: 0, dy: 0 };
@@ -664,15 +695,6 @@ export function useDrawing({
     [scheduleStaticRender, scheduleOverlayRender],
   );
 
-  /**
-   * Notebook "focus follows writing": after a pen stroke commits, keep the
-   * writing position comfortably in the upper-middle of the page so you're not
-   * writing at the bottom edge. Pure geometry — the stroke's baseline (its
-   * lowest ink) is the write head; if it sits below a comfort band, pan down so
-   * it rises to ~42% of the viewport. When the stroke ended near the right
-   * margin (a finished line), advance an extra ruling so the next line lands in
-   * view. commitView clamps to the page, so this never scrolls past the sheet.
-   */
   /**
    * Core "focus follows writing": if a world-Y write head sits below a comfort
    * band on screen, pan down so it rises to ~42% of the viewport. Only active
@@ -724,10 +746,20 @@ export function useDrawing({
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
-      if (isPalmRejected(e.pointerType)) return;
 
-      // ── two-finger pinch entry ──
+      // ── touch gating + two-finger pinch entry ──
       if (e.pointerType === 'touch') {
+        // While a pen stroke is in flight, touch is fully inert. A resting
+        // palm routinely produces TWO+ contact points — without this guard the
+        // pinch entry below would release the pen's capture, discard the live
+        // stroke mid-word, and start zooming. Pen wins, always.
+        if (
+          activePointerId.current !== null &&
+          activePenPointerTypeRef.current === 'pen'
+        ) {
+          return;
+        }
+
         touchPointsRef.current.set(e.pointerId, getScreenPoint(e));
         if (touchPointsRef.current.size >= 2) {
           // Second finger = navigation, not ink. Discard the nascent
@@ -737,9 +769,6 @@ export function useDrawing({
               e.currentTarget.releasePointerCapture(activePointerId.current);
             } catch { /* ignore */ }
             activePointerId.current = null;
-            // Also clear pen-active state so a pen stroke cut off by the pinch
-            // doesn't leave the palm-rejection ref stuck on 'pen'.
-            activePenPointerTypeRef.current = null;
             discardInFlightWork();
           }
           // Re-baseline on ANY finger-count change (2nd finger down, or a 3rd
@@ -747,6 +776,11 @@ export function useDrawing({
           pinchPrevRef.current = currentPinchSample();
           return;
         }
+
+        // Palm rejection gates single-finger DRAWING only. It deliberately
+        // sits after the pinch entry: a write → pinch-to-zoom flow within the
+        // rejection window is navigation and must not be blocked.
+        if (isPalmRejected(e.pointerType)) return;
       }
       if (pinchPrevRef.current) return; // pinch owns the surface
 
@@ -869,17 +903,25 @@ export function useDrawing({
           : [];
       const samples = events.length > 0 ? events : [e.nativeEvent];
 
+      // ONE layout read per event. getBoundingClientRect per coalesced sample
+      // forces layout inside the hottest loop in the app (5–10 samples per
+      // move on 120 Hz pens); the rect cannot change between samples of the
+      // same event anyway.
+      const rect = e.currentTarget.getBoundingClientRect();
+      const toWorld = (cx: number, cy: number) =>
+        screenToWorld(cx - rect.left, cy - rect.top, viewRef.current);
+
       // ── select ──
       if (activeTool === 'select') {
         const phase = selectionPhaseRef.current;
         if (phase === 'lasso') {
           for (const ev of samples) {
-            lassoRef.current.push(clientToWorld(ev.clientX, ev.clientY));
+            lassoRef.current.push(toWorld(ev.clientX, ev.clientY));
           }
           scheduleOverlayRender();
         } else if (phase === 'moving' && moveOriginRef.current) {
           const last = samples[samples.length - 1];
-          const w = clientToWorld(last.clientX, last.clientY);
+          const w = toWorld(last.clientX, last.clientY);
           moveOffsetRef.current = {
             dx: w.x - moveOriginRef.current.x,
             dy: w.y - moveOriginRef.current.y,
@@ -893,9 +935,10 @@ export function useDrawing({
 
       // ── eraser ──
       if (activeTool === 'eraser') {
+        const radius = eraserRadius(activeSize);
         for (const ev of samples) {
-          const w = clientToWorld(ev.clientX, ev.clientY);
-          eraseAt(w.x, w.y, eraserRadius(activeSize));
+          const w = toWorld(ev.clientX, ev.clientY);
+          eraseAt(w.x, w.y, radius);
         }
         return;
       }
@@ -905,7 +948,7 @@ export function useDrawing({
       if (!live) return;
       const stabilize = settingsRef.current.stabilizer === true;
       for (const ev of samples) {
-        const raw = clientToWorld(ev.clientX, ev.clientY);
+        const raw = toWorld(ev.clientX, ev.clientY);
         const w = stabilize ? smoothPoint(raw, smoothPrevRef.current, 0.35) : raw;
         if (stabilize) smoothPrevRef.current = w;
         const pt = buildPoint(w.x, w.y, ev.pointerType, ev.pressure, ev.tiltX ?? 0, ev.tiltY ?? 0);
@@ -914,7 +957,7 @@ export function useDrawing({
       }
       scheduleOverlayRender();
     },
-    [buildPoint, clientToWorld, commitView, currentPinchSample, eraseAt, getScreenPoint, scheduleOverlayRender, scheduleStaticRender],
+    [buildPoint, commitView, currentPinchSample, eraseAt, getScreenPoint, scheduleOverlayRender, scheduleStaticRender],
   );
 
   const endGesture = useCallback(
@@ -1005,7 +1048,8 @@ export function useDrawing({
       // ── pen ──
       const live = liveStrokeRef.current;
       liveStrokeRef.current = null;
-      onPenEndRef.current?.();
+      // onPenEnd only if a pen session actually opened (paired with onPenStart).
+      if (live) onPenEndRef.current?.();
       if (!live || live.points.length === 0) {
         scheduleOverlayRender(); // clear any partial live stroke
         return;
@@ -1063,6 +1107,15 @@ export function useDrawing({
   const redo = useCallback(() => { history.redo(); }, [history]);
 
   const clear = useCallback(() => {
+    // Drop any in-flight gesture first. A clear tapped mid-erase-drag would
+    // otherwise resurrect the PRE-clear array on pointerup: the erase working
+    // copy holds the old strokes and endGesture commits it wholesale.
+    if (liveStrokeRef.current) {
+      liveStrokeRef.current = null;
+      onPenEndRef.current?.();
+    }
+    eraseWorkingRef.current = null;
+    erasedDuringDrag.current = false;
     selectedIdsRef.current = new Set();
     setSelectedIds(new Set());
     selectionPhaseRef.current = 'idle';
@@ -1261,6 +1314,9 @@ export function useDrawing({
       clear,
       isEmpty,
       selectionState,
-      viewState, history.snapshot, scrollToKeepVisible,],
+      viewState,
+      history.snapshot,
+      scrollToKeepVisible,
+    ],
   );
 }

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { PaperStyle, PenSize, Tool } from '../types';
 import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
 import { PEN_TYPES, penProfile, type PenType } from '../lib/penProfiles';
@@ -124,14 +125,27 @@ function useMediaQuery(query: string) {
  * Shared close-on-outside-click / close-on-Escape behavior for popovers.
  * Uses `pointerdown` (not `mousedown`) since pen/touch input in embedded
  * WebViews isn't guaranteed to synthesize mouse events.
+ *
+ * `panelRef` is optional: popover panels are portaled to `document.body` (see
+ * `usePopoverFixedPosition`) so they're no longer a DOM descendant of the
+ * trigger. Without also checking the panel, every click *inside* the panel
+ * looks like an outside click — the popover closes (and unmounts the button)
+ * before its own `onClick` can fire, so menu items silently do nothing.
  */
-function usePopover(open: boolean, setOpen: (open: boolean) => void) {
+function usePopover(
+  open: boolean,
+  setOpen: (open: boolean) => void,
+  panelRef?: React.RefObject<HTMLElement | null>,
+) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
     const onDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
+      const target = e.target as Node;
+      if (ref.current?.contains(target)) return;
+      if (panelRef?.current?.contains(target)) return;
+      close();
     };
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     document.addEventListener('pointerdown', onDown);
@@ -140,8 +154,57 @@ function usePopover(open: boolean, setOpen: (open: boolean) => void) {
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, setOpen]);
+  }, [open, setOpen, panelRef]);
   return ref;
+}
+
+/**
+ * Popover panels live inside the desktop toolbar's `overflow-x-auto` row
+ * (a scroll fallback for narrow windows). That `overflow-x` forces the
+ * browser to also clip the Y axis, so an `absolute top-full` panel gets cut
+ * off at the row's own height instead of floating below it — the popover
+ * opens (state flips, ARIA is correct) but is invisible, which reads as a
+ * dead button.
+ *
+ * `position: fixed` alone doesn't escape this: the row also has
+ * `backdrop-blur-pill` (`backdrop-filter`), which — like `transform` or
+ * `filter` — creates a new containing block, so a `fixed` descendant is
+ * still positioned (and clipped) relative to that row, not the viewport.
+ * The panel must be rendered via a portal to escape the DOM subtree
+ * entirely; this hook only computes where to place it.
+ */
+function usePopoverFixedPosition(
+  open: boolean,
+  anchorRef: React.RefObject<HTMLElement | null>,
+  align: 'center' | 'left' = 'center',
+) {
+  const [style, setStyle] = useState<React.CSSProperties>({});
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setStyle(
+        align === 'left'
+          ? { position: 'fixed', top: rect.bottom + 8, left: rect.left }
+          : {
+              position: 'fixed',
+              top: rect.bottom + 8,
+              left: rect.left + rect.width / 2,
+              transform: 'translateX(-50%)',
+            },
+      );
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open, anchorRef, align]);
+  return style;
 }
 
 const isHexColor = (c: string) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c);
@@ -290,7 +353,9 @@ function ColorPicker({
   const colors = paletteOverride ?? PRESET_COLORS;
   const isPreset = (colors as readonly string[]).includes(color);
   const [open, setOpen] = useState(false);
-  const ref = usePopover(open, setOpen);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ref = usePopover(open, setOpen, panelRef);
+  const popoverStyle = usePopoverFixedPosition(open, ref);
   const [wheelOpen, setWheelOpen] = useState(false);
   const showCustom = paletteOverride === undefined;
 
@@ -316,12 +381,15 @@ function ColorPicker({
         />
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="Colors"
-          className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-2.5 shadow-pop backdrop-blur-pill"
-        >
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="Colors"
+            style={popoverStyle}
+            className="z-30 rounded-panel border border-border bg-bg-muted/95 p-2.5 shadow-pop backdrop-blur-pill"
+          >
           <div className="grid grid-cols-4 gap-2">
             {colors.map((c) => (
               <button
@@ -405,8 +473,9 @@ function ColorPicker({
               )}
             </>
           )}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -456,7 +525,9 @@ function PaperPicker({
   onPaperSelect: (paper: PaperStyle) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = usePopover(open, setOpen);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ref = usePopover(open, setOpen, panelRef);
+  const popoverStyle = usePopoverFixedPosition(open, ref);
 
   return (
     <div ref={ref} className="relative">
@@ -467,37 +538,41 @@ function PaperPicker({
       >
         <PaperIcon />
       </IconButton>
-      {open && (
-        <div
-          role="menu"
-          aria-label="Paper background"
-          className="absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
-        >
-          {PAPER_STYLES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              role="menuitemradio"
-              aria-checked={paper === s}
-              onClick={() => {
-                onPaperSelect(s);
-                setOpen(false);
-              }}
-              className={[
-                'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
-                paper === s
-                  ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
-                  : 'hover:bg-white/[0.06]',
-              ].join(' ')}
-            >
-              <PaperSwatch style={s} />
-              <span className="text-[13px] font-medium text-ink-900">
-                {PAPER_LABELS[s]}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="Paper background"
+            style={popoverStyle}
+            className="z-30 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+          >
+            {PAPER_STYLES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="menuitemradio"
+                aria-checked={paper === s}
+                onClick={() => {
+                  onPaperSelect(s);
+                  setOpen(false);
+                }}
+                className={[
+                  'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                  paper === s
+                    ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
+                    : 'hover:bg-white/[0.06]',
+                ].join(' ')}
+              >
+                <PaperSwatch style={s} />
+                <span className="text-[13px] font-medium text-ink-900">
+                  {PAPER_LABELS[s]}
+                </span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -511,7 +586,9 @@ function PenTypePicker({
   onPenTypeChange: (penType: PenType) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = usePopover(open, setOpen);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ref = usePopover(open, setOpen, panelRef);
+  const popoverStyle = usePopoverFixedPosition(open, ref, 'left');
 
   return (
     <div ref={ref} className="relative">
@@ -532,36 +609,40 @@ function PenTypePicker({
       >
         <ChevronDownIcon size={16} />
       </button>
-      {open && (
-        <div
-          role="menu"
-          aria-label="Pen type"
-          className="absolute left-0 top-full z-30 mt-2 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
-        >
-          {PEN_TYPES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="menuitemradio"
-              aria-checked={penType === t}
-              onClick={() => {
-                onPenTypeChange(t);
-                setOpen(false);
-              }}
-              className={[
-                'flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors',
-                penType === t
-                  ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
-                  : 'hover:bg-white/[0.06]',
-              ].join(' ')}
-            >
-              <span className="text-[13px] font-medium text-ink-900">
-                {penProfile(t).label}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="Pen type"
+            style={popoverStyle}
+            className="z-30 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+          >
+            {PEN_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="menuitemradio"
+                aria-checked={penType === t}
+                onClick={() => {
+                  onPenTypeChange(t);
+                  setOpen(false);
+                }}
+                className={[
+                  'flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors',
+                  penType === t
+                    ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
+                    : 'hover:bg-white/[0.06]',
+                ].join(' ')}
+              >
+                <span className="text-[13px] font-medium text-ink-900">
+                  {penProfile(t).label}
+                </span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

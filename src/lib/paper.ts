@@ -15,6 +15,7 @@ export const PAPER_SPACING = 32;
 const LINE_COLOR = 'rgba(255, 255, 255, 0.06)';
 const DOT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const DOT_RADIUS = 1.1;
+const TAN_30 = 0.5773502691896257; // Math.tan(Math.PI / 6)
 
 // ── 'notebook' paper (Phase 1) — a real exercise-book page ──────────────────
 // Unlike the other guides, notebook paper is OPAQUE: cream page, blue-grey
@@ -93,13 +94,14 @@ function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number):
 
 function drawDots(ctx: CanvasRenderingContext2D, width: number, height: number): void {
   ctx.fillStyle = DOT_COLOR;
+  ctx.beginPath();
   for (let x = PAPER_SPACING; x < width; x += PAPER_SPACING) {
     for (let y = PAPER_SPACING; y < height; y += PAPER_SPACING) {
-      ctx.beginPath();
+      ctx.moveTo(x + DOT_RADIUS, y);
       ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
     }
   }
+  ctx.fill();
 }
 
 function drawCornell(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -126,7 +128,7 @@ function drawIsometric(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.beginPath();
   horizontalLines(ctx, width, height);
   // Two diagonal families at ±30° spaced by the horizontal step.
-  const run = height / Math.tan(Math.PI / 6);
+  const run = height / TAN_30;
   for (let x0 = -run; x0 < width; x0 += PAPER_SPACING) {
     ctx.moveTo(x0, 0);
     ctx.lineTo(x0 + run, height);

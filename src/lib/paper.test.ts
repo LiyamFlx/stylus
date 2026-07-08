@@ -49,7 +49,7 @@ describe('drawPaper', () => {
     // 3 × 3 interior intersections = 9 dots.
     drawPaper(c as unknown as CanvasRenderingContext2D, 'dots', 100, 100);
     expect(c.arc).toHaveBeenCalledTimes(9);
-    expect(c.fill).toHaveBeenCalledTimes(9);
+    expect(c.fill).toHaveBeenCalledTimes(1);
     expect(c.stroke).not.toHaveBeenCalled();
   });
 
