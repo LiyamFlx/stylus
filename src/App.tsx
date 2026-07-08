@@ -32,10 +32,22 @@ export default function App() {
   const [profileName, setProfileName] = useState(() => loadProfile().name);
   const [nightMode, setNightMode] = useState(() => loadProfile().nightMode);
   const [stabilizer, setStabilizer] = useState(() => loadProfile().stabilizer);
+  // Exam lock lives here (above Workspace, which remounts per page/doc) so the
+  // lock survives page flips — a lock that reset on every flip wasn't a lock.
+  const [examLock, setExamLock] = useState(false);
+  // Mirror of Workspace's distraction-free state, so the mode tabs (rendered
+  // here, outside Workspace) also hide when chrome is hidden.
+  const [chromeHidden, setChromeHidden] = useState(false);
 
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
   const tour = useTour();
+
+  // Exam lock is per-document: clear it whenever the active document changes so
+  // it never carries into another doc.
+  useEffect(() => {
+    setExamLock(false);
+  }, [documents.currentId]);
 
   // ── Notebook pagination (Phase 1) ──
   // Page state lives here — above Workspace — because flipping pages remounts
@@ -43,10 +55,12 @@ export default function App() {
   const isNotebook = currentDoc?.mode === 'notebook';
   const pagesApi = usePages(documents.currentId, isNotebook);
 
-  // Page-flip undo/redo cache (capped LRU): flip to page 2 and back, and
-  // Cmd+Z still works. Keyed per doc+page; cap keeps a 60-page notebook from
-  // pinning 60 undo stacks in memory.
-  const HISTORY_CACHE_MAX = 8;
+  // Page-flip undo/redo cache (capped LRU): flip away and back, and Cmd+Z still
+  // works. Keyed per doc+page; cap keeps a big notebook from pinning every
+  // undo stack in memory. Raised from 8 so typical multi-page sessions don't
+  // silently lose undo history when revisiting an earlier page. Snapshots are
+  // small (stroke arrays), so this is cheap.
+  const HISTORY_CACHE_MAX = 32;
   const historyCache = useRef(new Map<string, HistorySnapshot<Stroke[]>>());
   const cacheKey = useCallback(
     (pageId: string) => `${documents.currentId}:${pageId}`,
@@ -188,8 +202,14 @@ export default function App() {
                 : undefined
             }
             onHistorySnapshot={cachePageHistory}
+            examLock={examLock}
+            onToggleExamLock={
+              isNotebook && activePage ? () => setExamLock((v) => !v) : undefined
+            }
+            onChromeHiddenChange={setChromeHidden}
             pageNav={
-              isNotebook && activePage ? (
+              // Hidden while locked so an exam can't be escaped by flipping pages.
+              isNotebook && activePage && !examLock ? (
                 <PageNav
                   docId={documents.currentId}
                   pages={pagesApi.pages}
@@ -208,7 +228,7 @@ export default function App() {
         {/* Mode tabs: fast browser-tab switching between the three document
             modes, plus a New button. Top-centre, above the toolbar, so it's the
             same prominent control in every mode. */}
-        {documents.currentId && (
+        {documents.currentId && !examLock && !chromeHidden && (
           <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center">
             <ModeTabs
               current={currentMode}

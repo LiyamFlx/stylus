@@ -520,6 +520,18 @@ export function useDrawing({
     [clientToWorld],
   );
 
+  /** Canvas-relative SCREEN point (px). The pinch math works in screen space —
+   *  its anchor formula converts to world itself — so pinch samples must be
+   *  screen coords, not world (storing world double-converted the anchor and
+   *  made zoom drift once panned/zoomed). */
+  const getScreenPoint = useCallback(
+    (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
+      const rect = overlayRef.current?.getBoundingClientRect();
+      return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
+    },
+    [],
+  );
+
   const getPoint = useCallback(
     (e: ReactPointerEvent<HTMLCanvasElement>): InkPoint => {
       const { x, y } = getCanvasPoint(e);
@@ -716,8 +728,8 @@ export function useDrawing({
 
       // ── two-finger pinch entry ──
       if (e.pointerType === 'touch') {
-        touchPointsRef.current.set(e.pointerId, getCanvasPoint(e));
-        if (touchPointsRef.current.size === 2) {
+        touchPointsRef.current.set(e.pointerId, getScreenPoint(e));
+        if (touchPointsRef.current.size >= 2) {
           // Second finger = navigation, not ink. Discard the nascent
           // single-finger gesture (same semantics as pointercancel).
           if (activePointerId.current !== null) {
@@ -725,12 +737,16 @@ export function useDrawing({
               e.currentTarget.releasePointerCapture(activePointerId.current);
             } catch { /* ignore */ }
             activePointerId.current = null;
+            // Also clear pen-active state so a pen stroke cut off by the pinch
+            // doesn't leave the palm-rejection ref stuck on 'pen'.
+            activePenPointerTypeRef.current = null;
             discardInFlightWork();
           }
+          // Re-baseline on ANY finger-count change (2nd finger down, or a 3rd
+          // added) so the next move never computes a delta across a jump.
           pinchPrevRef.current = currentPinchSample();
           return;
         }
-        if (touchPointsRef.current.size > 2) return; // ignore extra fingers
       }
       if (pinchPrevRef.current) return; // pinch owns the surface
 
@@ -804,7 +820,7 @@ export function useDrawing({
       onPenSampleRef.current?.(point);
       scheduleOverlayRender();
     },
-    [currentPinchSample, discardInFlightWork, eraseAt, getCanvasPoint, getPoint, isPalmRejected, scheduleOverlayRender],
+    [currentPinchSample, discardInFlightWork, eraseAt, getCanvasPoint, getScreenPoint, getPoint, isPalmRejected, scheduleOverlayRender],
   );
 
   const onPointerMove = useCallback(
@@ -815,7 +831,7 @@ export function useDrawing({
         pinchPrevRef.current &&
         touchPointsRef.current.has(e.pointerId)
       ) {
-        touchPointsRef.current.set(e.pointerId, getCanvasPoint(e));
+        touchPointsRef.current.set(e.pointerId, getScreenPoint(e));
         const prev = pinchPrevRef.current;
         const next = currentPinchSample();
         if (next) {
@@ -898,7 +914,7 @@ export function useDrawing({
       }
       scheduleOverlayRender();
     },
-    [buildPoint, clientToWorld, commitView, currentPinchSample, eraseAt, getCanvasPoint, scheduleOverlayRender, scheduleStaticRender],
+    [buildPoint, clientToWorld, commitView, currentPinchSample, eraseAt, getScreenPoint, scheduleOverlayRender, scheduleStaticRender],
   );
 
   const endGesture = useCallback(

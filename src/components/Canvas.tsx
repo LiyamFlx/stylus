@@ -69,9 +69,11 @@ export function Canvas({
 
   const trackCursor = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (tool === 'eraser') {
-      // offsetX/Y are screen-space (relative to the canvas), which is what the
-      // CSS-positioned ring needs — no world conversion required here.
-      setHoverPos({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
+      // Canvas-relative screen px for the CSS-positioned ring. clientX/Y minus
+      // the rect is stable even while the pointer is captured and drifts off the
+      // element (offsetX/Y can read stale/negative there on some browsers).
+      const rect = e.currentTarget.getBoundingClientRect();
+      setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
     onPointerMove(e);
   };

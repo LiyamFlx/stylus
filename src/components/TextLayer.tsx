@@ -302,7 +302,9 @@ const ActiveTextArea = memo(
             className="pointer-events-auto absolute flex cursor-move items-center justify-center rounded-full bg-brand-500 text-white shadow-soft"
             style={{
               left: item.x,
-              top: item.y - 22,
+              // Above the box, but never above the layer's top edge (which is
+              // clipped by overflow-hidden) — clamp so it's always grabbable.
+              top: Math.max(2, item.y - 22),
               width: 22,
               height: 18,
               touchAction: 'none',

@@ -74,6 +74,12 @@ interface WorkspaceProps {
   initialHistory?: HistorySnapshot<Stroke[]>;
   /** Called on unmount so App can cache this page's undo/redo stacks. */
   onHistorySnapshot?: (pageId: string, snap: HistorySnapshot<Stroke[]>) => void;
+  /** Exam lock, owned by App so it survives page-flip remounts. */
+  examLock?: boolean;
+  onToggleExamLock?: () => void;
+  /** Report distraction-free (chrome hidden) so App can also hide the mode
+   *  tabs, which live outside this component. */
+  onChromeHiddenChange?: (hidden: boolean) => void;
 }
 
 const textId = () => createId('t_');
@@ -97,6 +103,9 @@ export function Workspace({
   appMode = 'canvas',
   initialHistory,
   onHistorySnapshot,
+  examLock = false,
+  onToggleExamLock,
+  onChromeHiddenChange,
 }: WorkspaceProps) {
   const {
     tool,
@@ -142,11 +151,9 @@ export function Workspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Exam lock (item 7): overrides the mode's toolbar variant to 'restricted'.
-  // Notebook-only affordance — gated on pageId at the render site.
-  const [examLock, setExamLock] = useState(false);
-  // Distraction-free (item 8): one boolean, chrome fades via CSS — not a
-  // separate component tree.
+  // Exam lock (item 7) is owned by App (it must survive the per-page remount);
+  // here it just drives the toolbar variant. Distraction-free (item 8) is local:
+  // one boolean, chrome fades via CSS — not a separate component tree.
   const [chromeHidden, setChromeHidden] = useState(false);
   useEffect(() => {
     if (!chromeHidden) return;
@@ -156,6 +163,12 @@ export function Workspace({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [chromeHidden]);
+
+  // Let App hide the mode tabs (rendered outside Workspace) in distraction-free.
+  useEffect(() => {
+    onChromeHiddenChange?.(chromeHidden);
+    return () => onChromeHiddenChange?.(false);
+  }, [chromeHidden, onChromeHiddenChange]);
 
   const removeImage = useCallback((id: string) => {
     setImages((imgs) => {
@@ -545,11 +558,14 @@ export function Workspace({
         toast.error('No handwriting recognized in the selection.');
         return;
       }
+      // Switch to the text tool so the pasted box is actually editable — the
+      // active textarea only mounts in text mode (matches the paste handler).
+      onToolChange('text');
       pasteText(text);
     } catch {
       if (gen === requestGen.current) toast.error("Couldn't convert — recognition failed.");
     }
-  }, [selectedStrokes, handleRecognize, pasteText]);
+  }, [selectedStrokes, handleRecognize, pasteText, onToolChange]);
 
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
@@ -822,7 +838,7 @@ export function Workspace({
         customColors={customColors}
         onCustomColor={saveCustomColor}
         examLock={examLock}
-        onToggleExamLock={pageId ? () => setExamLock((v) => !v) : undefined}
+        onToggleExamLock={onToggleExamLock}
         onHideChrome={() => setChromeHidden(true)}
         tool={tool}
         color={color}
