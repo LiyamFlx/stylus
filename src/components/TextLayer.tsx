@@ -281,11 +281,25 @@ const ActiveTextArea = memo(
       [ref],
     );
 
-    // Auto-size to content, and place the caret at the end when the active box
-    // changes (switching boxes). Layout effect so it's flushed before paint.
+    // Auto-size to content on BOTH axes, and place the caret at the end when
+    // the active box changes (switching boxes). Layout effect so it's flushed
+    // before paint.
     useLayoutEffect(() => {
       const el = localRef.current;
       if (!el) return;
+
+      // Width: measure the natural (unwrapped) content width first, then clamp
+      // to what's left of the layer so long lines wrap instead of running off
+      // the page — a box starts as wide as its text and only grows toward
+      // that cap as you keep typing, instead of opening at full page width.
+      const parent = el.offsetParent as HTMLElement | null;
+      const maxWidth = parent && item
+        ? Math.max(parent.clientWidth - item.x - 2, 40)
+        : Infinity;
+      el.style.width = 'auto';
+      const naturalWidth = el.scrollWidth;
+      el.style.width = `${Math.min(naturalWidth, maxWidth)}px`;
+
       el.style.height = 'auto';
       el.style.height = `${el.scrollHeight}px`;
       // The textarea lives inside the world-transformed wrapper, so offsetHeight
@@ -366,11 +380,8 @@ const ActiveTextArea = memo(
             // Parked off-view (but mounted + focusable) when nothing is active.
             left: item ? item.x : -9999,
             top: item ? item.y : -9999,
-            // Anchor to the layer's right edge so the WRAP WIDTH matches the
-            // display div's shrink-to-fit bound (containing block minus x).
-            // `width:auto` on a textarea resolves to the default cols (~20ch),
-            // which made long text reflow on activate/deactivate.
-            right: item ? 0 : 'auto',
+            // Width is set imperatively by the layout effect above (grows with
+            // content, capped at the space remaining to the layer's edge).
             color: item?.color ?? 'transparent',
             fontSize: item?.size ?? 20,
             caretColor: item?.color ?? 'transparent',
