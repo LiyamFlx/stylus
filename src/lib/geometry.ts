@@ -116,7 +116,10 @@ export function worldToScreen(
 
 /**
  * Axis-aligned bounding box of a single stroke, padded for stroke width.
- * Returns `null` for a pointless stroke. Pure — per-frame consumers (viewport
+ * Padding is PER-POINT: pressure-derived point widths can exceed the base
+ * size, and padding only by `size` clipped heavy-pressure ink at viewport-cull
+ * edges (and drew selection rects that didn't hug wide strokes). Returns
+ * `null` for a pointless stroke. Pure — per-frame consumers (viewport
  * culling) cache the result per committed stroke in render.ts.
  */
 export function strokeBounds(stroke: Stroke): Bounds | null {
@@ -124,8 +127,9 @@ export function strokeBounds(stroke: Stroke): Bounds | null {
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  const half = Math.max(stroke.size, MIN_STROKE_WIDTH) / 2;
+  const base = Math.max(stroke.size, MIN_STROKE_WIDTH);
   for (const p of stroke.points) {
+    const half = Math.max(base, p.width ?? 0) / 2;
     minX = Math.min(minX, p.x - half);
     minY = Math.min(minY, p.y - half);
     maxX = Math.max(maxX, p.x + half);

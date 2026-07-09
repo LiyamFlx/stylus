@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PageMeta } from '../lib/documents';
 import { pageInkKey } from '../lib/documents';
 import { loadStrokes } from '../hooks/useLocalStorage';
-import { inkBounds } from '../lib/geometry';
+import { A4_BOUNDS } from '../lib/geometry';
 import { renderAll } from '../lib/render';
 import { ConfirmDialog } from './Dialog';
 import { PlusIcon, TrashIcon } from './icons';
@@ -19,34 +19,66 @@ interface PageNavProps {
 }
 
 const THUMB_W = 44;
-const THUMB_H = 62; // ≈ A4 portrait ratio
+const THUMB_H = 62; // ≈ A4 portrait ratio (0.7097 vs the page's 0.707)
 
 /**
  * Thumbnail cache: pageId → { fingerprint, dataURL }. Module-level so flips
- * between pages don't regenerate unchanged neighbors. The fingerprint is a
- * cheap content hash (stroke count + last stroke id) — enough to catch edits
- * without hashing point data.
+ * between pages don't regenerate unchanged neighbors. Capped LRU — page ids
+ * from deleted docs would otherwise accumulate forever (same pattern as the
+ * page-flip history cache in App).
  */
+const THUMB_CACHE_MAX = 200;
 const thumbCache = new Map<string, { fp: string; url: string }>();
 
-function fingerprint(strokes: ReturnType<typeof loadStrokes>): string {
-  const last = strokes[strokes.length - 1];
-  return `${strokes.length}:${last?.id ?? ''}:${last?.points.length ?? 0}`;
+function cacheThumb(pageId: string, fp: string, url: string): void {
+  thumbCache.delete(pageId); // re-insert to refresh LRU position
+  thumbCache.set(pageId, { fp, url });
+  while (thumbCache.size > THUMB_CACHE_MAX) {
+    const oldest = thumbCache.keys().next().value;
+    if (oldest === undefined) break;
+    thumbCache.delete(oldest);
+  }
+}
+
+function rawInk(docId: string, pageId: string): string | null {
+  try {
+    return localStorage.getItem(pageInkKey(docId, pageId));
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Rasterize a page's strokes to a small dataURL — reads from storage, NOT the
- * live canvas, so it can't race a page unmount. Fits ink bounds into the thumb
- * with letterboxing.
+ * Fingerprint from the RAW payload string — length plus the tail, which
+ * contains `savedAt` (a perfect change signal: it only advances when strokes
+ * were rewritten). The old fingerprint needed parsed strokes, which forced a
+ * full JSON.parse of every page's ink on every rail render just to conclude
+ * "unchanged" — the parse WAS the cost the cache existed to avoid.
+ * `paper` is included because the thumb now renders it.
+ */
+function fingerprint(raw: string | null, paper: string): string {
+  return `${paper}:${raw?.length ?? 0}:${raw ? raw.slice(-40) : ''}`;
+}
+
+/**
+ * Rasterize a page to a small dataURL — reads from storage, NOT the live
+ * canvas, so it can't race a page unmount.
+ *
+ * PAGE-SHAPED: the A4 page rect is fitted into the thumb and the page's real
+ * paper is drawn, so a thumbnail looks like the page — stable framing that
+ * doesn't rescale as ink is added. (Fitting INK bounds rendered one corner
+ * dot as a giant centered blob and never showed the cream page at all.)
  *
  * EXPORT-CLASS RENDER: intentionally no `cull` — a thumbnail is a miniature
  * export and must show the whole page (see RenderOptions.cull).
  */
 function renderThumb(docId: string, page: PageMeta): string | null {
-  const strokes = loadStrokes(pageInkKey(docId, page.id));
-  const fp = fingerprint(strokes);
+  const raw = rawInk(docId, page.id);
+  const fp = fingerprint(raw, page.paper);
   const cached = thumbCache.get(page.id);
   if (cached && cached.fp === fp) return cached.url;
+
+  const strokes = raw ? loadStrokes(pageInkKey(docId, page.id)) : [];
 
   const canvas = document.createElement('canvas');
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -55,23 +87,17 @@ function renderThumb(docId: string, page: PageMeta): string | null {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  const b = inkBounds(strokes);
-  if (b) {
-    const pad = 6;
-    const w = Math.max(b.maxX - b.minX, 1);
-    const h = Math.max(b.maxY - b.minY, 1);
-    const scale = Math.min((THUMB_W - pad * 2) / w, (THUMB_H - pad * 2) / h, 1);
-    const ox = (THUMB_W - w * scale) / 2 - b.minX * scale;
-    const oy = (THUMB_H - h * scale) / 2 - b.minY * scale;
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, ox * dpr, oy * dpr);
-  } else {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  renderAll(ctx, strokes, THUMB_W, THUMB_H, { paper: 'blank' });
+  const pageW = A4_BOUNDS.maxX - A4_BOUNDS.minX;
+  const pageH = A4_BOUNDS.maxY - A4_BOUNDS.minY;
+  const scale = Math.min(THUMB_W / pageW, THUMB_H / pageH);
+  const ox = (THUMB_W - pageW * scale) / 2;
+  const oy = (THUMB_H - pageH * scale) / 2;
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, ox * dpr, oy * dpr);
+  renderAll(ctx, strokes, pageW, pageH, { paper: page.paper });
 
   try {
     const url = canvas.toDataURL('image/png');
-    thumbCache.set(page.id, { fp, url });
+    cacheThumb(page.id, fp, url);
     return url;
   } catch {
     return null;
@@ -97,6 +123,8 @@ function Thumb({ docId, page, active, index, onSelect }: {
   const [url, setUrl] = useState<string | null>(() => thumbCache.get(page.id)?.url ?? null);
 
   // Generate/refresh off the critical path — never during a page flip's paint.
+  // `page` identity churns on every refresh; the raw-string fingerprint makes
+  // those re-runs near-free when nothing changed.
   useEffect(() => {
     return scheduleIdle(() => setUrl(renderThumb(docId, page)));
   }, [docId, page, active]); // `active` retriggers on flip-away so edits appear

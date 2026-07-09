@@ -36,6 +36,29 @@ function isStroke(value: unknown): value is Stroke {
   );
 }
 
+/**
+ * Repair gaps in a validated stroke. `isPoint` requires only the original
+ * point fields — `width`/`opacity` were added later WITHIN version 1, so
+ * older payloads (and any future writer that drops them) validate fine and
+ * then hand the renderer undefined widths → NaN geometry, invisible ink, no
+ * error. Contract: validation rejects garbage; normalization repairs gaps.
+ * Next time the stroke shape changes, bump to version 2 with a real
+ * migration instead of extending this.
+ */
+function normalizeStroke(stroke: Stroke): Stroke {
+  if (stroke.points.every((p) => typeof p.width === 'number' && typeof p.opacity === 'number')) {
+    return stroke;
+  }
+  return {
+    ...stroke,
+    points: stroke.points.map((p) => ({
+      ...p,
+      width: typeof p.width === 'number' ? p.width : stroke.size,
+      opacity: typeof p.opacity === 'number' ? p.opacity : 1,
+    })),
+  };
+}
+
 function writeNow(key: string, strokes: Stroke[]): void {
   try {
     const payload: PersistedDrawing = {
@@ -59,8 +82,10 @@ function writeNow(key: string, strokes: Stroke[]): void {
  *
  * `save` is debounced so a fast scribble (many strokes) doesn't trigger a full
  * `JSON.stringify` of the whole drawing on every commit. The latest pending
- * write is flushed on `pagehide` and on unmount so nothing is lost when the tab
- * closes inside the debounce window.
+ * write is flushed on `pagehide`, on `visibilitychange → hidden` (mobile: the
+ * OS can kill a backgrounded tab without ever firing pagehide — `hidden` is
+ * the last reliable moment to save), and on unmount so nothing is lost inside
+ * the debounce window.
  */
 /**
  * Pure one-shot stroke load for an arbitrary key — used by page thumbnails
@@ -81,7 +106,7 @@ export function loadStrokes(key: string): Stroke[] {
     }
     const strokes = (parsed as PersistedDrawing).strokes;
     if (!Array.isArray(strokes)) return [];
-    return strokes.filter(isStroke);
+    return strokes.filter(isStroke).map(normalizeStroke);
   } catch (err) {
     console.warn('[stylus] restore failed', err);
     return [];
@@ -91,7 +116,11 @@ export function loadStrokes(key: string): Stroke[] {
 export function useLocalStorage(storageKey: string = DEFAULT_STORAGE_KEY) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Stroke[] | null>(null);
-  // Mirror the key so the stable callbacks always write to the latest one.
+  // Mirror of the key for the stable callbacks. INVARIANT: the key never
+  // changes within a mounted instance — Workspace remounts per page/doc, so
+  // each hook instance is born and dies with one key. If that ever stops
+  // holding, a key change mid-debounce would flush one page's pending strokes
+  // onto another page's key; the fix then is flush-on-key-change, not this ref.
   const keyRef = useRef(storageKey);
   keyRef.current = storageKey;
 
@@ -133,9 +162,14 @@ export function useLocalStorage(storageKey: string = DEFAULT_STORAGE_KEY) {
   // Flush any pending write when the tab is hidden/closed or we unmount.
   useEffect(() => {
     const onHide = () => flush();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
     window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
       flush();
     };
   }, [flush]);

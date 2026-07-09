@@ -14,6 +14,11 @@ import type { AppMode } from './modes';
  *
  * Splitting strokes (large, hot path) from the lightweight aux/meta keeps the
  * index small and lets the drawing engine own stroke persistence unchanged.
+ *
+ * Known limitation: read-modify-write with no cross-tab coordination — two
+ * tabs mutating the index race and last-write-wins. Acceptable for the
+ * offline-first single-user model; revisit (storage events / locks) if
+ * multi-window becomes a supported flow.
  */
 
 export interface DocMeta {
@@ -76,6 +81,21 @@ function write(key: string, value: unknown): void {
   }
 }
 
+/**
+ * Best-effort async removal of image bitmaps from IndexedDB. Fire-and-forget:
+ * this module is synchronous and deletion UX must not wait on IDB. MUST be
+ * fed ids collected BEFORE the aux keys are swept — afterwards the metadata
+ * that references them is gone and the bitmaps become unreachable orphans.
+ */
+function purgeImageBitmaps(ids: string[]): void {
+  if (ids.length === 0) return;
+  void import('./imageStore')
+    .then((m) => m.deleteImages(ids))
+    .catch(() => {
+      // best-effort — a failed purge is the pre-existing leak, not a new error
+    });
+}
+
 function readIndex(): DocIndex | null {
   const idx = read<DocIndex>(INDEX_KEY);
   if (!idx || idx.version !== 1 || !Array.isArray(idx.docs)) return null;
@@ -134,7 +154,7 @@ export function setCurrentId(id: string): void {
 }
 
 export function createDocument(name: string, now: number, mode: AppMode = 'canvas'): DocMeta {
-  const idx = readIndex() ?? { version: 1, currentId: null, docs: [] };
+  const idx = readIndex() ?? { version: 1 as const, currentId: null, docs: [] };
   const meta: DocMeta = {
     id: uid(),
     name: name.trim() || 'Untitled',
@@ -182,6 +202,12 @@ export function deleteDocument(id: string): string {
   }
   const docs = idx.docs.filter((d) => d.id !== id);
 
+  // Collect image-bitmap ids BEFORE the sweep below removes the aux keys that
+  // reference them — collected afterwards there is nothing left to find, and
+  // the bitmaps (the largest payloads this app stores) leak in IndexedDB
+  // forever. localStorage cleanup alone was only half the quota story.
+  purgeImageBitmaps(collectImageIds(id));
+
   try {
     // Sweep page payloads first (notebook docs) — an orphaned page blob is a
     // silent quota leak identical to an orphaned doc blob.
@@ -208,7 +234,8 @@ export function deleteDocument(id: string): string {
     return meta.id;
   }
 
-  const currentId = idx.currentId === id ? docs[0].id : idx.currentId!;
+  // currentId is nullable by type; never launder a null through a `!`.
+  const currentId = idx.currentId === id ? docs[0].id : idx.currentId ?? docs[0].id;
   writeIndex({ ...idx, currentId, docs });
   return currentId;
 }
@@ -345,6 +372,10 @@ export function deletePage(docId: string, pageId: string): string {
   const at = pages.findIndex((p) => p.id === pageId);
   if (at < 0) return pages[0]?.id ?? ensurePages(docId)[0].id;
 
+  // Collect BEFORE removing the aux key (see purgeImageBitmaps) — the page's
+  // image bitmaps in IndexedDB die with the page, same as its ink and texts.
+  purgeImageBitmaps(readPageAux(docId, pageId).images?.map((i) => i.imageId) ?? []);
+
   try {
     localStorage.removeItem(pageInkKey(docId, pageId));
     localStorage.removeItem(pageAuxKey(docId, pageId));
@@ -421,7 +452,9 @@ export function pushCustomColor(docId: string, color: string): string[] {
 }
 
 /** All image-underlay ids referenced by a document (doc aux + every page
- *  aux). Used for best-effort IndexedDB cleanup on document deletion. */
+ *  aux). Must run BEFORE deleteDocument's sweep — the sweep removes the aux
+ *  keys this reads. deleteDocument now calls it internally at the right time;
+ *  exported for tooling/diagnostics. */
 export function collectImageIds(docId: string): string[] {
   const ids: string[] = [];
   for (const img of readAux(docId).images ?? []) ids.push(img.imageId);

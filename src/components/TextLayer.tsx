@@ -98,6 +98,9 @@ export function TextLayer({
       const d = drag.current;
       if (!d) return;
       const w = toWorld(e.clientX, e.clientY);
+      // NOTE: clamp-to-0 assumes the page origin is the world origin — true for
+      // notebook/mobile. Canvas Mode (infinite plane, negative coords) must
+      // replace this with the mode's bounds policy or ink and text diverge.
       onMove(d.id, Math.max(0, w.x - d.dx), Math.max(0, w.y - d.dy));
     },
     [onMove, toWorld],
@@ -150,18 +153,25 @@ export function TextLayer({
           transform: `scale(${view.scale}) translate(${-view.panX}px, ${-view.panY}px)`,
         }}
       >
-        {items.map((item) =>
-          item.id === activeId && textMode ? null : (
-            <TextBoxItem
-              key={item.id}
-              item={item}
-              textMode={textMode}
-              onPointerDown={startDrag}
-              onPointerMove={onItemMove}
-              onPointerEnd={endDrag}
-            />
-          ),
-        )}
+        {items.map((item) => (
+          // The active item stays MOUNTED but hidden instead of rendering null.
+          // Selecting a box happens inside its own pointerdown (startDrag): if
+          // selection unmounted the element, the browser would drop its pointer
+          // capture on the first frame, killing the drag and stranding a stale
+          // drag.current that later gestures would apply to the wrong box.
+          // Pointer capture overrides hit-testing, so the hidden element keeps
+          // receiving move/up while pointer-events:none keeps it out of the way
+          // of the textarea for NEW pointerdowns.
+          <TextBoxItem
+            key={item.id}
+            item={item}
+            textMode={textMode}
+            hiddenActive={item.id === activeId && textMode}
+            onPointerDown={startDrag}
+            onPointerMove={onItemMove}
+            onPointerEnd={endDrag}
+          />
+        ))}
 
         {/* The single editing surface for the active box. Kept mounted in text
             mode (even with no active box) so it can be focused inside a tap. A
@@ -186,6 +196,9 @@ export function TextLayer({
 interface TextBoxItemProps {
   item: TextItem;
   textMode: boolean;
+  /** Item is being edited: keep the node (and any pointer capture it holds)
+   *  alive, but invisible and transparent to new pointer events. */
+  hiddenActive?: boolean;
   onPointerDown: (e: ReactPointerEvent<HTMLDivElement>, item: TextItem) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerEnd: (e: ReactPointerEvent<HTMLDivElement>) => void;
@@ -194,19 +207,26 @@ interface TextBoxItemProps {
 const TextBoxItem = memo(function TextBoxItem({
   item,
   textMode,
+  hiddenActive = false,
   onPointerDown,
   onPointerMove,
   onPointerEnd,
 }: TextBoxItemProps) {
+  const interactive = textMode && !hiddenActive;
   return (
     <div
-      onPointerDown={textMode ? (e) => onPointerDown(e, item) : undefined}
+      onPointerDown={interactive ? (e) => onPointerDown(e, item) : undefined}
+      // Move/end stay bound while hiddenActive: an in-flight capture from the
+      // pre-selection pointerdown still delivers events here.
       onPointerMove={textMode ? onPointerMove : undefined}
       onPointerUp={textMode ? onPointerEnd : undefined}
       onPointerCancel={textMode ? onPointerEnd : undefined}
+      // Any capture loss (unmount elsewhere, browser steal) must clear drag
+      // state — a stale drag.current teleports whichever box is touched next.
+      onLostPointerCapture={textMode ? onPointerEnd : undefined}
       className={[
         'absolute whitespace-pre-wrap break-words leading-tight',
-        textMode ? 'pointer-events-auto cursor-move' : 'pointer-events-none',
+        interactive ? 'pointer-events-auto cursor-move' : 'pointer-events-none',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -219,6 +239,7 @@ const TextBoxItem = memo(function TextBoxItem({
         // to the editing textarea (no shift on activate/deactivate).
         padding: 2,
         margin: -2,
+        visibility: hiddenActive ? 'hidden' : undefined,
       }}
     >
       {item.text || ' '}
@@ -299,6 +320,7 @@ const ActiveTextArea = memo(
             onPointerMove={onHandleMove}
             onPointerUp={onHandleUp}
             onPointerCancel={onHandleUp}
+            onLostPointerCapture={onHandleUp}
             className="pointer-events-auto absolute flex cursor-move items-center justify-center rounded-full bg-brand-500 text-white shadow-soft"
             style={{
               left: item.x,
@@ -344,11 +366,15 @@ const ActiveTextArea = memo(
             // Parked off-view (but mounted + focusable) when nothing is active.
             left: item ? item.x : -9999,
             top: item ? item.y : -9999,
+            // Anchor to the layer's right edge so the WRAP WIDTH matches the
+            // display div's shrink-to-fit bound (containing block minus x).
+            // `width:auto` on a textarea resolves to the default cols (~20ch),
+            // which made long text reflow on activate/deactivate.
+            right: item ? 0 : 'auto',
             color: item?.color ?? 'transparent',
             fontSize: item?.size ?? 20,
             caretColor: item?.color ?? 'transparent',
             minWidth: '8ch',
-            width: 'auto',
             padding: 2,
             margin: -2,
             opacity: item ? 1 : 0,

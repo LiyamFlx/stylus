@@ -55,6 +55,14 @@ export default function App() {
   const isNotebook = currentDoc?.mode === 'notebook';
   const pagesApi = usePages(documents.currentId, isNotebook);
 
+  // Workspace remounts reset its internal distraction-free state to "chrome
+  // visible", but nothing inside the old instance tells us that — without this
+  // reset the mirror can stick at `true` and hide ModeTabs permanently. If
+  // Workspace also notifies on mount, its notification lands after and agrees.
+  useEffect(() => {
+    setChromeHidden(false);
+  }, [documents.currentId, pagesApi.activePageId]);
+
   // Page-flip undo/redo cache (capped LRU): flip away and back, and Cmd+Z still
   // works. Keyed per doc+page; cap keeps a big notebook from pinning every
   // undo stack in memory. Raised from 8 so typical multi-page sessions don't
@@ -88,6 +96,22 @@ export default function App() {
     }
     pagesApi.removeActive();
   }, [pagesApi, cacheKey]);
+
+  // Deleting a document must evict ALL of its pages' snapshots, not just the
+  // active one: dead entries occupy LRU slots and push out LIVE pages' undo
+  // stacks (a 20-page notebook deletion would flush most of the cache), while
+  // pinning the dead doc's stroke arrays in memory until natural eviction.
+  const deleteDoc = useCallback(
+    (id: string) => {
+      const cache = historyCache.current;
+      const prefix = `${id}:`;
+      for (const key of [...cache.keys()]) {
+        if (key.startsWith(prefix)) cache.delete(key);
+      }
+      documents.remove(id);
+    },
+    [documents],
+  );
 
   const activePage = pagesApi.pages.find((p) => p.id === pagesApi.activePageId);
   const docModeConfig = modeConfig(currentDoc?.mode);
@@ -256,7 +280,7 @@ export default function App() {
           onSelectDoc={selectDoc}
           onNewDoc={newDoc}
           onRenameDoc={documents.rename}
-          onDeleteDoc={documents.remove}
+          onDeleteDoc={deleteDoc}
         />
 
         {isMobileDoc && <InstallPrompt />}

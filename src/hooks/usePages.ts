@@ -28,8 +28,12 @@ export interface UsePagesResult {
  * owns which page is active. Lives ABOVE Workspace (in App) so it survives the
  * per-page Workspace remounts it causes.
  *
- * `enabled: false` (mobile/canvas docs) renders this hook inert — no page
- * index is created for single-array documents.
+ * `enabled: false` (mobile/canvas docs) renders this hook INERT — no page
+ * index is created for single-array documents, and every mutator is a no-op.
+ * The enabled gate on the mutators (not just the init effect) is what upholds
+ * documents.ts's "Mobile/Canvas docs never touch any of this" invariant: a
+ * stray add() on a disabled hook would otherwise mint a page index for a
+ * single-array doc.
  */
 export function usePages(docId: string | null, enabled: boolean): UsePagesResult {
   const [pages, setPages] = useState<PageMeta[]>([]);
@@ -48,8 +52,8 @@ export function usePages(docId: string | null, enabled: boolean): UsePagesResult
   }, [docId, enabled]);
 
   const refresh = useCallback(() => {
-    if (docId) setPages(listPages(docId));
-  }, [docId]);
+    if (enabled && docId) setPages(listPages(docId));
+  }, [docId, enabled]);
 
   const goTo = useCallback((pageId: string) => {
     setActivePageId(pageId);
@@ -69,28 +73,28 @@ export function usePages(docId: string | null, enabled: boolean): UsePagesResult
 
   const add = useCallback(
     (opts?: { paper?: PaperStyle }) => {
-      if (!docId) return;
+      if (!enabled || !docId) return;
       const page = createPage(docId, { ...opts, afterId: activePageId ?? undefined });
       refresh();
       setActivePageId(page.id);
     },
-    [docId, activePageId, refresh],
+    [docId, enabled, activePageId, refresh],
   );
 
   const removeActive = useCallback(() => {
-    if (!docId || !activePageId) return;
+    if (!enabled || !docId || !activePageId) return;
     const nextId = deletePage(docId, activePageId);
     refresh();
     setActivePageId(nextId);
-  }, [docId, activePageId, refresh]);
+  }, [docId, enabled, activePageId, refresh]);
 
   const reorder = useCallback(
     (orderedIds: string[]) => {
-      if (!docId) return;
+      if (!enabled || !docId) return;
       reorderPages(docId, orderedIds);
       refresh();
     },
-    [docId, refresh],
+    [docId, enabled, refresh],
   );
 
   return { pages, activePageId, activeIndex, goTo, next, prev, add, removeActive, reorder };

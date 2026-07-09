@@ -10,7 +10,19 @@ import { useCallback, useRef, useState } from 'react';
  *
  * `reset` is used on localStorage restore so a restored drawing starts a fresh
  * history (you can't undo past the restore point).
+ *
+ * Implementation invariant: the three refs (past/present/future) are the
+ * SYNCHRONOUS source of truth, eagerly updated by every mutation BEFORE the
+ * matching setStates fire; the useState copies exist to drive re-renders and
+ * canUndo/canRedo. This buys two things:
+ *  1. All setState calls receive plain values at the top level — no setState
+ *     inside another updater. Updaters must be pure; the previous nesting
+ *     duplicated stack entries whenever React re-invoked an updater
+ *     (StrictMode dev, and legal under concurrent replay in prod).
+ *  2. Same-tick sequences are correct: set() → snapshot() sees the new past,
+ *     two undo() calls in one tick undo two distinct steps.
  */
+
 /** Serializable capture of a full history — used by the notebook page-flip
  *  cache so returning to a page restores its undo/redo stacks. */
 export interface HistorySnapshot<T> {
@@ -36,70 +48,79 @@ export interface History<T> {
   snapshot: () => HistorySnapshot<T>;
 }
 
+/**
+ * Undo depth cap. Each history entry is one array of shared stroke references
+ * (structural sharing keeps entries cheap), but an unbounded stack accumulates
+ * O(n²) references over a long session — and the page-flip cache pins up to 32
+ * full histories at once. Oldest entries fall off first.
+ */
+const MAX_PAST = 200;
+
 export function useHistory<T>(initial: T, seed?: HistorySnapshot<T>): History<T> {
   const [past, setPast] = useState<T[]>(() => seed?.past ?? []);
   const [present, setPresent] = useState<T>(() => (seed ? seed.present : initial));
   const [future, setFuture] = useState<T[]>(() => seed?.future ?? []);
 
-  // Mirror `present` in a ref so callbacks can read the latest value without
-  // being re-created on every change (keeps event handlers stable).
+  // Synchronous source of truth (see header). Render-time assignment is the
+  // consistency backstop; every mutation below also syncs them eagerly.
   const presentRef = useRef<T>(present);
   presentRef.current = present;
-  // Stack mirrors for snapshot() — same render-mirror pattern as presentRef.
   const pastRef = useRef<T[]>(past);
   pastRef.current = past;
   const futureRef = useRef<T[]>(future);
   futureRef.current = future;
 
-  const set = useCallback((next: T | ((prev: T) => T)) => {
-    const prev = presentRef.current;
-    const resolved =
-      typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
-    if (resolved === prev) return;
-    setPast((p) => [...p, prev]);
-    setPresent(resolved);
-    presentRef.current = resolved;
-    setFuture([]);
+  /** Eagerly commit new stacks to the refs, then mirror into state. */
+  const commit = useCallback((nextPast: T[], nextPresent: T, nextFuture: T[]) => {
+    pastRef.current = nextPast;
+    presentRef.current = nextPresent;
+    futureRef.current = nextFuture;
+    setPast(nextPast);
+    setPresent(nextPresent);
+    setFuture(nextFuture);
   }, []);
+
+  const set = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      const prev = presentRef.current;
+      const resolved =
+        typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
+      if (resolved === prev) return;
+      const grown = [...pastRef.current, prev];
+      const nextPast = grown.length > MAX_PAST ? grown.slice(grown.length - MAX_PAST) : grown;
+      commit(nextPast, resolved, []);
+    },
+    [commit],
+  );
 
   const replaceSilently = useCallback((next: T | ((prev: T) => T)) => {
     const prev = presentRef.current;
     const resolved =
       typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
-    setPresent(resolved);
     presentRef.current = resolved;
+    setPresent(resolved);
   }, []);
 
   const undo = useCallback(() => {
-    setPast((p) => {
-      if (p.length === 0) return p;
-      const previous = p[p.length - 1];
-      const current = presentRef.current;
-      setFuture((f) => [current, ...f]);
-      setPresent(previous);
-      presentRef.current = previous;
-      return p.slice(0, -1);
-    });
-  }, []);
+    const p = pastRef.current;
+    if (p.length === 0) return;
+    const previous = p[p.length - 1];
+    commit(p.slice(0, -1), previous, [presentRef.current, ...futureRef.current]);
+  }, [commit]);
 
   const redo = useCallback(() => {
-    setFuture((f) => {
-      if (f.length === 0) return f;
-      const next = f[0];
-      const current = presentRef.current;
-      setPast((p) => [...p, current]);
-      setPresent(next);
-      presentRef.current = next;
-      return f.slice(1);
-    });
-  }, []);
+    const f = futureRef.current;
+    if (f.length === 0) return;
+    const next = f[0];
+    commit([...pastRef.current, presentRef.current], next, f.slice(1));
+  }, [commit]);
 
-  const reset = useCallback((value: T) => {
-    setPast([]);
-    setFuture([]);
-    setPresent(value);
-    presentRef.current = value;
-  }, []);
+  const reset = useCallback(
+    (value: T) => {
+      commit([], value, []);
+    },
+    [commit],
+  );
 
   const snapshot = useCallback(
     (): HistorySnapshot<T> => ({

@@ -52,7 +52,7 @@ interface WorkspaceProps {
   nightMode: boolean;
   onOpenSidebar: () => void;
   /**
-   * Notebook mode (Phase 1): the active page. When set, strokes persist under
+   * NoteWorkspace.tsx mode (Phase 1): the active page. When set, strokes persist under
    * pageInkKey and texts under pageAuxKey; `pagePaper` seeds the paper state
    * from PageMeta. The engine stays page-agnostic — this component just hands
    * it a different storageKey. Workspace is keyed by `${docId}:${pageId}` in
@@ -118,22 +118,29 @@ export function Workspace({
     setPenType: onPenTypeChange,
   } = useEditingPrefs();
 
-  // Notebook pages read per-page aux (texts) + PageMeta paper; single-array
-  // docs keep the per-doc aux exactly as before.
+  // NoteWorkspace.tsx pages read per-page aux (texts + images) + PageMeta paper;
+  // single-array docs keep the per-doc aux exactly as before.
   const initialAux = useRef(
-    pageId
-      ? {
-          // Fall back to the MODE's default paper (notebook → cream ruled page
-          // with a red margin), not a hardcoded 'ruled' — that bug left new
-          // notebook pages showing plain grey rules on the dark canvas instead
-          // of the exercise-book page.
-          paper: pagePaper ?? modeConfig(appMode).defaultPaper,
-          texts: readPageAux(documentId, pageId).texts,
-        }
-      : readAux(documentId),
+    (() => {
+      if (!pageId) return readAux(documentId);
+      const aux = readPageAux(documentId, pageId);
+      return {
+        // Fall back to the MODE's default paper (noteWorkspace.tsx → cream ruled page
+        // with a red margin), not a hardcoded 'ruled' — that bug left new
+        // noteWorkspace.tsx pages showing plain grey rules on the dark canvas instead
+        // of the exercise-Workspace.tsx page.
+        paper: pagePaper ?? modeConfig(appMode).defaultPaper,
+        texts: aux.texts,
+        // Images MUST load here too. The old page branch dropped them: every
+        // remount (i.e. every page flip) reset images to [], and the next aux
+        // write persisted that empty array over the stored ones — silent,
+        // permanent loss of any image pasted onto a page.
+        images: aux.images ?? [],
+      };
+    })(),
   ).current;
   const [paper, setPaper] = useState<PaperStyle>(initialAux.paper);
-  // Ruling density for 'notebook' paper (Phase 1 item 4). State lives here so
+  // Ruling density for 'noteWorkspace.tsx' paper (Phase 1 item 4). State lives here so
   // the exam-lock/toolbar work (item 7) can surface a picker without touching
   // the engine; persistence rides with PageMeta when the picker lands.
   const [ruling] = useState<RulingDensity>('college');
@@ -204,11 +211,14 @@ export function Workspace({
     penType,
     stabilizer,
     storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
-    // Notebook pages are A4-shaped: pan can't take the page fully off-screen.
+    // NoteWorkspace.tsx pages are A4-shaped: pan can't take the page fully off-screen.
     panBounds: pageId ? A4_BOUNDS : null,
     zoomRange: modeConfig(appMode).zoomRange,
     initialHistory,
     onStrokeEnd: (stroke: Stroke) => {
+      // Ink edits must bump the doc's recency: switchToMode picks documents by
+      // updatedAt, and a pure-ink session would otherwise never register.
+      touchDocument(documentId, Date.now());
       const el = drawing.canvasRef.current;
       music.handleStrokeEnd(
         stroke,
@@ -230,7 +240,7 @@ export function Workspace({
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
 
-  // Notebook page-flip history cache: capture this page's undo/redo stacks at
+  // NoteWorkspace.tsx page-flip history cache: capture this page's undo/redo stacks at
   // unmount (page flip = remount with a new key). Reads through refs so the
   // cleanup closure never goes stale; empty deps = runs exactly once.
   const snapshotCbRef = useRef(onHistorySnapshot);
@@ -328,29 +338,38 @@ export function Workspace({
 
   /* --------------------- hardware input: scanner + stylus ----------------- */
 
-  // A scan drops a finished text box onto the canvas, staggered so repeated
-  // scans don't stack on the same spot.
+  // Drop point for programmatic text (scan / paste): a spot near the top-centre
+  // of the CURRENT VIEWPORT, converted to world coords. Text items live in
+  // world space — computing this from raw clientWidth (screen px) placed boxes
+  // at world (w/2, 96), which is off-screen the moment the view is panned or
+  // zoomed. A notebook page is ALWAYS panned once you've written anything
+  // (auto-scroll), so pasted text silently vanished above the fold.
+  // Staggered so repeated drops don't stack on the same spot.
   const scanCount = useRef(0);
+  const nextDropPoint = useCallback(() => {
+    const d = drawingRef.current;
+    const el = d.canvasRef.current;
+    const view = d.view;
+    const sw = el?.clientWidth ?? window.innerWidth; // screen px
+    const offset = (scanCount.current++ % 8) * 28; // screen px
+    return {
+      x: view.panX + Math.max(16, sw / 2 - 120) / view.scale,
+      y: view.panY + (96 + offset) / view.scale,
+    };
+  }, []);
+
+  // A scan drops a finished text box onto the canvas.
   const handleScan = useCallback(
     (scannedText: string) => {
       const text = scannedText.trim();
       if (!text) return;
-      const canvas = drawing.canvasRef.current;
-      const w = canvas?.clientWidth ?? window.innerWidth;
-      const offset = (scanCount.current++ % 8) * 28;
+      const { x, y } = nextDropPoint();
       setTexts((t) => [
         ...t,
-        {
-          id: textId(),
-          x: Math.max(16, w / 2 - 120),
-          y: 96 + offset,
-          text,
-          color,
-          size: Math.max(20, size * 4),
-        },
+        { id: textId(), x, y, text, color, size: Math.max(20, size * 4) },
       ]);
     },
-    [color, size, drawing.canvasRef],
+    [color, size, nextDropPoint],
   );
 
   const scanner = useScanmarkerScanner(handleScan);
@@ -366,13 +385,11 @@ export function Workspace({
         editActive((t) => t + text);
         return;
       }
-      const canvas = drawing.canvasRef.current;
-      const w = canvas?.clientWidth ?? window.innerWidth;
-      const offset = (scanCount.current++ % 8) * 28;
+      const { x, y } = nextDropPoint();
       const item: TextItem = {
         id: textId(),
-        x: Math.max(16, w / 2 - 120),
-        y: 96 + offset,
+        x,
+        y,
         text,
         color,
         size: Math.max(20, size * 4),
@@ -380,7 +397,7 @@ export function Workspace({
       setTexts((t) => [...t, item]);
       setActiveTextId(item.id);
     },
-    [color, size, editActive, drawing.canvasRef],
+    [color, size, editActive, nextDropPoint],
   );
 
   const moveText = useCallback((id: string, x: number, y: number) => {
@@ -446,11 +463,11 @@ export function Workspace({
       mod.exportPDF(drawing.strokes, exportOpts());
       return;
     }
-    // Notebook doc: one true-A4 PDF page per notebook page. Only the active
+    // NoteWorkspace.tsx doc: one true-A4 PDF page per noteWorkspace.tsx page. Only the active
     // page lives in memory — every other page's ink/texts load from storage.
     // FULL, unculled reads by design: this is an export, not a viewport paint
     // (see RenderOptions.cull). Loading stays inside this async chunk
-    // boundary so a large notebook never blocks the UI thread.
+    // boundary so a large noteWorkspace.tsx never blocks the UI thread.
     const pages = listPages(documentId).map((p) => ({
       strokes:
         p.id === pageId ? drawing.strokes : loadStrokes(pageInkKey(documentId, p.id)),
@@ -646,13 +663,18 @@ export function Workspace({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [tool, editActive, finishText, onToolChange]);
+  }, [tool, onToolChange]);
 
   // Paste clipboard text onto the canvas (Cmd/Ctrl+V, right-click → Paste).
   // When the paste targets a real input/textarea/contenteditable (e.g. the AI
   // studio editor), let the browser handle it natively.
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      // Exam lock strips the toolbar and page nav — the clipboard must not
+      // remain an open side door for dropping external text/images onto a
+      // locked page. (The Scanmarker scanner stays live: hardware scanning is
+      // a sanctioned accessibility input during exams.)
+      if (examLock) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -708,7 +730,7 @@ export function Workspace({
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [tool, onToolChange, pasteText]);
+  }, [tool, onToolChange, pasteText, examLock]);
 
   const isBlank = drawing.isEmpty && texts.length === 0;
   const touchAction = effectiveTouchAction(appMode, tool);
