@@ -187,3 +187,65 @@ function buildPagesPDF(pages: ExportPage[]): jsPDF | null {
 
   return pdf;
 }
+
+// ─── Markdown / plain-text export (Quick Note Phase 4) ──────────────────────
+//
+// Text-only exports: ink has no textual representation, so these serialize
+// the document's TEXT BOXES only, top-to-bottom by Y position (reading
+// order), each box becoming one paragraph. Markdown preserves bold/italic as
+// **/*_ syntax; plain text drops all formatting to raw characters.
+
+function sortedByReadingOrder(texts: TextItem[]): TextItem[] {
+  return [...texts].filter((t) => t.text.trim()).sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+/** Wrap `text` in the Markdown syntax for this box's bold/italic — applied
+ *  per-line so multi-line boxes don't get one giant emphasis run spanning
+ *  blank lines. */
+function markdownEmphasis(text: string, item: TextItem): string {
+  if (!item.bold && !item.italic) return text;
+  const wrap = item.bold && item.italic ? '***' : item.bold ? '**' : '*';
+  return text
+    .split('\n')
+    .map((line) => (line.trim() ? `${wrap}${line}${wrap}` : line))
+    .join('\n');
+}
+
+function buildMarkdown(texts: TextItem[]): string {
+  return sortedByReadingOrder(texts)
+    .map((t) => markdownEmphasis(t.text, t))
+    .join('\n\n');
+}
+
+function buildPlainText(texts: TextItem[]): string {
+  return sortedByReadingOrder(texts)
+    .map((t) => t.text)
+    .join('\n\n');
+}
+
+function triggerTextDownload(content: string, filename: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, filename);
+  URL.revokeObjectURL(url);
+}
+
+/** Download the document's text boxes as a Markdown (.md) file. */
+export function exportMarkdown(texts: TextItem[]): void {
+  triggerTextDownload(buildMarkdown(texts), `stylus-${timestamp()}.md`, 'text/markdown');
+}
+
+/** Markdown as a Blob (share path). */
+export function buildMarkdownBlob(texts: TextItem[]): Blob {
+  return new Blob([buildMarkdown(texts)], { type: 'text/markdown' });
+}
+
+/** Download the document's text boxes as a plain-text (.txt) file. */
+export function exportText(texts: TextItem[]): void {
+  triggerTextDownload(buildPlainText(texts), `stylus-${timestamp()}.txt`, 'text/plain');
+}
+
+/** Plain text as a Blob (share path). */
+export function buildTextBlob(texts: TextItem[]): Blob {
+  return new Blob([buildPlainText(texts)], { type: 'text/plain' });
+}

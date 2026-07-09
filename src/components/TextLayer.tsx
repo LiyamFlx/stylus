@@ -1,6 +1,7 @@
 import { forwardRef, memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { TextItem, Tool } from '../types';
+import { TEXT_FONT_STACKS, TEXT_FONTS } from '../types';
 import { screenToWorld } from '../lib/geometry';
 import type { ViewTransform } from '../lib/geometry';
 
@@ -20,6 +21,20 @@ interface TextLayerProps {
   /** The active box's bottom edge in WORLD-Y, reported as it grows — lets the
    *  parent keep the writing position on a bounded page (notebook). */
   onActiveExtent?: (bottomWorldY: number) => void;
+  /** Patch font/bold/italic/align/width on the active box — the format
+   *  toolbar and resize handle both funnel through this. */
+  onPatchActive?: (patch: Partial<TextItem>) => void;
+}
+
+/** CSS font-family stack + weight/style for a text item, with back-compat
+ *  defaults for boxes saved before these fields existed. */
+function textStyle(item: TextItem): { fontFamily: string; fontWeight: string; fontStyle: string; textAlign: TextItem['align'] } {
+  return {
+    fontFamily: TEXT_FONT_STACKS[item.font ?? 'sans'],
+    fontWeight: item.bold ? '700' : '400',
+    fontStyle: item.italic ? 'italic' : 'normal',
+    textAlign: item.align ?? 'left',
+  };
 }
 
 interface DragState {
@@ -57,6 +72,7 @@ export function TextLayer({
   onEdit,
   onDone,
   onActiveExtent,
+  onPatchActive,
 }: TextLayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -180,9 +196,11 @@ export function TextLayer({
           <ActiveTextArea
             ref={inputRef}
             item={activeItem}
+            scale={view.scale}
             onEdit={onEdit}
             onDone={onDone}
             onExtent={onActiveExtent}
+            onPatch={onPatchActive}
             onHandleDown={activeItem ? (e) => startDrag(e, activeItem) : undefined}
             onHandleMove={onItemMove}
             onHandleUp={endDrag}
@@ -233,8 +251,10 @@ const TextBoxItem = memo(function TextBoxItem({
       style={{
         left: item.x,
         top: item.y,
+        width: item.width,
         color: item.color,
         fontSize: item.size,
+        ...textStyle(item),
         // Constant box model — padding+margin cancel so text sits identically
         // to the editing textarea (no shift on activate/deactivate).
         padding: 2,
@@ -250,14 +270,72 @@ const TextBoxItem = memo(function TextBoxItem({
 interface ActiveTextAreaProps {
   /** The active box, or null when text mode is on but nothing is selected. */
   item: TextItem | null;
+  /** Canvas zoom, so the resize handle converts screen-px drag deltas to
+   *  world-space width deltas (independent of pan — only scale matters). */
+  scale: number;
   onEdit: (text: string) => void;
   onDone: () => void;
   /** Report the box's bottom edge (world-Y) as it auto-sizes. */
   onExtent?: (bottomWorldY: number) => void;
+  /** Patch font/bold/italic/align/width — format toolbar + resize handle. */
+  onPatch?: (patch: Partial<TextItem>) => void;
   /** Drag handle: move the active box without disturbing text selection. */
   onHandleDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onHandleMove?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onHandleUp?: (e: ReactPointerEvent<HTMLDivElement>) => void;
+}
+
+const FONT_LABELS: Record<(typeof TEXT_FONTS)[number], string> = {
+  sans: 'Sans',
+  serif: 'Serif',
+  mono: 'Mono',
+  hand: 'Hand',
+};
+
+/** Three horizontal bars, offset per alignment — a lightweight inline icon
+ *  rather than pulling in the shared icon set for one-off use here. */
+function AlignIcon({ align }: { align: 'left' | 'center' | 'right' }) {
+  const x = { left: [2, 2, 2], center: [3, 5, 3], right: [4, 8, 4] }[align];
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x={x[0]} y="3" width="10" height="1.6" rx="0.8" fill="currentColor" />
+      <rect x={x[1]} y="7" width="7" height="1.6" rx="0.8" fill="currentColor" />
+      <rect x={x[2]} y="11" width="10" height="1.6" rx="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Toolbar button — shared look for the format popover's icon buttons. */
+function FormatButton({
+  active,
+  label,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      // Format clicks must not steal focus from the textarea (losing the
+      // caret would feel like the box "closed") — preventDefault on
+      // pointerdown keeps focus in place; the click still fires normally.
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={[
+        'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold transition-colors',
+        active ? 'bg-brand-500 text-white' : 'text-ink-700 hover:bg-white/[0.08]',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
 }
 
 /**
@@ -267,10 +345,12 @@ interface ActiveTextAreaProps {
  */
 const ActiveTextArea = memo(
   forwardRef<HTMLTextAreaElement, ActiveTextAreaProps>(function ActiveTextArea(
-    { item, onEdit, onDone, onExtent, onHandleDown, onHandleMove, onHandleUp },
+    { item, scale, onEdit, onDone, onExtent, onPatch, onHandleDown, onHandleMove, onHandleUp },
     ref,
   ) {
     const localRef = useRef<HTMLTextAreaElement | null>(null);
+    const scaleRef = useRef(scale);
+    scaleRef.current = scale;
 
     const setRefs = useCallback(
       (el: HTMLTextAreaElement | null) => {
@@ -281,31 +361,35 @@ const ActiveTextArea = memo(
       [ref],
     );
 
-    // Auto-size to content on BOTH axes, and place the caret at the end when
-    // the active box changes (switching boxes). Layout effect so it's flushed
-    // before paint.
+    // Auto-size to content, and place the caret at the end when the active box
+    // changes (switching boxes). Layout effect so it's flushed before paint.
+    //
+    // Width has two modes: AUTO (item.width undefined — the original
+    // behavior, grows with content up to the page edge) and FIXED (item.width
+    // set by dragging the resize handle — text rewraps within that width and
+    // never auto-grows past it, like a real word-processor text frame).
     useLayoutEffect(() => {
       const el = localRef.current;
       if (!el) return;
 
-      // Width: measure the natural (unwrapped) content width first, then clamp
-      // to what's left of the layer so long lines wrap instead of running off
-      // the page — a box starts as wide as its text and only grows toward
-      // that cap as you keep typing, instead of opening at full page width.
-      const parent = el.offsetParent as HTMLElement | null;
-      const maxWidth = parent && item
-        ? Math.max(parent.clientWidth - item.x - 2, 40)
-        : Infinity;
-      el.style.width = 'auto';
-      const naturalWidth = el.scrollWidth;
-      el.style.width = `${Math.min(naturalWidth, maxWidth)}px`;
+      if (item?.width != null) {
+        el.style.width = `${item.width}px`;
+      } else {
+        const parent = el.offsetParent as HTMLElement | null;
+        const maxWidth = parent && item
+          ? Math.max(parent.clientWidth - item.x - 2, 40)
+          : Infinity;
+        el.style.width = 'auto';
+        const naturalWidth = el.scrollWidth;
+        el.style.width = `${Math.min(naturalWidth, maxWidth)}px`;
+      }
 
       el.style.height = 'auto';
       el.style.height = `${el.scrollHeight}px`;
       // The textarea lives inside the world-transformed wrapper, so offsetHeight
       // is in world units — report the box's bottom so the page can follow it.
       if (item && onExtent) onExtent(item.y + el.offsetHeight);
-    }, [item?.text, item?.size, item, onExtent]);
+    }, [item?.text, item?.size, item?.width, item, onExtent]);
 
     const activeIdRef = useRef<string | null>(null);
     useEffect(() => {
@@ -320,6 +404,41 @@ const ActiveTextArea = memo(
         activeIdRef.current = null;
       }
     }, [item]);
+
+    // Resize handle: drag the right edge to set a FIXED wrap width (switches
+    // the box from auto-size to manual — see the layout effect above). Tracks
+    // the gesture's start screen-X and start width in a ref (not state) since
+    // this fires on every pointermove and must stay a stable callback.
+    const resizeRef = useRef<{ startClientX: number; startWidth: number } | null>(null);
+    const onResizeDown = useCallback(
+      (e: ReactPointerEvent<HTMLDivElement>) => {
+        const el = localRef.current;
+        if (!el) return;
+        e.stopPropagation();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        resizeRef.current = { startClientX: e.clientX, startWidth: el.offsetWidth };
+      },
+      [],
+    );
+    const onResizeMove = useCallback(
+      (e: ReactPointerEvent<HTMLDivElement>) => {
+        const drag = resizeRef.current;
+        if (!drag || !onPatch) return;
+        // Screen-px delta must be converted to world units (÷ scale) — the
+        // handle lives inside the pan/zoom-transformed wrapper, so a raw
+        // client-px delta would resize too fast/slow away from 100% zoom.
+        const deltaScreen = e.clientX - drag.startClientX;
+        const deltaWorld = deltaScreen / (scaleRef.current || 1);
+        onPatch({ width: Math.max(40, drag.startWidth + deltaWorld) });
+      },
+      [onPatch],
+    );
+    const onResizeUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      resizeRef.current = null;
+    }, []);
 
     return (
       <>
@@ -381,9 +500,11 @@ const ActiveTextArea = memo(
             left: item ? item.x : -9999,
             top: item ? item.y : -9999,
             // Width is set imperatively by the layout effect above (grows with
-            // content, capped at the space remaining to the layer's edge).
+            // content, capped at the space remaining to the layer's edge, OR
+            // fixed once the resize handle has been dragged).
             color: item?.color ?? 'transparent',
             fontSize: item?.size ?? 20,
+            ...(item ? textStyle(item) : null),
             caretColor: item?.color ?? 'transparent',
             minWidth: '8ch',
             padding: 2,
@@ -391,6 +512,96 @@ const ActiveTextArea = memo(
             opacity: item ? 1 : 0,
           }}
         />
+
+        {/* Resize handle: bottom-right grip on the active box's right edge.
+            Dragging sets a FIXED wrap width (item.width) — text rewraps
+            within it instead of the box auto-growing with content. */}
+        {item && onPatch && (
+          <div
+            role="button"
+            aria-label="Resize text box width"
+            title="Drag to resize"
+            onPointerDown={onResizeDown}
+            onPointerMove={onResizeMove}
+            onPointerUp={onResizeUp}
+            onPointerCancel={onResizeUp}
+            onLostPointerCapture={onResizeUp}
+            className="pointer-events-auto absolute cursor-ew-resize rounded-full bg-brand-500/80 shadow-soft"
+            style={{
+              left: item.x + (localRef.current?.offsetWidth ?? 0) - 5,
+              top: item.y + (localRef.current?.offsetHeight ?? item.size) / 2 - 5,
+              width: 10,
+              height: 10,
+              touchAction: 'none',
+            }}
+          />
+        )}
+
+        {/* Floating format toolbar: font family, bold, italic, align. Shown
+            above the drag handle so the two never overlap. */}
+        {item && onPatch && (
+          <div
+            className="pointer-events-auto absolute flex items-center gap-0.5 rounded-lg border border-border bg-bg-muted/95 p-1 shadow-pop backdrop-blur-pill"
+            style={{
+              left: item.x,
+              top: Math.max(2, item.y - 60),
+            }}
+            // Same rule as FormatButton: don't let toolbar taps steal focus
+            // from the textarea mid-edit.
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <select
+              aria-label="Font family"
+              value={item.font ?? 'sans'}
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => onPatch({ font: e.target.value as TextItem['font'] })}
+              className="h-7 rounded-md border-0 bg-transparent px-1 text-xs text-ink-700 outline-none hover:bg-white/[0.08]"
+            >
+              {TEXT_FONTS.map((f) => (
+                <option key={f} value={f}>
+                  {FONT_LABELS[f]}
+                </option>
+              ))}
+            </select>
+            <div className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+            <FormatButton
+              label="Bold"
+              active={item.bold}
+              onClick={() => onPatch({ bold: !item.bold })}
+            >
+              B
+            </FormatButton>
+            <FormatButton
+              label="Italic"
+              active={item.italic}
+              onClick={() => onPatch({ italic: !item.italic })}
+            >
+              <span style={{ fontStyle: 'italic' }}>I</span>
+            </FormatButton>
+            <div className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+            <FormatButton
+              label="Align left"
+              active={(item.align ?? 'left') === 'left'}
+              onClick={() => onPatch({ align: 'left' })}
+            >
+              <AlignIcon align="left" />
+            </FormatButton>
+            <FormatButton
+              label="Align center"
+              active={item.align === 'center'}
+              onClick={() => onPatch({ align: 'center' })}
+            >
+              <AlignIcon align="center" />
+            </FormatButton>
+            <FormatButton
+              label="Align right"
+              active={item.align === 'right'}
+              onClick={() => onPatch({ align: 'right' })}
+            >
+              <AlignIcon align="right" />
+            </FormatButton>
+          </div>
+        )}
       </>
     );
   }),

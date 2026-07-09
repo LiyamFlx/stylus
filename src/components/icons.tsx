@@ -293,3 +293,23 @@ export const SearchIcon = ({ size = 20, className }: IconProps) => (
     <path d="M21 21l-4.35-4.35" />
   </svg>
 );
+
+/** Markdown export — the "M↓" glyph used across markdown tooling. */
+export const MarkdownIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M6 15V9l3 3 3-3v6" />
+    <path d="M16 9v6" />
+    <path d="M13.5 12.5L16 15l2.5-2.5" />
+  </svg>
+);
+
+/** Plain-text export — a document with left-aligned lines. */
+export const PlainTextIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <path d="M14 2v6h6" />
+    <path d="M8 13h8" />
+    <path d="M8 17h5" />
+  </svg>
+);

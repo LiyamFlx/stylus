@@ -27,6 +27,20 @@ export interface InkPoint {
   t: number;
 }
 
+/** Font choices offered for a text box. System stacks (no web-font loading —
+ *  keeps text boxes offline-safe and export-stable). */
+export const TEXT_FONTS = ['sans', 'serif', 'mono', 'hand'] as const;
+export type TextFont = (typeof TEXT_FONTS)[number];
+
+export const TEXT_FONT_STACKS: Record<TextFont, string> = {
+  sans: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+  mono: 'ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", monospace',
+  hand: '"Bradley Hand", "Segoe Print", "Comic Sans MS", cursive',
+};
+
+export type TextAlign = 'left' | 'center' | 'right';
+
 /** A typed text box placed on the canvas (via the on-screen keyboard). */
 export interface TextItem {
   /** Stable id. */
@@ -40,6 +54,20 @@ export interface TextItem {
   color: string;
   /** Font size in CSS px. */
   size: number;
+  /** Font family. Defaults to 'sans' for boxes created before this field
+   *  existed — see {@link TEXT_FONT_STACKS}. */
+  font?: TextFont;
+  bold?: boolean;
+  italic?: boolean;
+  /** Paragraph alignment. Defaults to 'left'. */
+  align?: TextAlign;
+  /**
+   * Manually-set wrap width in CSS px (the resize handle). `undefined` means
+   * auto-width (grows with content, capped at the page edge) — the original
+   * behavior. Once a user drags the handle, width becomes fixed at that value
+   * and text rewraps within it instead of continuing to auto-size.
+   */
+  width?: number;
 }
 
 /**

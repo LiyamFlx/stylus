@@ -341,6 +341,15 @@ export function Workspace({
     setTexts((t) => t.map((it) => (it.id === id ? { ...it, text: fn(it.text) } : it)));
   }, []);
 
+  /** Patch arbitrary fields (font/bold/italic/align/width) on the active box —
+   *  the floating text-format toolbar and resize handle both funnel through
+   *  this instead of each needing their own setTexts wiring. */
+  const patchActiveText = useCallback((patch: Partial<TextItem>) => {
+    const id = activeIdRef.current;
+    if (!id) return;
+    setTexts((t) => t.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  }, []);
+
   /* --------------------- hardware input: scanner + stylus ----------------- */
 
   // Drop point for programmatic text (scan / paste): a spot near the top-centre
@@ -482,6 +491,34 @@ export function Workspace({
     }));
     mod.exportPDFPages(pages);
   }, [pageId, appMode, documentId, ruling, texts, drawing.strokes, exportOpts]);
+
+  /** All text boxes across the document — every page's for a notebook doc
+   *  (mirrors handleExportPDF's page-gathering), just this doc's for
+   *  canvas/mobile. Text-only exports have no ink, so no stroke loading. */
+  const allDocTexts = useCallback((): TextItem[] => {
+    if (!pageId) return texts;
+    return listPages(documentId).flatMap((p) =>
+      p.id === pageId ? texts : readPageAux(documentId, p.id).texts,
+    );
+  }, [pageId, documentId, texts]);
+
+  const handleExportMarkdown = useCallback(async () => {
+    const mod = await importChunk(() => import('../lib/export'));
+    if (appMode === 'mobile') {
+      const { shareFile } = await import('../lib/share');
+      if (await shareFile(mod.buildMarkdownBlob(allDocTexts()), 'stylus.md')) return;
+    }
+    mod.exportMarkdown(allDocTexts());
+  }, [appMode, allDocTexts]);
+
+  const handleExportText = useCallback(async () => {
+    const mod = await importChunk(() => import('../lib/export'));
+    if (appMode === 'mobile') {
+      const { shareFile } = await import('../lib/share');
+      if (await shareFile(mod.buildTextBlob(allDocTexts()), 'stylus.txt')) return;
+    }
+    mod.exportText(allDocTexts());
+  }, [appMode, allDocTexts]);
 
   const handleRecognize = useCallback(() => {
     setPanelAutoAction(null);
@@ -810,6 +847,7 @@ export function Workspace({
         onEdit={setActiveText}
         onDone={finishText}
         onActiveExtent={drawing.scrollToKeepVisible}
+        onPatchActive={patchActiveText}
       />
 
       {tool === 'select' && (
@@ -897,6 +935,8 @@ export function Workspace({
         onRecognize={handleRecognize}
         onExportPNG={handleExportPNG}
         onExportPDF={handleExportPDF}
+        onExportMarkdown={texts.some((t) => t.text.trim()) ? handleExportMarkdown : undefined}
+        onExportText={texts.some((t) => t.text.trim()) ? handleExportText : undefined}
         inputMethodGroup={
           <InputMethodGroup scanner={scanner} stylus={stylus} />
         }

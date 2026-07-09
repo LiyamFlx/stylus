@@ -27,6 +27,8 @@ import {
   LockIcon,
   UnlockIcon,
   SearchIcon,
+  MarkdownIcon,
+  PlainTextIcon,
 } from './icons';
 import type { PaletteId } from '../lib/kandinsky/audio';
 import type { ToolbarVariant } from '../lib/modes';
@@ -64,6 +66,10 @@ interface ToolbarProps {
   onRecognize: () => void;
   onExportPNG: () => void;
   onExportPDF: () => void;
+  /** Text-only export (Quick Note Phase 4) — omit to hide both buttons
+   *  (e.g. when there are no text boxes to export). */
+  onExportMarkdown?: () => void;
+  onExportText?: () => void;
   /** Text / scanner / stylus input-method buttons, rendered in the pill. */
   inputMethodGroup?: React.ReactNode;
   musicMode: boolean;
@@ -673,6 +679,8 @@ export function Toolbar(props: ToolbarProps) {
     onRecognize,
     onExportPNG,
     onExportPDF,
+    onExportMarkdown,
+    onExportText,
     inputMethodGroup,
     musicMode,
     onToggleMusic,
@@ -814,6 +822,16 @@ export function Toolbar(props: ToolbarProps) {
       <IconButton label="Export PDF" disabled={isEmpty} onClick={onExportPDF}>
         <FileIcon />
       </IconButton>
+      {onExportMarkdown && (
+        <IconButton label="Export Markdown" disabled={isEmpty} onClick={onExportMarkdown}>
+          <MarkdownIcon />
+        </IconButton>
+      )}
+      {onExportText && (
+        <IconButton label="Export text" disabled={isEmpty} onClick={onExportText}>
+          <PlainTextIcon />
+        </IconButton>
+      )}
 
       {!minimal && (
       <>
