@@ -26,6 +26,7 @@ import {
   FocusIcon,
   LockIcon,
   UnlockIcon,
+  SearchIcon,
 } from './icons';
 import type { PaletteId } from '../lib/kandinsky/audio';
 import type { ToolbarVariant } from '../lib/modes';
@@ -94,6 +95,9 @@ interface ToolbarProps {
   onHideChrome?: () => void;
   /** Stroke replay (Phase 3 item 6) — canvas-mode full toolbar only. */
   onReplay?: () => void;
+  /** Find & replace across this document's text boxes (Quick Note Phase 2).
+   *  Shown in every variant, including minimal — it's core to note-taking. */
+  onFindReplace?: () => void;
   /** Canvas Mode color wheel (Phase 3 item 3). */
   enableColorWheel?: boolean;
   customColors?: readonly string[];
@@ -684,6 +688,7 @@ export function Toolbar(props: ToolbarProps) {
     onToggleExamLock,
     onHideChrome,
     onReplay,
+    onFindReplace,
     enableColorWheel = false,
     customColors,
     onCustomColor,
@@ -866,6 +871,12 @@ export function Toolbar(props: ToolbarProps) {
       {onReplay && !minimal && (
         <IconButton label="Replay drawing" disabled={isEmpty} onClick={onReplay}>
           <PlayIcon />
+        </IconButton>
+      )}
+
+      {onFindReplace && (
+        <IconButton label="Find & replace" onClick={onFindReplace}>
+          <SearchIcon />
         </IconButton>
       )}
 

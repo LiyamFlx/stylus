@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { DocMeta, Folder } from '../lib/documents';
+import { searchDocuments } from '../lib/documents';
 import { initials } from '../lib/profile';
 import { ConfirmDialog, PromptDialog } from './Dialog';
 import {
@@ -10,6 +11,7 @@ import {
   EditIcon,
   FolderIcon,
   PlusIcon,
+  SearchIcon,
   TrashIcon,
 } from './icons';
 
@@ -74,6 +76,11 @@ export function Sidebar({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragDocId, setDragDocId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | 'root' | null>(null);
+  const [query, setQuery] = useState('');
+  // Re-scans on every keystroke (documents.ts's searchDocuments is an
+  // on-demand scan, no persisted index) — fine at local-notes volume, and
+  // `docs` in the deps re-triggers a re-scan whenever content changes.
+  const searchResults = useMemo(() => searchDocuments(query), [query, docs]);
 
   const toggleCollapsed = (id: string) => {
     setCollapsed((prev) => {
@@ -184,60 +191,119 @@ export function Sidebar({
           </div>
         </div>
 
-        <ul
-          className="flex-1 overflow-y-auto px-2 pb-4"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDropTarget('root');
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            handleDropOnFolder(undefined);
-          }}
-        >
-          {childFolders(undefined).map((folder) => (
-            <FolderNode
-              key={folder.id}
-              folder={folder}
-              depth={0}
-              folders={folders}
-              childFolders={childFolders}
-              docsIn={docsIn}
-              collapsed={collapsed}
-              onToggleCollapsed={toggleCollapsed}
-              currentId={currentId}
-              onSelectDoc={onSelectDoc}
-              onRenameDoc={setRenaming}
-              onDeleteDoc={setDeleting}
-              onRenameFolder={setRenamingFolder}
-              onDeleteFolder={setDeletingFolder}
-              onNewSubfolder={setNewFolderParent}
-              dragDocId={dragDocId}
-              setDragDocId={setDragDocId}
-              dropTarget={dropTarget}
-              setDropTarget={setDropTarget}
-              onDropOnFolder={handleDropOnFolder}
+        <div className="px-4 pb-2">
+          <div className="relative">
+            <SearchIcon size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+            <input
+              aria-label="Search notes"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search notes…"
+              className="w-full rounded-md border border-border bg-white/[0.04] py-1.5 pl-8 pr-7 text-sm text-ink-900 outline-none placeholder:text-ink-400 focus:border-brand-500/50"
             />
-          ))}
+            {query && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setQuery('')}
+                className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-ink-400 hover:text-ink-900"
+              >
+                <CloseIcon size={12} />
+              </button>
+            )}
+          </div>
+        </div>
 
-          {docsIn(undefined).map((doc) => (
-            <DocRow
-              key={doc.id}
-              doc={doc}
-              depth={0}
-              active={doc.id === currentId}
-              onSelectDoc={onSelectDoc}
-              onRenameDoc={setRenaming}
-              onDeleteDoc={setDeleting}
-              dragDocId={dragDocId}
-              setDragDocId={setDragDocId}
-            />
-          ))}
+        {query.trim() ? (
+          <ul className="flex-1 overflow-y-auto px-2 pb-4">
+            {searchResults.length === 0 ? (
+              <li className="px-2 py-6 text-center text-sm text-ink-400">
+                No notes match “{query.trim()}”
+              </li>
+            ) : (
+              searchResults.map(({ doc, matchedIn, snippet }) => (
+                <li key={doc.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectDoc(doc.id)}
+                    className={[
+                      'flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left transition-colors',
+                      doc.id === currentId ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]',
+                    ].join(' ')}
+                  >
+                    <span className="flex w-full items-center gap-2">
+                      <DocumentIcon size={14} className="shrink-0 text-ink-400" />
+                      <span className="truncate text-sm text-ink-900">{doc.name}</span>
+                    </span>
+                    {matchedIn === 'content' && snippet && (
+                      <span className="pl-[22px] text-xs text-ink-400">{snippet}</span>
+                    )}
+                    {matchedIn === 'tag' && (
+                      <span className="pl-[22px] text-xs text-ink-400">
+                        matched tag: {doc.tags?.find((t) => t.toLowerCase().includes(query.trim().toLowerCase()))}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        ) : (
+          <ul
+            className="flex-1 overflow-y-auto px-2 pb-4"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDropTarget('root');
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDropOnFolder(undefined);
+            }}
+          >
+            {childFolders(undefined).map((folder) => (
+              <FolderNode
+                key={folder.id}
+                folder={folder}
+                depth={0}
+                folders={folders}
+                childFolders={childFolders}
+                docsIn={docsIn}
+                collapsed={collapsed}
+                onToggleCollapsed={toggleCollapsed}
+                currentId={currentId}
+                onSelectDoc={onSelectDoc}
+                onRenameDoc={setRenaming}
+                onDeleteDoc={setDeleting}
+                onRenameFolder={setRenamingFolder}
+                onDeleteFolder={setDeletingFolder}
+                onNewSubfolder={setNewFolderParent}
+                dragDocId={dragDocId}
+                setDragDocId={setDragDocId}
+                dropTarget={dropTarget}
+                setDropTarget={setDropTarget}
+                onDropOnFolder={handleDropOnFolder}
+              />
+            ))}
 
-          {dropTarget === 'root' && (
-            <li className="pointer-events-none mx-2 rounded-lg border border-dashed border-brand-500/60" />
-          )}
-        </ul>
+            {docsIn(undefined).map((doc) => (
+              <DocRow
+                key={doc.id}
+                doc={doc}
+                depth={0}
+                active={doc.id === currentId}
+                onSelectDoc={onSelectDoc}
+                onRenameDoc={setRenaming}
+                onDeleteDoc={setDeleting}
+                dragDocId={dragDocId}
+                setDragDocId={setDragDocId}
+              />
+            ))}
+
+            {dropTarget === 'root' && (
+              <li className="pointer-events-none mx-2 rounded-lg border border-dashed border-brand-500/60" />
+            )}
+          </ul>
+        )}
 
         <div className="border-t border-border p-4 text-[11px] leading-relaxed text-ink-400">
           Stylus — write every thought, on every device. Saved locally on this

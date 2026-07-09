@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createDocument,
   createFolder,
+  createPage,
   deleteDocument,
   deleteFolder,
   ensureIndex,
+  ensurePages,
   getCurrentId,
   inkKey,
   listDocuments,
@@ -13,9 +15,11 @@ import {
   readAux,
   renameDocument,
   renameFolder,
+  searchDocuments,
   setCurrentId,
   setDocumentTags,
   writeAux,
+  writePageAux,
 } from './documents';
 
 const NOW = 1_000_000;
@@ -185,6 +189,65 @@ describe('documents', () => {
       const doc = createDocument('Note', NOW + 1);
       setDocumentTags(doc.id, [' school ', 'urgent', 'urgent', '  ']);
       expect(listDocuments().find((d) => d.id === doc.id)?.tags).toEqual(['school', 'urgent']);
+    });
+  });
+
+  describe('searchDocuments', () => {
+    it('returns nothing for a blank query', () => {
+      ensureIndex(NOW);
+      createDocument('Groceries', NOW + 1);
+      expect(searchDocuments('   ')).toEqual([]);
+    });
+
+    it('matches by title, case-insensitively', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Grocery List', NOW + 1);
+      const results = searchDocuments('grocery');
+      expect(results).toEqual([{ doc, matchedIn: 'title' }]);
+    });
+
+    it('matches by tag', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Note', NOW + 1);
+      setDocumentTags(doc.id, ['urgent']);
+      const results = searchDocuments('urg');
+      expect(results[0].matchedIn).toBe('tag');
+      expect(results[0].doc.id).toBe(doc.id);
+    });
+
+    it('matches by text content and returns a snippet', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Note', NOW + 1);
+      writeAux(doc.id, {
+        paper: 'blank',
+        texts: [{ id: 't1', x: 0, y: 0, text: 'remember to buy milk tomorrow', color: '#fff', size: 16 }],
+      });
+      const results = searchDocuments('milk');
+      expect(results[0].matchedIn).toBe('content');
+      expect(results[0].snippet).toContain('milk');
+    });
+
+    it('scans every page of a notebook doc', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Notebook', NOW + 1, 'notebook');
+      const pages = ensurePages(doc.id);
+      const second = createPage(doc.id);
+      writePageAux(doc.id, second.id, {
+        texts: [{ id: 't1', x: 0, y: 0, text: 'quarterly revenue projections', color: '#fff', size: 16 }],
+      });
+      expect(pages).toHaveLength(1);
+      const results = searchDocuments('revenue');
+      expect(results[0].doc.id).toBe(doc.id);
+      expect(results[0].matchedIn).toBe('content');
+    });
+
+    it('stops at the first match type: title beats tag beats content', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Budget plan', NOW + 1);
+      setDocumentTags(doc.id, ['budget']);
+      const results = searchDocuments('budget');
+      expect(results).toHaveLength(1);
+      expect(results[0].matchedIn).toBe('title');
     });
   });
 });

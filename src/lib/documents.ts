@@ -569,6 +569,74 @@ export function setDocumentTags(id: string, tags: string[]): void {
   });
 }
 
+// ─── Search (Quick Note Phase 2) ─────────────────────────────────────────────
+//
+// On-demand scan, no persisted index: reads every doc's title/tags plus its
+// text-item content (single aux for Canvas/Mobile docs, every page's aux for
+// Notebook docs) and matches case-insensitively. Fine at local-notes volume;
+// revisit with a real index only if this becomes visibly slow.
+
+export interface SearchMatch {
+  doc: DocMeta;
+  /** Where the match was found — used to pick an icon/label in the UI. */
+  matchedIn: 'title' | 'tag' | 'content';
+  /** Short excerpt around the match, for content hits only. */
+  snippet?: string;
+}
+
+const SNIPPET_RADIUS = 40;
+
+function snippetAround(text: string, index: number, queryLen: number): string {
+  const start = Math.max(0, index - SNIPPET_RADIUS);
+  const end = Math.min(text.length, index + queryLen + SNIPPET_RADIUS);
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < text.length ? '…' : '';
+  return prefix + text.slice(start, end).replace(/\s+/g, ' ').trim() + suffix;
+}
+
+/** All text-item strings belonging to a document, across every page for
+ *  Notebook docs (mirrors collectImageIds's doc-aux + every-page-aux walk). */
+function collectDocText(doc: DocMeta): string[] {
+  const strings: string[] = [];
+  for (const t of readAux(doc.id).texts) strings.push(t.text);
+  if (doc.mode === 'notebook') {
+    for (const page of listPages(doc.id)) {
+      for (const t of readPageAux(doc.id, page.id).texts) strings.push(t.text);
+    }
+  }
+  return strings;
+}
+
+/**
+ * Search every document's title, tags, and text content for `query`
+ * (case-insensitive substring match). Empty/whitespace query returns no
+ * results — callers show the full tree instead of an empty search state.
+ */
+export function searchDocuments(query: string): SearchMatch[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+
+  const results: SearchMatch[] = [];
+  for (const doc of listDocuments()) {
+    if (doc.name.toLowerCase().includes(q)) {
+      results.push({ doc, matchedIn: 'title' });
+      continue;
+    }
+    if (doc.tags?.some((t) => t.toLowerCase().includes(q))) {
+      results.push({ doc, matchedIn: 'tag' });
+      continue;
+    }
+    for (const text of collectDocText(doc)) {
+      const idx = text.toLowerCase().indexOf(q);
+      if (idx >= 0) {
+        results.push({ doc, matchedIn: 'content', snippet: snippetAround(text, idx, q.length) });
+        break;
+      }
+    }
+  }
+  return results;
+}
+
 /** All image-underlay ids referenced by a document (doc aux + every page
  *  aux). Must run BEFORE deleteDocument's sweep — the sweep removes the aux
  *  keys this reads. deleteDocument now calls it internally at the right time;

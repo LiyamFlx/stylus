@@ -9,6 +9,7 @@ import { ImageLayer } from './ImageLayer';
 import { Toaster } from './Toaster';
 import { toast } from '../lib/toast';
 import { InputMethodGroup } from './ToolbarInputMethods';
+import { FindReplacePanel } from './FindReplacePanel';
 import { BrandFooter } from './Brand';
 import { MenuIcon } from './icons';
 import { useDrawing } from '../hooks/useDrawing';
@@ -189,6 +190,9 @@ export function Workspace({
 
   // Stroke replay (Phase 3 item 6).
   const [replayOpen, setReplayOpen] = useState(false);
+
+  // Find & replace across this doc's text boxes (Quick Note Phase 2).
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
 
   // Canvas Mode custom palette (Phase 3 item 3) — per-doc, capped, persisted.
   const [customColors, setCustomColors] = useState<string[]>(() =>
@@ -856,6 +860,7 @@ export function Workspace({
         variant={examLock ? 'restricted' : toolbarVariant}
         position="top"
         onReplay={appMode === 'canvas' ? () => setReplayOpen(true) : undefined}
+        onFindReplace={() => setFindReplaceOpen(true)}
         enableColorWheel={appMode === 'canvas'}
         customColors={customColors}
         onCustomColor={saveCustomColor}
@@ -1001,6 +1006,13 @@ export function Workspace({
       {replayOpen && (
         <ReplayOverlay strokes={drawing.strokes} onClose={() => setReplayOpen(false)} />
       )}
+
+      <FindReplacePanel
+        open={findReplaceOpen}
+        texts={texts}
+        onReplaceAll={setTexts}
+        onClose={() => setFindReplaceOpen(false)}
+      />
 
       {showRotateOverlay && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-bg/95 px-8 text-center">

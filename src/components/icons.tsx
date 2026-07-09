@@ -286,3 +286,10 @@ export const ChevronRightIcon = ({ size = 20, className }: IconProps) => (
     <path d="M9 6l6 6-6 6" />
   </svg>
 );
+
+export const SearchIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4.35-4.35" />
+  </svg>
+);
