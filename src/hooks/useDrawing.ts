@@ -97,6 +97,9 @@ export interface ViewState {
   panBy: (dxScreen: number, dyScreen: number) => void;
   /** Reset to 100% / origin. */
   reset: () => void;
+  /** Recenter + zoom to fit the given content bounds (falls back to reset()
+   *  when null/empty — nothing to fit). */
+  zoomToFit: (bounds: Bounds | null) => void;
 }
 
 export interface UseDrawingResult {
@@ -1210,6 +1213,34 @@ export function useDrawing({
     commitView(IDENTITY_VIEW);
   }, [commitView]);
 
+  /** Recenter + zoom so `bounds` fills the viewport with a comfortable margin.
+   *  `null`/empty bounds (nothing drawn yet) falls back to `reset()` — there's
+   *  nothing to fit, so 100%/origin is the sane default. */
+  const zoomToFit = useCallback(
+    (bounds: Bounds | null) => {
+      const canvas = overlayRef.current;
+      if (!bounds || !canvas) {
+        commitView(IDENTITY_VIEW);
+        return;
+      }
+      const contentW = bounds.maxX - bounds.minX;
+      const contentH = bounds.maxY - bounds.minY;
+      if (contentW <= 0 || contentH <= 0) {
+        commitView(IDENTITY_VIEW);
+        return;
+      }
+      const vw = canvas.clientWidth;
+      const vh = canvas.clientHeight;
+      const FIT_MARGIN = 0.9; // leave ~10% breathing room around the content
+      const rawScale = Math.min((vw / contentW) * FIT_MARGIN, (vh / contentH) * FIT_MARGIN);
+      const scale = clampScale(rawScale, zoomRangeRef.current);
+      const cx = (bounds.minX + bounds.maxX) / 2;
+      const cy = (bounds.minY + bounds.maxY) / 2;
+      commitView({ scale, panX: cx - vw / 2 / scale, panY: cy - vh / 2 / scale });
+    },
+    [commitView],
+  );
+
   // Native, non-passive wheel listener so we can preventDefault and stop the
   // browser from page-zooming on ctrl/⌘+wheel (pinch). Plain wheel pans.
   useEffect(() => {
@@ -1277,8 +1308,9 @@ export function useDrawing({
       zoomBy,
       panBy,
       reset: resetView,
+      zoomToFit,
     }),
-    [view.scale, view.panX, view.panY, zoomBy, panBy, resetView],
+    [view.scale, view.panX, view.panY, zoomBy, panBy, resetView, zoomToFit],
   );
 
   return useMemo<UseDrawingResult>(

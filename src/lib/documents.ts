@@ -1,6 +1,6 @@
 import type { ImageItem, PaperStyle, TextItem } from '../types';
 import { createId } from './id';
-import { resolveMode } from './modes';
+import { modeConfig, resolveMode } from './modes';
 import type { AppMode } from './modes';
 
 /**
@@ -87,7 +87,15 @@ const LEGACY_INK_KEY = 'stylus.ink.v1';
 export const inkKey = (id: string) => `stylus.doc.v1.${id}.ink`;
 const auxKey = (id: string) => `stylus.doc.v1.${id}.aux`;
 
-const DEFAULT_AUX: DocAux = { paper: 'blank', texts: [] };
+// Matches canvas's mode default — this is also the readAux() fallback for any
+// doc whose aux was never written (e.g. ensureIndex's very-first-run doc).
+const DEFAULT_AUX: DocAux = { paper: 'grid', texts: [] };
+
+/** New docs seed their paper from the mode's default (grid for Canvas/Quick
+ *  Note, notebook paper for Notebook) instead of a hardcoded constant. */
+function defaultAuxForMode(mode: AppMode): DocAux {
+  return { paper: modeConfig(mode).defaultPaper, texts: [] };
+}
 
 const uid = () => createId('d_');
 
@@ -190,7 +198,7 @@ export function createDocument(name: string, now: number, mode: AppMode = 'canva
     mode,
   };
   writeIndex({ ...idx, currentId: meta.id, docs: [meta, ...idx.docs] });
-  write(auxKey(meta.id), DEFAULT_AUX);
+  write(auxKey(meta.id), defaultAuxForMode(mode));
   return meta;
 }
 

@@ -70,15 +70,17 @@ describe('App keyboard shortcuts', () => {
   it('opens the paper picker and selects a background', () => {
     render(<App />);
     const paperBtn = () => screen.getByRole('button', { name: /^Paper:/ });
-    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Blank');
+    // Canvas Mode now defaults to Grid (was Blank) so the grid is visible
+    // out of the box instead of every new doc opening on a blank page.
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Grid');
 
     // Opening the picker reveals every paper option.
     fireEvent.click(paperBtn());
     expect(screen.getAllByRole('menuitemradio')).toHaveLength(PAPER_STYLES.length);
 
     // Selecting one applies it and closes the menu.
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Grid/i }));
-    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Grid');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Dots/i }));
+    expect(paperBtn()).toHaveAttribute('aria-label', 'Paper: Dots');
     expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
   });
 });

@@ -26,7 +26,7 @@ import { loadStrokes } from '../hooks/useLocalStorage';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
-import { A4_BOUNDS, eraserRadius, worldToScreen } from '../lib/geometry';
+import { A4_BOUNDS, eraserRadius, inkBounds, mergeBounds, textBounds, worldToScreen } from '../lib/geometry';
 import { effectiveTouchAction, modeConfig } from '../lib/modes';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { importChunk } from '../lib/chunkReload';
@@ -618,7 +618,16 @@ export function Workspace({
   // Wheel/pinch zoom + pan are handled by a native listener in useDrawing; the
   // controls below drive zoom from the toolbar cluster.
 
-  const { scale, zoomBy, reset: resetView } = drawing.view;
+  const { scale, zoomBy, reset: resetView, zoomToFit } = drawing.view;
+
+  /** Recenter + fit everything drawn/typed into view — falls back to
+   *  reset() when there's nothing yet (zoomToFit handles the null case). */
+  const handleZoomToFit = useCallback(() => {
+    const ink = inkBounds(drawing.strokes);
+    const text = textBounds(texts);
+    const bounds = ink && text ? mergeBounds(ink, text) : ink ?? text;
+    zoomToFit(bounds);
+  }, [drawing.strokes, texts, zoomToFit]);
 
   /* --------------------------- keyboard shortcuts ------------------------- */
 
@@ -937,6 +946,24 @@ export function Workspace({
       )}
 
       {tool === 'text' && texts.length > 0 && <TextStatsBadge texts={texts} />}
+
+      {/* Recenter / zoom-to-fit (floating, bottom-right, above the zoom pill). */}
+      <button
+        type="button"
+        aria-label="Recenter and fit to content"
+        title="Recenter and fit to content"
+        onClick={handleZoomToFit}
+        className="absolute bottom-16 right-4 z-20 hidden h-9 w-9 rounded-full border border-border bg-bg-muted/80 text-ink-700 shadow-pop backdrop-blur-pill hover:bg-white/[0.06] sm:grid"
+        style={{ placeContent: 'center', gap: '1ch' }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 00-2 2v3" />
+          <path d="M16 3h3a2 2 0 012 2v3" />
+          <path d="M8 21H5a2 2 0 01-2-2v-3" />
+          <path d="M16 21h3a2 2 0 002-2v-3" />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
+      </button>
 
       {/* Zoom controls (desktop). */}
       <div className="absolute bottom-4 right-4 z-20 hidden items-center gap-1 rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill sm:flex">

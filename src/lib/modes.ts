@@ -52,7 +52,7 @@ export const NOTEBOOK_COLORS = [
 export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
   canvas: {
     id: 'canvas',
-    defaultPaper: 'blank',
+    defaultPaper: 'grid',
     paletteOverride: null,
     toolbarVariant: 'full',
     layout: 'infinite',
@@ -74,7 +74,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
   },
   mobile: {
     id: 'mobile',
-    defaultPaper: 'blank',
+    defaultPaper: 'grid',
     paletteOverride: null,
     toolbarVariant: 'minimal',
     layout: 'infinite',

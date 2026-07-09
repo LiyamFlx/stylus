@@ -1,4 +1,4 @@
-import type { InkPoint, Stroke } from '../types';
+import type { InkPoint, Stroke, TextItem } from '../types';
 
 /**
  * Pure geometry helpers for the drawing engine.
@@ -148,14 +148,41 @@ export function inkBounds(strokes: Stroke[]): Bounds | null {
   for (const stroke of strokes) {
     const b = strokeBounds(stroke);
     if (!b) continue;
-    if (!acc) {
-      acc = { ...b };
-    } else {
-      acc.minX = Math.min(acc.minX, b.minX);
-      acc.minY = Math.min(acc.minY, b.minY);
-      acc.maxX = Math.max(acc.maxX, b.maxX);
-      acc.maxY = Math.max(acc.maxY, b.maxY);
-    }
+    acc = acc ? mergeBounds(acc, b) : { ...b };
+  }
+  return acc;
+}
+
+/** Union of two bounds rects — the smallest rect containing both. */
+export function mergeBounds(a: Bounds, b: Bounds): Bounds {
+  return {
+    minX: Math.min(a.minX, b.minX),
+    minY: Math.min(a.minY, b.minY),
+    maxX: Math.max(a.maxX, b.maxX),
+    maxY: Math.max(a.maxY, b.maxY),
+  };
+}
+
+/**
+ * Approximate bounding box of a text box: width from its longest line at
+ * ~0.6em/char (a reasonable average glyph-width heuristic, no DOM measurement
+ * available here), height from line count at 1.2em line-height. Good enough
+ * for "zoom to fit" — not used for hit-testing or layout precision.
+ */
+export function textItemBounds(item: TextItem): Bounds {
+  const lines = (item.text || ' ').split('\n');
+  const longest = Math.max(...lines.map((l) => l.length), 1);
+  const width = longest * item.size * 0.6;
+  const height = lines.length * item.size * 1.2;
+  return { minX: item.x, minY: item.y, maxX: item.x + width, maxY: item.y + height };
+}
+
+/** Axis-aligned bounding box of every text item, or `null` when there are none. */
+export function textBounds(items: TextItem[]): Bounds | null {
+  let acc: Bounds | null = null;
+  for (const item of items) {
+    const b = textItemBounds(item);
+    acc = acc ? mergeBounds(acc, b) : b;
   }
   return acc;
 }

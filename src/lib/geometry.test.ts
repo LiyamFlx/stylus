@@ -10,12 +10,15 @@ import {
   pinchDelta,
   inkBounds,
   MAX_SCALE,
+  mergeBounds,
   MIN_SCALE,
   MIN_STROKE_WIDTH,
   pointInPolygon,
   screenToWorld,
   strokeBounds,
   strokeInLasso,
+  textBounds,
+  textItemBounds,
   worldToScreen,
 } from './geometry';
 import { stroke } from '../test/fixtures';
@@ -161,6 +164,57 @@ describe('inkBounds', () => {
       maxX: 43,
       maxY: 23,
     });
+  });
+});
+
+describe('mergeBounds', () => {
+  it('returns the smallest rect containing both inputs', () => {
+    const a = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+    const b = { minX: 5, minY: -5, maxX: 20, maxY: 8 };
+    expect(mergeBounds(a, b)).toEqual({ minX: 0, minY: -5, maxX: 20, maxY: 10 });
+  });
+});
+
+const textItem = (overrides: Partial<Parameters<typeof textItemBounds>[0]> = {}) => ({
+  id: 't',
+  x: 0,
+  y: 0,
+  text: 'hi',
+  color: '#fff',
+  size: 20,
+  ...overrides,
+});
+
+describe('textItemBounds', () => {
+  it('grows width with the longest line and height with line count', () => {
+    const one = textItemBounds(textItem({ text: 'hi' }));
+    const longer = textItemBounds(textItem({ text: 'hello there' }));
+    expect(longer.maxX - longer.minX).toBeGreaterThan(one.maxX - one.minX);
+
+    const twoLines = textItemBounds(textItem({ text: 'hi\nthere' }));
+    expect(twoLines.maxY - twoLines.minY).toBeGreaterThan(one.maxY - one.minY);
+  });
+
+  it('is anchored at the item\'s x/y', () => {
+    const b = textItemBounds(textItem({ x: 50, y: 30 }));
+    expect(b.minX).toBe(50);
+    expect(b.minY).toBe(30);
+  });
+});
+
+describe('textBounds', () => {
+  it('returns null for no items', () => {
+    expect(textBounds([])).toBeNull();
+  });
+
+  it('spans the union of all items', () => {
+    const a = textItem({ x: 0, y: 0, text: 'a' });
+    const b = textItem({ x: 100, y: 100, text: 'b' });
+    const bounds = textBounds([a, b]);
+    expect(bounds?.minX).toBe(0);
+    expect(bounds?.minY).toBe(0);
+    expect(bounds!.maxX).toBeGreaterThan(100);
+    expect(bounds!.maxY).toBeGreaterThan(100);
   });
 });
 

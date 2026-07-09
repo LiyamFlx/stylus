@@ -123,8 +123,8 @@ describe('documents', () => {
       expect(aux.texts).toEqual(texts);
     });
 
-    it('defaults to blank paper + no texts when nothing is stored', () => {
-      expect(readAux('missing')).toEqual({ paper: 'blank', texts: [], images: [] });
+    it('defaults to grid paper + no texts when nothing is stored', () => {
+      expect(readAux('missing')).toEqual({ paper: 'grid', texts: [], images: [] });
     });
   });
 

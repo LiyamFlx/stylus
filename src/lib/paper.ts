@@ -13,6 +13,7 @@ import type { PaperStyle, RulingDensity } from '../types';
 export const PAPER_SPACING = 32;
 
 const LINE_COLOR = 'rgba(255, 255, 255, 0.06)';
+const GRID_LINE_COLOR = 'rgba(255, 255, 255, 0.14)';
 const DOT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const DOT_RADIUS = 1.1;
 const TAN_30 = 0.5773502691896257; // Math.tan(Math.PI / 6)
@@ -81,7 +82,10 @@ function drawRuled(ctx: CanvasRenderingContext2D, width: number, height: number)
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  ctx.strokeStyle = LINE_COLOR;
+  // Grid is the default paper for Canvas/Quick Note now, so it needs to read
+  // clearly at a glance — noticeably stronger than the other, more occasional
+  // guides (ruled/cornell/isometric), which stayed at the original opacity.
+  ctx.strokeStyle = GRID_LINE_COLOR;
   ctx.lineWidth = 1;
   ctx.beginPath();
   horizontalLines(ctx, width, height);
