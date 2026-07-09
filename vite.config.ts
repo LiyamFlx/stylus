@@ -11,6 +11,10 @@ export default defineConfig({
       // Don't run the PWA build pipeline under Vitest.
       disable: !!process.env.VITEST,
       registerType: 'autoUpdate',
+      // main.tsx registers the SW itself (with a periodic update-check +
+      // forced reload on a new version) — 'script' just emits the virtual
+      // module without ALSO auto-injecting a second registration.
+      injectRegister: 'script',
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'Stylus — Universal Digital Ink Canvas',
