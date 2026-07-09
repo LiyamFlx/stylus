@@ -10,6 +10,7 @@ import { Toaster } from './Toaster';
 import { toast } from '../lib/toast';
 import { InputMethodGroup } from './ToolbarInputMethods';
 import { FindReplacePanel } from './FindReplacePanel';
+import { TextStatsBadge } from './TextStatsBadge';
 import { BrandFooter } from './Brand';
 import { MenuIcon } from './icons';
 import { useDrawing } from '../hooks/useDrawing';
@@ -934,6 +935,8 @@ export function Workspace({
           Tap anywhere to place text.
         </p>
       )}
+
+      {tool === 'text' && texts.length > 0 && <TextStatsBadge texts={texts} />}
 
       {/* Zoom controls (desktop). */}
       <div className="absolute bottom-4 right-4 z-20 hidden items-center gap-1 rounded-full border border-border bg-bg-muted/80 px-2 py-1.5 shadow-pop backdrop-blur-pill sm:flex">
