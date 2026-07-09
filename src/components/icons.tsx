@@ -273,3 +273,16 @@ export const FocusIcon = ({ size = 20, className }: IconProps) => (
     <path d="M16 21h3a2 2 0 002-2v-3" />
   </svg>
 );
+
+export const FolderIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+  </svg>
+);
+
+/** Small rightward caret — collapsed-folder disclosure affordance. */
+export const ChevronRightIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M9 6l6 6-6 6" />
+  </svg>
+);

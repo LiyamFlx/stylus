@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { DocMeta } from '../lib/documents';
+import type { DocMeta, Folder } from '../lib/documents';
 import type { AppMode } from '../lib/modes';
 import {
   collectImageIds,
   createDocument,
+  createFolder,
   deleteDocument,
+  deleteFolder,
   ensureIndex,
   getCurrentId,
   listDocuments,
+  listFolders,
+  moveDocumentToFolder,
   renameDocument,
+  renameFolder,
   setCurrentId as persistCurrentId,
 } from '../lib/documents';
 
@@ -19,16 +24,23 @@ export interface UseDocumentsResult {
   create: (name?: string, mode?: AppMode) => void;
   rename: (id: string, name: string) => void;
   remove: (id: string) => void;
+  folders: Folder[];
+  createFolder: (name: string, parentId?: string) => void;
+  renameFolder: (id: string, name: string) => void;
+  removeFolder: (id: string) => void;
+  moveToFolder: (docId: string, folderId?: string) => void;
 }
 
 /** React state over the local multi-document store. */
 export function useDocuments(): UseDocumentsResult {
   const [docs, setDocs] = useState<DocMeta[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
+  const [folders, setFolders] = useState<Folder[]>([]);
 
   const refresh = useCallback(() => {
     setDocs(listDocuments());
     setCurrentId(getCurrentId());
+    setFolders(listFolders());
   }, []);
 
   useEffect(() => {
@@ -36,6 +48,7 @@ export function useDocuments(): UseDocumentsResult {
     const idx = ensureIndex(Date.now());
     setDocs(idx.docs);
     setCurrentId(idx.currentId);
+    setFolders(listFolders());
   }, []);
 
   const select = useCallback((id: string) => {
@@ -75,5 +88,49 @@ export function useDocuments(): UseDocumentsResult {
     [refresh],
   );
 
-  return { docs, currentId, select, create, rename, remove };
+  const createFolderAction = useCallback(
+    (name: string, parentId?: string) => {
+      createFolder(name, Date.now(), parentId);
+      refresh();
+    },
+    [refresh],
+  );
+
+  const renameFolderAction = useCallback(
+    (id: string, name: string) => {
+      renameFolder(id, name);
+      refresh();
+    },
+    [refresh],
+  );
+
+  const removeFolder = useCallback(
+    (id: string) => {
+      deleteFolder(id);
+      refresh();
+    },
+    [refresh],
+  );
+
+  const moveToFolder = useCallback(
+    (docId: string, folderId?: string) => {
+      moveDocumentToFolder(docId, folderId);
+      refresh();
+    },
+    [refresh],
+  );
+
+  return {
+    docs,
+    currentId,
+    select,
+    create,
+    rename,
+    remove,
+    folders,
+    createFolder: createFolderAction,
+    renameFolder: renameFolderAction,
+    removeFolder,
+    moveToFolder,
+  };
 }

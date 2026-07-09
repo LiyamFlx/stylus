@@ -281,6 +281,11 @@ export default function App() {
           onNewDoc={newDoc}
           onRenameDoc={documents.rename}
           onDeleteDoc={deleteDoc}
+          folders={documents.folders}
+          onNewFolder={documents.createFolder}
+          onRenameFolder={documents.renameFolder}
+          onDeleteFolder={documents.removeFolder}
+          onMoveDoc={documents.moveToFolder}
         />
 
         {isMobileDoc && <InstallPrompt />}

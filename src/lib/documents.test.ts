@@ -1,14 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createDocument,
+  createFolder,
   deleteDocument,
+  deleteFolder,
   ensureIndex,
   getCurrentId,
   inkKey,
   listDocuments,
+  listFolders,
+  moveDocumentToFolder,
   readAux,
   renameDocument,
+  renameFolder,
   setCurrentId,
+  setDocumentTags,
   writeAux,
 } from './documents';
 
@@ -115,6 +121,70 @@ describe('documents', () => {
 
     it('defaults to blank paper + no texts when nothing is stored', () => {
       expect(readAux('missing')).toEqual({ paper: 'blank', texts: [], images: [] });
+    });
+  });
+
+  describe('folders', () => {
+    it('creates folders and lists them', () => {
+      const a = createFolder('Work', NOW);
+      const b = createFolder('School', NOW + 1);
+      expect(listFolders().map((f) => f.id)).toEqual([a.id, b.id]);
+    });
+
+    it('supports nested subfolders via parentId', () => {
+      const parent = createFolder('Classes', NOW);
+      const child = createFolder('Physics 101', NOW + 1, parent.id);
+      expect(listFolders().find((f) => f.id === child.id)?.parentId).toBe(parent.id);
+    });
+
+    it('falls back to "Untitled" for a blank name', () => {
+      const f = createFolder('   ', NOW);
+      expect(f.name).toBe('Untitled');
+    });
+
+    it('renames a folder', () => {
+      const f = createFolder('Old', NOW);
+      renameFolder(f.id, 'New');
+      expect(listFolders().find((x) => x.id === f.id)?.name).toBe('New');
+    });
+
+    it('deleting a folder cascades to nested subfolders', () => {
+      const parent = createFolder('Parent', NOW);
+      const child = createFolder('Child', NOW, parent.id);
+      const grandchild = createFolder('Grandchild', NOW, child.id);
+      deleteFolder(parent.id);
+      const remaining = listFolders().map((f) => f.id);
+      expect(remaining).not.toContain(parent.id);
+      expect(remaining).not.toContain(child.id);
+      expect(remaining).not.toContain(grandchild.id);
+    });
+
+    it('deleting a folder unfiles any doc pointing at it (no dangling folderId)', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Note', NOW + 1);
+      const folder = createFolder('Temp', NOW);
+      moveDocumentToFolder(doc.id, folder.id);
+      deleteFolder(folder.id);
+      expect(listDocuments().find((d) => d.id === doc.id)?.folderId).toBeUndefined();
+    });
+
+    it('moves a document between folders and back to unfiled', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Note', NOW + 1);
+      const folder = createFolder('Folder', NOW);
+      moveDocumentToFolder(doc.id, folder.id);
+      expect(listDocuments().find((d) => d.id === doc.id)?.folderId).toBe(folder.id);
+      moveDocumentToFolder(doc.id);
+      expect(listDocuments().find((d) => d.id === doc.id)?.folderId).toBeUndefined();
+    });
+  });
+
+  describe('tags', () => {
+    it('sets, dedupes, and trims tags', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Note', NOW + 1);
+      setDocumentTags(doc.id, [' school ', 'urgent', 'urgent', '  ']);
+      expect(listDocuments().find((d) => d.id === doc.id)?.tags).toEqual(['school', 'urgent']);
     });
   });
 });

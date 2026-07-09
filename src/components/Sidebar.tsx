@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import type { DocMeta } from '../lib/documents';
+import type { DocMeta, Folder } from '../lib/documents';
 import { initials } from '../lib/profile';
 import { ConfirmDialog, PromptDialog } from './Dialog';
 import {
+  ChevronDownIcon,
+  ChevronRightIcon,
   CloseIcon,
   DocumentIcon,
   EditIcon,
+  FolderIcon,
   PlusIcon,
   TrashIcon,
 } from './icons';
@@ -26,11 +29,17 @@ interface SidebarProps {
   onNewDoc: () => void;
   onRenameDoc: (id: string, name: string) => void;
   onDeleteDoc: (id: string) => void;
+  folders: Folder[];
+  onNewFolder: (name: string, parentId?: string) => void;
+  onRenameFolder: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  onMoveDoc: (docId: string, folderId?: string) => void;
 }
 
 /**
- * Left navigation drawer: local profile, the document list (new / switch /
- * rename / delete), and an about footer. Everything is local — no account.
+ * Left navigation drawer: local profile, the document/folder tree (new /
+ * switch / rename / delete / move), and an about footer. Everything is
+ * local — no account.
  */
 export function Sidebar({
   open,
@@ -48,15 +57,46 @@ export function Sidebar({
   onNewDoc,
   onRenameDoc,
   onDeleteDoc,
+  folders,
+  onNewFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveDoc,
 }: SidebarProps) {
-  const sorted = [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
-
   // Documents targeted by the rename / delete dialogs (null = closed).
   const [renaming, setRenaming] = useState<DocMeta | null>(null);
   const [deleting, setDeleting] = useState<DocMeta | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState<Folder | null>(null);
+  // Folder to create a new subfolder under — null when creating at root,
+  // and the prompt dialog is only open while this OR `creatingRootFolder`.
+  const [newFolderParent, setNewFolderParent] = useState<Folder | 'root' | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [dragDocId, setDragDocId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | 'root' | null>(null);
 
-  const handleRename = (doc: DocMeta) => setRenaming(doc);
-  const handleDelete = (doc: DocMeta) => setDeleting(doc);
+  const toggleCollapsed = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const childFolders = (parentId?: string) =>
+    folders
+      .filter((f) => f.parentId === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+  const docsIn = (folderId?: string) =>
+    docs.filter((d) => d.folderId === folderId).sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const handleDropOnFolder = (folderId?: string) => {
+    if (dragDocId) onMoveDoc(dragDocId, folderId);
+    setDragDocId(null);
+    setDropTarget(null);
+  };
 
   return (
     <>
@@ -124,75 +164,79 @@ export function Sidebar({
           <h2 className="text-[12px] font-semibold uppercase tracking-eyebrow text-brand-700">
             Documents
           </h2>
-          <button
-            type="button"
-            aria-label="New document"
-            onClick={onNewDoc}
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-400 hover:bg-white/[0.06] hover:text-ink-900"
-          >
-            <PlusIcon size={14} /> New
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="New folder"
+              onClick={() => setNewFolderParent('root')}
+              className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-400 hover:bg-white/[0.06] hover:text-ink-900"
+            >
+              <FolderIcon size={14} /> Folder
+            </button>
+            <button
+              type="button"
+              aria-label="New document"
+              onClick={onNewDoc}
+              className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-ink-400 hover:bg-white/[0.06] hover:text-ink-900"
+            >
+              <PlusIcon size={14} /> New
+            </button>
+          </div>
         </div>
 
-        <ul className="flex-1 overflow-y-auto px-2 pb-4">
-          {sorted.map((doc) => {
-            const active = doc.id === currentId;
-            return (
-              <li key={doc.id} className="group">
-                <div
-                  className={[
-                    'flex items-center gap-2 rounded-lg px-2 py-2 transition-colors',
-                    active ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]',
-                  ].join(' ')}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelectDoc(doc.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  >
-                    <DocumentIcon
-                      size={16}
-                      className={active ? 'text-brand-500' : 'text-ink-400'}
-                    />
-                    <span
-                      className={[
-                        'truncate text-sm',
-                        active ? 'text-ink-900' : 'text-ink-700',
-                      ].join(' ')}
-                    >
-                      {doc.name}
-                    </span>
-                    {doc.mode === 'notebook' && (
-                      <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-400">
-                        {doc.pageCount ? `${doc.pageCount} pg` : 'Notebook'}
-                      </span>
-                    )}
-                    {doc.mode === 'mobile' && (
-                      <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-400">
-                        Note
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Rename ${doc.name}`}
-                    onClick={() => handleRename(doc)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-ink-900 focus:opacity-100 group-hover:opacity-100"
-                  >
-                    <EditIcon size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Delete ${doc.name}`}
-                    onClick={() => handleDelete(doc)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger focus:opacity-100 group-hover:opacity-100"
-                  >
-                    <TrashIcon size={14} />
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+        <ul
+          className="flex-1 overflow-y-auto px-2 pb-4"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDropTarget('root');
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            handleDropOnFolder(undefined);
+          }}
+        >
+          {childFolders(undefined).map((folder) => (
+            <FolderNode
+              key={folder.id}
+              folder={folder}
+              depth={0}
+              folders={folders}
+              childFolders={childFolders}
+              docsIn={docsIn}
+              collapsed={collapsed}
+              onToggleCollapsed={toggleCollapsed}
+              currentId={currentId}
+              onSelectDoc={onSelectDoc}
+              onRenameDoc={setRenaming}
+              onDeleteDoc={setDeleting}
+              onRenameFolder={setRenamingFolder}
+              onDeleteFolder={setDeletingFolder}
+              onNewSubfolder={setNewFolderParent}
+              dragDocId={dragDocId}
+              setDragDocId={setDragDocId}
+              dropTarget={dropTarget}
+              setDropTarget={setDropTarget}
+              onDropOnFolder={handleDropOnFolder}
+            />
+          ))}
+
+          {docsIn(undefined).map((doc) => (
+            <DocRow
+              key={doc.id}
+              doc={doc}
+              depth={0}
+              active={doc.id === currentId}
+              onSelectDoc={onSelectDoc}
+              onRenameDoc={setRenaming}
+              onDeleteDoc={setDeleting}
+              dragDocId={dragDocId}
+              setDragDocId={setDragDocId}
+            />
+          ))}
+
+          {dropTarget === 'root' && (
+            <li className="pointer-events-none mx-2 rounded-lg border border-dashed border-brand-500/60" />
+          )}
         </ul>
 
         <div className="border-t border-border p-4 text-[11px] leading-relaxed text-ink-400">
@@ -225,7 +269,281 @@ export function Sidebar({
         }}
         onCancel={() => setDeleting(null)}
       />
+
+      <PromptDialog
+        open={newFolderParent !== null}
+        title="New folder"
+        initialValue=""
+        confirmLabel="Create"
+        onConfirm={(name) => {
+          if (name.trim()) {
+            onNewFolder(name, newFolderParent === 'root' ? undefined : newFolderParent?.id);
+          }
+          setNewFolderParent(null);
+        }}
+        onCancel={() => setNewFolderParent(null)}
+      />
+
+      <PromptDialog
+        open={renamingFolder !== null}
+        title="Rename folder"
+        initialValue={renamingFolder?.name ?? ''}
+        confirmLabel="Rename"
+        onConfirm={(name) => {
+          if (renamingFolder) onRenameFolder(renamingFolder.id, name);
+          setRenamingFolder(null);
+        }}
+        onCancel={() => setRenamingFolder(null)}
+      />
+
+      <ConfirmDialog
+        open={deletingFolder !== null}
+        title="Delete folder?"
+        message={`“${deletingFolder?.name ?? ''}” and any subfolders will be deleted. Documents inside move back to Documents (unfiled), nothing is lost.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (deletingFolder) onDeleteFolder(deletingFolder.id);
+          setDeletingFolder(null);
+        }}
+        onCancel={() => setDeletingFolder(null)}
+      />
     </>
+  );
+}
+
+/** One folder row plus its recursively-rendered subfolders and documents. */
+function FolderNode({
+  folder,
+  depth,
+  folders,
+  childFolders,
+  docsIn,
+  collapsed,
+  onToggleCollapsed,
+  currentId,
+  onSelectDoc,
+  onRenameDoc,
+  onDeleteDoc,
+  onRenameFolder,
+  onDeleteFolder,
+  onNewSubfolder,
+  dragDocId,
+  setDragDocId,
+  dropTarget,
+  setDropTarget,
+  onDropOnFolder,
+}: {
+  folder: Folder;
+  depth: number;
+  folders: Folder[];
+  childFolders: (parentId?: string) => Folder[];
+  docsIn: (folderId?: string) => DocMeta[];
+  collapsed: Set<string>;
+  onToggleCollapsed: (id: string) => void;
+  currentId: string | null;
+  onSelectDoc: (id: string) => void;
+  onRenameDoc: (doc: DocMeta) => void;
+  onDeleteDoc: (doc: DocMeta) => void;
+  onRenameFolder: (folder: Folder) => void;
+  onDeleteFolder: (folder: Folder) => void;
+  onNewSubfolder: (folder: Folder) => void;
+  dragDocId: string | null;
+  setDragDocId: (id: string | null) => void;
+  dropTarget: string | 'root' | null;
+  setDropTarget: (id: string | 'root' | null) => void;
+  onDropOnFolder: (folderId?: string) => void;
+}) {
+  const isCollapsed = collapsed.has(folder.id);
+  const subfolders = childFolders(folder.id);
+  const contents = docsIn(folder.id);
+  const isDropTarget = dropTarget === folder.id;
+
+  return (
+    <li className="group/folder">
+      <div
+        className={[
+          'flex items-center gap-1 rounded-lg py-1.5 pr-1 transition-colors',
+          isDropTarget ? 'bg-brand-500/15' : 'hover:bg-white/[0.04]',
+        ].join(' ')}
+        style={{ paddingLeft: 4 + depth * 16 }}
+        onDragOver={(e) => {
+          if (!dragDocId) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setDropTarget(folder.id);
+        }}
+        onDragLeave={() => {
+          if (isDropTarget) setDropTarget(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDropOnFolder(folder.id);
+        }}
+      >
+        <button
+          type="button"
+          aria-label={isCollapsed ? `Expand ${folder.name}` : `Collapse ${folder.name}`}
+          onClick={() => onToggleCollapsed(folder.id)}
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-ink-400 hover:text-ink-900"
+        >
+          {isCollapsed ? <ChevronRightIcon size={14} /> : <ChevronDownIcon size={14} />}
+        </button>
+        <FolderIcon size={15} className="shrink-0 text-ink-400" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-700">
+          {folder.name}
+        </span>
+        <button
+          type="button"
+          aria-label={`New subfolder in ${folder.name}`}
+          onClick={() => onNewSubfolder(folder)}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-ink-900 focus:opacity-100 group-hover/folder:opacity-100"
+        >
+          <PlusIcon size={12} />
+        </button>
+        <button
+          type="button"
+          aria-label={`Rename ${folder.name}`}
+          onClick={() => onRenameFolder(folder)}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-ink-900 focus:opacity-100 group-hover/folder:opacity-100"
+        >
+          <EditIcon size={12} />
+        </button>
+        <button
+          type="button"
+          aria-label={`Delete ${folder.name}`}
+          onClick={() => onDeleteFolder(folder)}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger focus:opacity-100 group-hover/folder:opacity-100"
+        >
+          <TrashIcon size={12} />
+        </button>
+      </div>
+
+      {!isCollapsed && (
+        <ul>
+          {subfolders.map((sub) => (
+            <FolderNode
+              key={sub.id}
+              folder={sub}
+              depth={depth + 1}
+              folders={folders}
+              childFolders={childFolders}
+              docsIn={docsIn}
+              collapsed={collapsed}
+              onToggleCollapsed={onToggleCollapsed}
+              currentId={currentId}
+              onSelectDoc={onSelectDoc}
+              onRenameDoc={onRenameDoc}
+              onDeleteDoc={onDeleteDoc}
+              onRenameFolder={onRenameFolder}
+              onDeleteFolder={onDeleteFolder}
+              onNewSubfolder={onNewSubfolder}
+              dragDocId={dragDocId}
+              setDragDocId={setDragDocId}
+              dropTarget={dropTarget}
+              setDropTarget={setDropTarget}
+              onDropOnFolder={onDropOnFolder}
+            />
+          ))}
+          {contents.map((doc) => (
+            <DocRow
+              key={doc.id}
+              doc={doc}
+              depth={depth + 1}
+              active={doc.id === currentId}
+              onSelectDoc={onSelectDoc}
+              onRenameDoc={onRenameDoc}
+              onDeleteDoc={onDeleteDoc}
+              dragDocId={dragDocId}
+              setDragDocId={setDragDocId}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/** One document row — draggable onto any folder to file/move it. */
+function DocRow({
+  doc,
+  depth,
+  active,
+  onSelectDoc,
+  onRenameDoc,
+  onDeleteDoc,
+  dragDocId,
+  setDragDocId,
+}: {
+  doc: DocMeta;
+  depth: number;
+  active: boolean;
+  onSelectDoc: (id: string) => void;
+  onRenameDoc: (doc: DocMeta) => void;
+  onDeleteDoc: (doc: DocMeta) => void;
+  dragDocId: string | null;
+  setDragDocId: (id: string | null) => void;
+}) {
+  return (
+    <li className="group">
+      <div
+        draggable
+        onDragStart={() => setDragDocId(doc.id)}
+        onDragEnd={() => setDragDocId(null)}
+        className={[
+          'flex items-center gap-2 rounded-lg py-2 pr-2 transition-colors',
+          active ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]',
+          dragDocId === doc.id ? 'opacity-50' : '',
+        ].join(' ')}
+        style={{ paddingLeft: 8 + depth * 16 }}
+      >
+        <button
+          type="button"
+          onClick={() => onSelectDoc(doc.id)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <DocumentIcon
+            size={16}
+            className={active ? 'text-brand-500' : 'text-ink-400'}
+          />
+          <span
+            className={[
+              'truncate text-sm',
+              active ? 'text-ink-900' : 'text-ink-700',
+            ].join(' ')}
+          >
+            {doc.name}
+          </span>
+          {doc.mode === 'notebook' && (
+            <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-400">
+              {doc.pageCount ? `${doc.pageCount} pg` : 'Notebook'}
+            </span>
+          )}
+          {doc.mode === 'mobile' && (
+            <span className="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-400">
+              Note
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          aria-label={`Rename ${doc.name}`}
+          onClick={() => onRenameDoc(doc)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-ink-900 focus:opacity-100 group-hover:opacity-100"
+        >
+          <EditIcon size={14} />
+        </button>
+        <button
+          type="button"
+          aria-label={`Delete ${doc.name}`}
+          onClick={() => onDeleteDoc(doc)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger focus:opacity-100 group-hover:opacity-100"
+        >
+          <TrashIcon size={14} />
+        </button>
+      </div>
+    </li>
   );
 }
 

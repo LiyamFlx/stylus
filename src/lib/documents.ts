@@ -39,6 +39,32 @@ export interface DocMeta {
    * updates both in the same call. Absent on non-notebook docs.
    */
   pageCount?: number;
+  /**
+   * Organization (Quick Note Phase 0). `undefined` = unfiled, shown at the
+   * tree root. Never a dangling reference by construction: deleteFolder
+   * reassigns every doc pointing at the deleted folder to `undefined` in the
+   * same write, so no doc ever points at a folder that doesn't exist.
+   */
+  folderId?: string;
+  /** Free-form labels, independent of folder placement. */
+  tags?: string[];
+}
+
+/**
+ * A node in the notebooks/folders tree (Quick Note Phase 0 — "unlimited
+ * notebooks, folders and subfolders"). `parentId: undefined` = root level.
+ * Nesting depth is unbounded; the UI (Phase 1) decides how deep to render.
+ */
+export interface Folder {
+  id: string;
+  name: string;
+  parentId?: string;
+  createdAt: number;
+}
+
+interface FolderIndex {
+  version: 1;
+  folders: Folder[];
 }
 
 export interface DocAux {
@@ -55,6 +81,7 @@ interface DocIndex {
 }
 
 const INDEX_KEY = 'stylus.docs.v1';
+const FOLDERS_KEY = 'stylus.folders.v1';
 const LEGACY_INK_KEY = 'stylus.ink.v1';
 
 export const inkKey = (id: string) => `stylus.doc.v1.${id}.ink`;
@@ -449,6 +476,97 @@ export function pushCustomColor(docId: string, color: string): string[] {
   );
   write(customColorsKey(docId), next);
   return next;
+}
+
+// ─── Folders & tags (Quick Note Phase 0) ─────────────────────────────────────
+//
+// A separate flat store of Folder nodes (parentId forms the tree), kept out
+// of DocIndex so folder CRUD never touches doc payloads and vice versa.
+// DocMeta.folderId is the only link between the two stores.
+
+const folderUid = () => createId('f_');
+
+function readFolderIndex(): FolderIndex {
+  const idx = read<FolderIndex>(FOLDERS_KEY);
+  if (!idx || idx.version !== 1 || !Array.isArray(idx.folders)) {
+    return { version: 1, folders: [] };
+  }
+  return idx;
+}
+
+function writeFolderIndex(idx: FolderIndex): void {
+  write(FOLDERS_KEY, idx);
+}
+
+export function listFolders(): Folder[] {
+  return readFolderIndex().folders;
+}
+
+export function createFolder(name: string, now: number, parentId?: string): Folder {
+  const idx = readFolderIndex();
+  const folder: Folder = { id: folderUid(), name: name.trim() || 'Untitled', createdAt: now, parentId };
+  writeFolderIndex({ ...idx, folders: [...idx.folders, folder] });
+  return folder;
+}
+
+export function renameFolder(id: string, name: string): void {
+  const idx = readFolderIndex();
+  writeFolderIndex({
+    ...idx,
+    folders: idx.folders.map((f) => (f.id === id ? { ...f, name: name.trim() || f.name } : f)),
+  });
+}
+
+/**
+ * Delete a folder and everything nested under it (subfolders, recursively).
+ * Docs that pointed at any deleted folder are reassigned to `undefined`
+ * (unfiled) in the same pass — DocMeta.folderId must never dangle.
+ */
+export function deleteFolder(id: string): void {
+  const idx = readFolderIndex();
+  const doomed = new Set<string>([id]);
+  // Fixed-point sweep: repeatedly add children of anything already doomed,
+  // since a folder can appear before or after its parent in the flat array.
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const f of idx.folders) {
+      if (f.parentId && doomed.has(f.parentId) && !doomed.has(f.id)) {
+        doomed.add(f.id);
+        grew = true;
+      }
+    }
+  }
+  writeFolderIndex({ ...idx, folders: idx.folders.filter((f) => !doomed.has(f.id)) });
+
+  const docIdx = readIndex();
+  if (!docIdx) return;
+  writeIndex({
+    ...docIdx,
+    docs: docIdx.docs.map((d) =>
+      d.folderId && doomed.has(d.folderId) ? { ...d, folderId: undefined } : d,
+    ),
+  });
+}
+
+/** Move a document into `folderId` (or back to unfiled root if omitted). */
+export function moveDocumentToFolder(id: string, folderId?: string): void {
+  const idx = readIndex();
+  if (!idx) return;
+  writeIndex({
+    ...idx,
+    docs: idx.docs.map((d) => (d.id === id ? { ...d, folderId } : d)),
+  });
+}
+
+export function setDocumentTags(id: string, tags: string[]): void {
+  const idx = readIndex();
+  if (!idx) return;
+  const cleaned = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+  writeIndex({
+    ...idx,
+    docs: idx.docs.map((d) => (d.id === id ? { ...d, tags: cleaned } : d)),
+  });
 }
 
 /** All image-underlay ids referenced by a document (doc aux + every page
