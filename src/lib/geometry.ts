@@ -167,6 +167,11 @@ export const A4_BOUNDS: Bounds = { minX: 0, minY: 0, maxX: 794, maxY: 1123 };
 /** Minimum px of the bounds rect that must stay visible on each axis. */
 const MIN_BOUNDS_VISIBLE = 48;
 
+/** Max px of empty space allowed above the page top (matches the initial
+ *  TOP_GAP the page opens at, so scrolling up can't reveal more black space
+ *  above the sheet than the toolbar clearance already accounts for). */
+const MAX_TOP_GAP = 132;
+
 /**
  * Clamp a view's pan so `bounds` can never be panned fully off-screen
  * (Phase 1 item 5 — notebook fixed-page feel). Pure: returns the same object
@@ -185,7 +190,13 @@ export function clampPanToBounds(
   // panX range keeping ≥mv px of bounds on screen horizontally.
   const minPanX = bounds.minX - (viewportW - mv) / scale;
   const maxPanX = bounds.maxX - mv / scale;
-  const minPanY = bounds.minY - (viewportH - mv) / scale;
+  // panY's lower bound is the tighter of "mv px visible" and "no more than
+  // MAX_TOP_GAP of empty space above the page top" — otherwise scrolling up
+  // reveals a large empty gap between the toolbar and the page.
+  const minPanY = Math.max(
+    bounds.minY - (viewportH - mv) / scale,
+    bounds.minY - MAX_TOP_GAP / scale,
+  );
   const maxPanY = bounds.maxY - mv / scale;
 
   // Degenerate window (extreme zoom): pin to the range midpoint.
