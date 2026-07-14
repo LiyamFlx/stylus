@@ -29,6 +29,9 @@ export default {
           800: '#7e3614',
         },
         danger: '#dc2626',
+        // Lighter step for danger used as foreground text on dark backgrounds —
+        // #dc2626 is 4.10:1 on bg (fails AA's 4.5:1 for normal text); this hits 5.26:1.
+        'danger-text': '#ef4444',
       },
       fontFamily: {
         sans: [

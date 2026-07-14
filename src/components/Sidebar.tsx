@@ -132,10 +132,13 @@ export function Sidebar({
       >
         {/* Profile */}
         <div className="flex items-center gap-3 border-b border-border p-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
             {initials(profileName)}
           </div>
           <input
+            type="text"
+            enterKeyHint="done"
+            autoCapitalize="words"
             aria-label="Your name"
             value={profileName}
             onChange={(e) => onRenameProfile(e.target.value)}
@@ -145,7 +148,7 @@ export function Sidebar({
             type="button"
             aria-label="Close sidebar"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-ink-400 hover:bg-white/[0.06] hover:text-ink-900"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-ink-400 hover:bg-white/[0.06] active:bg-white/10 hover:text-ink-900"
           >
             <CloseIcon size={18} />
           </button>
@@ -195,6 +198,11 @@ export function Sidebar({
           <div className="relative">
             <SearchIcon size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
             <input
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              autoCapitalize="off"
+              autoCorrect="off"
               aria-label="Search notes"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -480,7 +488,7 @@ function FolderNode({
           type="button"
           aria-label={`Delete ${folder.name}`}
           onClick={() => onDeleteFolder(folder)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger focus:opacity-100 group-hover/folder:opacity-100"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger-text focus:opacity-100 group-hover/folder:opacity-100"
         >
           <TrashIcon size={12} />
         </button>
@@ -622,7 +630,7 @@ function DocRow({
           type="button"
           aria-label={`Delete ${doc.name}`}
           onClick={() => onDeleteDoc(doc)}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger focus:opacity-100 group-hover:opacity-100"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-ink-400 opacity-0 hover:bg-white/[0.08] hover:text-danger-text focus:opacity-100 group-hover:opacity-100"
         >
           <TrashIcon size={14} />
         </button>

@@ -256,7 +256,7 @@ function IconButton({
               : 'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-30',
         active
-          ? 'bg-brand-500 text-white shadow-soft hover:bg-brand-600'
+          ? 'bg-brand-600 text-white shadow-soft hover:bg-brand-700'
           : 'text-ink-700 hover:bg-white/[0.06] active:bg-white/10',
       ].join(' ')}
     >
@@ -309,6 +309,7 @@ function SizePicker({
   size: PenSize;
   onSizeChange: (s: PenSize) => void;
 }) {
+  const large = useContext(LargeTargetsContext);
   return (
     <div className="flex items-center gap-1">
       {PEN_SIZES.map((s) => (
@@ -320,7 +321,8 @@ function SizePicker({
           aria-pressed={size === s}
           onClick={() => onSizeChange(s)}
           className={[
-            'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
+            large ? 'flex h-11 w-11 items-center justify-center rounded-full transition-colors'
+                  : 'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
             size === s
               ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
               : 'hover:bg-white/[0.06]',
@@ -368,6 +370,7 @@ function ColorPicker({
   const popoverStyle = usePopoverFixedPosition(open, ref);
   const [wheelOpen, setWheelOpen] = useState(false);
   const showCustom = paletteOverride === undefined;
+  const large = useContext(LargeTargetsContext);
 
   return (
     <div ref={ref} className="relative">
@@ -381,7 +384,8 @@ function ColorPicker({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className={[
-          'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
+          large ? 'flex h-11 w-11 items-center justify-center rounded-full transition-colors'
+                : 'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
           open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]',
         ].join(' ')}
       >
@@ -962,7 +966,7 @@ export function Toolbar(props: ToolbarProps) {
       </button>
       {mobileOpen && (
         <div className="mt-2 flex max-w-[92vw] flex-wrap items-center justify-center gap-1 rounded-panel border border-border bg-bg-muted/80 px-3 py-2 shadow-pop backdrop-blur-pill">
-          {controls}
+          <LargeTargetsContext.Provider value={true}>{controls}</LargeTargetsContext.Provider>
         </div>
       )}
     </div>

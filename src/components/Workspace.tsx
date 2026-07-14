@@ -29,6 +29,8 @@ import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
 import { A4_BOUNDS, eraserRadius, inkBounds, mergeBounds, textBounds, worldToScreen } from '../lib/geometry';
 import { effectiveTouchAction, modeConfig } from '../lib/modes';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation';
+import { buzz } from '../lib/haptics';
 import { importChunk } from '../lib/chunkReload';
 import {
   inkKey,
@@ -70,6 +72,10 @@ interface WorkspaceProps {
   pageTemplateId?: string | null;
   /** Page navigation UI, built in App where page state lives. */
   pageNav?: React.ReactNode;
+  /** Edge-zone swipe (Mobile UX Phase 2) — only wired when pageNav is present,
+   *  i.e. a paginated notebook document with pages to flip between. */
+  onSwipePrevPage?: () => void;
+  onSwipeNextPage?: () => void;
   /** Mode color palette (ModeConfig.paletteOverride) — closed set when given. */
   paletteOverride?: readonly string[];
   /** Base toolbar composition from ModeConfig; exam lock overrides to
@@ -107,6 +113,8 @@ export function Workspace({
   pagePaper,
   pageTemplateId = null,
   pageNav,
+  onSwipePrevPage,
+  onSwipeNextPage,
   paletteOverride,
   toolbarVariant = 'full',
   appMode = 'canvas',
@@ -825,8 +833,25 @@ export function Workspace({
     return 'crosshair';
   })();
 
+  const swipeRootRef = useRef<HTMLElement>(null);
+  useSwipeNavigation(swipeRootRef, {
+    enabled: Boolean(pageNav && (onSwipePrevPage || onSwipeNextPage)),
+    onSwipeLeft: () => {
+      if (onSwipeNextPage) {
+        buzz();
+        onSwipeNextPage();
+      }
+    },
+    onSwipeRight: () => {
+      if (onSwipePrevPage) {
+        buzz();
+        onSwipePrevPage();
+      }
+    },
+  });
+
   return (
-    <main className="relative h-full w-full overflow-hidden bg-bg">
+    <main ref={swipeRootRef} className="relative h-full w-full overflow-hidden bg-bg">
       {/* Reference underlay — beneath the ink, never exported. */}
       <ImageLayer items={images} view={drawing.view} onRemove={removeImage} />
 

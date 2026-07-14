@@ -234,7 +234,7 @@ export function PageNav({
           aria-label="Previous page"
           disabled={activeIndex <= 0}
           onClick={onPrev}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
         >
           ‹
         </button>
@@ -244,7 +244,7 @@ export function PageNav({
           aria-label={railOpen ? 'Hide page thumbnails' : 'Show page thumbnails'}
           aria-expanded={railOpen}
           onClick={() => setRailOpen((o) => !o)}
-          className="min-w-[64px] rounded-full px-2 py-1 font-mono text-[12px] tabular-nums text-ink-700 transition-colors hover:bg-white/[0.06]"
+          className="min-w-[64px] rounded-full px-2 py-2.5 font-mono text-[12px] tabular-nums text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
         >
           {activeIndex + 1} / {pages.length}
         </button>
@@ -254,7 +254,7 @@ export function PageNav({
           aria-label="Next page"
           disabled={activeIndex >= pages.length - 1}
           onClick={onNext}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
         >
           ›
         </button>
@@ -267,7 +267,7 @@ export function PageNav({
             aria-label="Change page template"
             title="Page template"
             onClick={onOpenTemplates}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06]"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
           >
             {/* layered-pages glyph */}
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
@@ -281,7 +281,7 @@ export function PageNav({
           type="button"
           aria-label="Add page after this one"
           onClick={onAdd}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06]"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
         >
           <PlusIcon size={16} />
         </button>
@@ -289,7 +289,7 @@ export function PageNav({
           type="button"
           aria-label="Delete this page"
           onClick={() => setConfirmDelete(true)}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06]"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
         >
           <TrashIcon size={16} />
         </button>

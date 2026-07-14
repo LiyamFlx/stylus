@@ -79,7 +79,7 @@ export function ConfirmDialog({
         <span
           className={[
             'mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg',
-            danger ? 'bg-danger/15 text-danger' : 'bg-brand-500/15 text-brand-300',
+            danger ? 'bg-danger/15 text-danger-text' : 'bg-brand-500/15 text-brand-300',
           ].join(' ')}
         >
           <TrashIcon size={17} />
@@ -109,7 +109,7 @@ export function ConfirmDialog({
           }}
           className={[
             'rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors',
-            danger ? 'bg-danger hover:bg-danger/90' : 'bg-brand-500 hover:bg-brand-600',
+            danger ? 'bg-danger hover:bg-danger/90' : 'bg-brand-600 hover:bg-brand-700',
           ].join(' ')}
         >
           {confirmLabel}
@@ -169,6 +169,8 @@ export function PromptDialog({
       </h2>
       <input
         ref={inputRef}
+        type="text"
+        enterKeyHint="done"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -194,7 +196,7 @@ export function PromptDialog({
         <button
           type="button"
           onClick={submit}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-600"
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
         >
           {confirmLabel}
         </button>

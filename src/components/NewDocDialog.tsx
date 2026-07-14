@@ -200,7 +200,7 @@ export function NewDocDialog({ open, onCreate, onCancel }: NewDocDialogProps) {
                 type="button"
                 autoFocus
                 onClick={createNotebook}
-                className="flex-1 rounded-lg bg-brand-500 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-600"
+                className="flex-1 rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700"
               >
                 Create notebook
               </button>

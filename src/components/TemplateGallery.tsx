@@ -114,7 +114,7 @@ export function TemplateGallery({ mode, selectedId, onSelect, onClose }: Templat
                 className={[
                   'shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors',
                   filter === c
-                    ? 'bg-brand-500 text-white'
+                    ? 'bg-brand-600 text-white'
                     : 'bg-bg-muted text-ink-400 hover:text-ink-900',
                 ].join(' ')}
               >
@@ -156,22 +156,43 @@ export function TemplateGallery({ mode, selectedId, onSelect, onClose }: Templat
               selected={selectedId === t.id}
               onClick={() => onSelect(t.id)}
             >
-              <img
-                src={t.thumb}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                draggable={false}
-                className={[
-                  'h-full w-full object-cover',
-                  t.orientation === 'landscape' ? 'object-left' : '',
-                ].join(' ')}
-              />
+              <TemplateThumb src={t.thumb} landscape={t.orientation === 'landscape'} />
             </TemplateCard>
           ))}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Individual thumbnail with its own shimmer until the webp decodes — the
+ *  manifest-level skeleton above only covers the gap before the JSON loads;
+ *  each image still pops in on its own as the (cached, but not-yet-decoded
+ *  on first visit) bitmap arrives. */
+function TemplateThumb({ src, landscape }: { src: string; landscape: boolean }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <span className="relative block h-full w-full">
+      {!loaded && (
+        <span
+          aria-hidden
+          className="absolute inset-0 animate-pulse rounded-md bg-bg-muted"
+        />
+      )}
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        onLoad={() => setLoaded(true)}
+        className={[
+          'h-full w-full object-cover transition-opacity duration-200',
+          loaded ? 'opacity-100' : 'opacity-0',
+          landscape ? 'object-left' : '',
+        ].join(' ')}
+      />
+    </span>
   );
 }
 

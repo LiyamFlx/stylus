@@ -58,7 +58,7 @@ const ImageView = memo(function ImageView({
         type="button"
         aria-label="Remove reference image"
         onClick={() => onRemove(item.id)}
-        className="pointer-events-auto absolute -right-2 -top-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-bg-muted text-[11px] text-ink-400 shadow-pop hover:text-danger group-hover:flex"
+        className="pointer-events-auto absolute -right-2 -top-2 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-bg-muted text-[11px] text-ink-400 shadow-pop hover:text-danger-text group-hover:flex"
       >
         ✕
       </button>

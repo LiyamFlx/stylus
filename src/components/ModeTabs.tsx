@@ -44,7 +44,7 @@ export const ModeTabs = memo(function ModeTabs({ current, onSwitch, onNew }: Mod
             className={[
               'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-colors',
               active
-                ? 'bg-brand-500 text-white shadow-soft'
+                ? 'bg-brand-600 text-white shadow-soft'
                 : 'text-ink-700 hover:bg-white/[0.06] active:bg-white/10',
             ].join(' ')}
           >

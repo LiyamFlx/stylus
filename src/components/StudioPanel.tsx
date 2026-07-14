@@ -174,7 +174,7 @@ export function StudioPanel({
         )}
 
         {status === 'error' && (
-          <p className="py-1 text-sm text-danger">{recognitionError}</p>
+          <p className="py-1 text-sm text-danger-text">{recognitionError}</p>
         )}
 
         {status === 'success' && (
@@ -231,7 +231,7 @@ export function StudioPanel({
             )}
 
             {aiError && !aiLoading && (
-              <div className="mt-[18px] rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+              <div className="mt-[18px] rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger-text">
                 {aiError}
                 {lastAction.current && (
                   <button
@@ -271,7 +271,7 @@ export function StudioPanel({
                     <button
                       type="button"
                       onClick={replaceResult}
-                      className="rounded-full bg-brand-500 px-[11px] py-1 text-[11.5px] font-semibold text-white transition-colors hover:bg-brand-600"
+                      className="rounded-full bg-brand-600 px-[11px] py-1 text-[11.5px] font-semibold text-white transition-colors hover:bg-brand-700"
                     >
                       Replace
                     </button>

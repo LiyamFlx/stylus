@@ -330,7 +330,7 @@ function FormatButton({
       onClick={onClick}
       className={[
         'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold transition-colors',
-        active ? 'bg-brand-500 text-white' : 'text-ink-700 hover:bg-white/[0.08]',
+        active ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-white/[0.08]',
       ].join(' ')}
     >
       {children}
@@ -454,7 +454,7 @@ const ActiveTextArea = memo(
             onPointerUp={onHandleUp}
             onPointerCancel={onHandleUp}
             onLostPointerCapture={onHandleUp}
-            className="pointer-events-auto absolute flex cursor-move items-center justify-center rounded-full bg-brand-500 text-white shadow-soft"
+            className="pointer-events-auto absolute flex cursor-move items-center justify-center rounded-full bg-brand-600 text-white shadow-soft"
             style={{
               left: item.x,
               // Above the box, but never above the layer's top edge (which is

@@ -75,7 +75,7 @@ export function InstallPrompt() {
             void deferred.prompt();
             dismiss();
           }}
-          className="shrink-0 rounded-full bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600"
+          className="shrink-0 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
         >
           Install
         </button>

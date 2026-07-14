@@ -77,7 +77,7 @@ export function TextPanel({ open, status, text, error, onClose }: TextPanelProps
           </div>
         )}
 
-        {status === 'error' && <p className="py-1 text-sm text-danger">{error}</p>}
+        {status === 'error' && <p className="py-1 text-sm text-danger-text">{error}</p>}
 
         {status === 'success' &&
           (text.length > 0 ? (

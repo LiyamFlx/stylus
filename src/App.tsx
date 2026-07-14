@@ -5,6 +5,7 @@ import { PageNav } from './components/PageNav';
 import { NewDocDialog } from './components/NewDocDialog';
 import { ModeTabs } from './components/ModeTabs';
 import { InstallPrompt } from './components/InstallPrompt';
+import { OfflineBadge } from './components/OfflineBadge';
 import { useVisualViewport } from './hooks/useVisualViewport';
 import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
@@ -245,6 +246,8 @@ export default function App() {
               isNotebook && activePage ? () => setExamLock((v) => !v) : undefined
             }
             onChromeHiddenChange={setChromeHidden}
+            onSwipePrevPage={isNotebook && activePage && !examLock ? pagesApi.prev : undefined}
+            onSwipeNextPage={isNotebook && activePage && !examLock ? pagesApi.next : undefined}
             pageNav={
               // Hidden while locked so an exam can't be escaped by flipping pages.
               isNotebook && activePage && !examLock ? (
@@ -305,6 +308,7 @@ export default function App() {
         />
 
         {isMobileDoc && <InstallPrompt />}
+        <OfflineBadge />
 
         <NewDocDialog
           open={newDocOpen}
