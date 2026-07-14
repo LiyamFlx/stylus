@@ -40,6 +40,13 @@ interface ExportOptions {
   scale?: number;
   /** Line spacing for 'notebook' paper. */
   ruling?: RulingDensity;
+  /**
+   * Resolved page template (lib/templates). Callers MUST pre-ensure the
+   * bitmap (`await ensureTemplateBitmap(id)`) before invoking export —
+   * renderToCanvas is synchronous, and an undecoded template silently exports
+   * the paper fallback instead.
+   */
+  templateId?: string | null;
 }
 
 function renderToCanvas(
@@ -52,6 +59,7 @@ function renderToCanvas(
     texts = [],
     scale = 2,
     ruling,
+    templateId = null,
   }: ExportOptions,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -65,7 +73,7 @@ function renderToCanvas(
   // guide, then the strokes — so the export matches what's on screen.
   // EXPORT PATH — intentionally NO `cull` option: exports need the complete
   // document, never the visible viewport (see RenderOptions.cull).
-  renderAll(ctx, strokes, width, height, { paper, background, ruling });
+  renderAll(ctx, strokes, width, height, { paper, background, ruling, templateId });
   drawTexts(ctx, texts);
   return canvas;
 }
@@ -133,6 +141,8 @@ export interface ExportPage {
   paper: PaperStyle;
   texts?: TextItem[];
   ruling?: RulingDensity;
+  /** Resolved template id — see ExportOptions.templateId's pre-ensure rule. */
+  templateId?: string | null;
 }
 
 /**
@@ -176,6 +186,7 @@ function buildPagesPDF(pages: ExportPage[]): jsPDF | null {
       height: pageH,
       paper: page.paper,
       ruling: page.ruling,
+      templateId: page.templateId,
       texts: page.texts ?? [],
       // Notebook paper paints its own opaque cream; other papers export on
       // white like a printed page rather than the dark screen background.

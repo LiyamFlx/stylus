@@ -21,13 +21,29 @@ describe('New document mode picker', () => {
 
   it('creates a notebook document with mode + first page, and shows PageNav', () => {
     openPicker();
+    // Notebook adds a cover step (template binding at creation); "Plain" is
+    // the preselected default, so the fast path is still two clicks.
     fireEvent.click(screen.getByRole('button', { name: /Notebook/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
     const docs = listDocuments();
     expect(docs).toHaveLength(2);
     expect(docs[0].mode).toBe('notebook');
+    // Plain cover → no template binding on the doc.
+    expect(docs[0].coverTemplateId).toBeUndefined();
+    expect(docs[0].defaultPageTemplateId).toBeUndefined();
     // The notebook editor mounts with page navigation.
     expect(screen.getByRole('button', { name: 'Next page' })).toBeInTheDocument();
     expect(screen.getByText('1 / 1')).toBeInTheDocument();
+  });
+
+  it('notebook cover step can go back to the mode picker', () => {
+    openPicker();
+    fireEvent.click(screen.getByRole('button', { name: /Notebook/ }));
+    expect(screen.getByRole('button', { name: 'Create notebook' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    // Back on step one, nothing created.
+    expect(screen.getByRole('button', { name: /Canvas/ })).toBeInTheDocument();
+    expect(listDocuments()).toHaveLength(1);
   });
 
   it('creates a canvas document with no pagination', () => {

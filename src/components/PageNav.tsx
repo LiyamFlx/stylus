@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PageMeta } from '../lib/documents';
-import { pageInkKey } from '../lib/documents';
+import { pageInkKey, resolvePageTemplateId } from '../lib/documents';
+import { ensureTemplateBitmap, getTemplateBitmap } from '../lib/templates';
 import { loadStrokes } from '../hooks/useLocalStorage';
 import { A4_BOUNDS } from '../lib/geometry';
 import { renderAll } from '../lib/render';
@@ -16,6 +17,10 @@ interface PageNavProps {
   onNext: () => void;
   onAdd: () => void;
   onDeleteActive: () => void;
+  /** Doc-level default template — resolution input for inheriting pages. */
+  defaultTemplateId?: string;
+  /** Opens the page-template picker for the active page. */
+  onOpenTemplates?: () => void;
 }
 
 const THUMB_W = 44;
@@ -54,10 +59,14 @@ function rawInk(docId: string, pageId: string): string | null {
  * were rewritten). The old fingerprint needed parsed strokes, which forced a
  * full JSON.parse of every page's ink on every rail render just to conclude
  * "unchanged" — the parse WAS the cost the cache existed to avoid.
- * `paper` is included because the thumb now renders it.
+ * `paper` is included because the thumb now renders it; the resolved template
+ * id AND its decode readiness are included so a thumb rendered on the
+ * paper-fallback frame regenerates once the bitmap lands (readiness flips
+ * 0→1 → cache miss → re-render with the template).
  */
-function fingerprint(raw: string | null, paper: string): string {
-  return `${paper}:${raw?.length ?? 0}:${raw ? raw.slice(-40) : ''}`;
+function fingerprint(raw: string | null, paper: string, templateId: string | null): string {
+  const tpl = templateId ? `${templateId}:${getTemplateBitmap(templateId) ? 1 : 0}` : 'plain';
+  return `${paper}:${tpl}:${raw?.length ?? 0}:${raw ? raw.slice(-40) : ''}`;
 }
 
 /**
@@ -72,9 +81,9 @@ function fingerprint(raw: string | null, paper: string): string {
  * EXPORT-CLASS RENDER: intentionally no `cull` — a thumbnail is a miniature
  * export and must show the whole page (see RenderOptions.cull).
  */
-function renderThumb(docId: string, page: PageMeta): string | null {
+function renderThumb(docId: string, page: PageMeta, templateId: string | null): string | null {
   const raw = rawInk(docId, page.id);
-  const fp = fingerprint(raw, page.paper);
+  const fp = fingerprint(raw, page.paper, templateId);
   const cached = thumbCache.get(page.id);
   if (cached && cached.fp === fp) return cached.url;
 
@@ -93,7 +102,7 @@ function renderThumb(docId: string, page: PageMeta): string | null {
   const ox = (THUMB_W - pageW * scale) / 2;
   const oy = (THUMB_H - pageH * scale) / 2;
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, ox * dpr, oy * dpr);
-  renderAll(ctx, strokes, pageW, pageH, { paper: page.paper });
+  renderAll(ctx, strokes, pageW, pageH, { paper: page.paper, templateId });
 
   try {
     const url = canvas.toDataURL('image/png');
@@ -113,11 +122,12 @@ function scheduleIdle(fn: () => void): () => void {
   return () => clearTimeout(id);
 }
 
-function Thumb({ docId, page, active, index, onSelect }: {
+function Thumb({ docId, page, active, index, defaultTemplateId, onSelect }: {
   docId: string;
   page: PageMeta;
   active: boolean;
   index: number;
+  defaultTemplateId?: string;
   onSelect: (id: string) => void;
 }) {
   const [url, setUrl] = useState<string | null>(() => thumbCache.get(page.id)?.url ?? null);
@@ -126,8 +136,20 @@ function Thumb({ docId, page, active, index, onSelect }: {
   // `page` identity churns on every refresh; the raw-string fingerprint makes
   // those re-runs near-free when nothing changed.
   useEffect(() => {
-    return scheduleIdle(() => setUrl(renderThumb(docId, page)));
-  }, [docId, page, active]); // `active` retriggers on flip-away so edits appear
+    return scheduleIdle(() => {
+      const templateId = resolvePageTemplateId(defaultTemplateId, page);
+      setUrl(renderThumb(docId, page, templateId));
+      // Bitmap not decoded yet → the thumb above rendered the paper fallback.
+      // Ensure the decode, then regenerate: the readiness bit in the
+      // fingerprint flips, so this is a cache miss that re-renders with the
+      // template, not a wasted repaint.
+      if (templateId && !getTemplateBitmap(templateId)) {
+        void ensureTemplateBitmap(templateId).then((bmp) => {
+          if (bmp) setUrl(renderThumb(docId, page, templateId));
+        });
+      }
+    });
+  }, [docId, page, active, defaultTemplateId]); // `active` retriggers on flip-away so edits appear
 
   return (
     <button
@@ -168,6 +190,8 @@ export function PageNav({
   onNext,
   onAdd,
   onDeleteActive,
+  defaultTemplateId,
+  onOpenTemplates,
 }: PageNavProps) {
   const [railOpen, setRailOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -197,6 +221,7 @@ export function PageNav({
               page={p}
               index={i}
               active={p.id === activePageId}
+              defaultTemplateId={defaultTemplateId}
               onSelect={onSelect}
             />
           ))}
@@ -235,6 +260,22 @@ export function PageNav({
         </button>
 
         <div className="mx-1 h-5 w-px self-center bg-border-strong" aria-hidden />
+
+        {onOpenTemplates && (
+          <button
+            type="button"
+            aria-label="Change page template"
+            title="Page template"
+            onClick={onOpenTemplates}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06]"
+          >
+            {/* layered-pages glyph */}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+              <rect x="6" y="3" width="12" height="16" rx="1.5" />
+              <path d="M9 7h6M9 10.5h6M9 14h4" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
 
         <button
           type="button"

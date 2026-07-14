@@ -42,6 +42,12 @@ interface UseDrawingOptions {
   /** Line spacing for the 'notebook' paper. Ignored by other styles. */
   ruling?: RulingDensity;
   /**
+   * RESOLVED page template id (documents.ts resolvePageTemplateId), or null.
+   * Passed straight through to renderAll — when decoded it replaces the paper
+   * guide on the bounded page (see RenderOptions.templateId).
+   */
+  templateId?: string | null;
+  /**
    * World-space rect the view must keep on screen (notebook page bounds).
    * `null`/omitted = infinite canvas, no clamping. Enforced in commitView so
    * pan, zoom-anchor and any future view mutation share one rule.
@@ -159,6 +165,7 @@ export function useDrawing({
   size,
   paper,
   ruling = 'college',
+  templateId = null,
   panBounds = null,
   zoomRange,
   penType = 'fountain',
@@ -225,8 +232,8 @@ export function useDrawing({
   const overlayRafId = useRef<number | null>(null);
 
   // Toolbar settings mirrored so handlers always read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, ruling, penType, stabilizer });
-  settingsRef.current = { tool, color, size, paper, ruling, penType, stabilizer };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, ruling, templateId, penType, stabilizer });
+  settingsRef.current = { tool, color, size, paper, ruling, templateId, penType, stabilizer };
   // Previous smoothed world point for the stabilizer; reset at each stroke start.
   const smoothPrevRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -308,6 +315,9 @@ export function useDrawing({
     canvas.height = Math.round(canvas.clientHeight * dpr);
   }, []);
 
+  // Template-decode → repaint bridge (see paintStatic's onTemplateReady).
+  const onTemplateReadyRef = useRef<() => void>(() => {});
+
   // Paint committed strokes + paper onto the static (bottom) canvas.
   const paintStatic = useCallback(
     (source?: Stroke[]) => {
@@ -327,6 +337,11 @@ export function useDrawing({
       renderAll(ctx, source ?? strokesRef.current, canvas.clientWidth, canvas.clientHeight, {
         paper: settingsRef.current.paper,
         ruling: settingsRef.current.ruling,
+        // Resolved page template; when its async decode lands, repaint. The
+        // callback is ref-bridged because scheduleStaticRender is defined
+        // after this callback (it wraps paintStatic).
+        templateId: settingsRef.current.templateId,
+        onTemplateReady: () => onTemplateReadyRef.current(),
         cull: viewRect,
         // Notebook: draw the paper as a bounded A4 page (panBounds IS the page
         // rect) with a backdrop around it, not bled to the window edges.
@@ -487,10 +502,13 @@ export function useDrawing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Repaint the static layer when the paper style changes.
+  // Keep the decode→repaint bridge pointed at the current scheduler.
+  onTemplateReadyRef.current = scheduleStaticRender;
+
+  // Repaint the static layer when the paper style or page template changes.
   useEffect(() => {
     scheduleStaticRender();
-  }, [paper, scheduleStaticRender]);
+  }, [paper, templateId, scheduleStaticRender]);
 
   // Clear selection when switching away from the select tool.
   useEffect(() => {

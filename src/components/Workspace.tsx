@@ -37,12 +37,15 @@ import {
   readCustomColors,
   pageInkKey,
   readAux,
+  listDocuments,
   readPageAux,
+  resolvePageTemplateId,
   setPagePaper,
   touchDocument,
   writeAux,
   writePageAux,
 } from '../lib/documents';
+import { ensureTemplateBitmap } from '../lib/templates';
 import type { HistorySnapshot } from '../hooks/useHistory';
 import type { AppMode, ToolbarVariant } from '../lib/modes';
 import type { ImageItem, RulingDensity, PaperStyle, Stroke, TextItem } from '../types';
@@ -62,6 +65,9 @@ interface WorkspaceProps {
    */
   pageId?: string | null;
   pagePaper?: PaperStyle;
+  /** RESOLVED page template (resolvePageTemplateId in App, where doc + page
+   *  meta both live). Live prop — template changes repaint without a remount. */
+  pageTemplateId?: string | null;
   /** Page navigation UI, built in App where page state lives. */
   pageNav?: React.ReactNode;
   /** Mode color palette (ModeConfig.paletteOverride) — closed set when given. */
@@ -99,6 +105,7 @@ export function Workspace({
   onOpenSidebar,
   pageId = null,
   pagePaper,
+  pageTemplateId = null,
   pageNav,
   paletteOverride,
   toolbarVariant = 'full',
@@ -213,6 +220,7 @@ export function Workspace({
     size,
     paper,
     ruling,
+    templateId: pageTemplateId,
     penType,
     stabilizer,
     storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
@@ -482,13 +490,25 @@ export function Workspace({
     // FULL, unculled reads by design: this is an export, not a viewport paint
     // (see RenderOptions.cull). Loading stays inside this async chunk
     // boundary so a large noteWorkspace.tsx never blocks the UI thread.
+    const defaultTemplateId = listDocuments().find((d) => d.id === documentId)
+      ?.defaultPageTemplateId;
     const pages = listPages(documentId).map((p) => ({
       strokes:
         p.id === pageId ? drawing.strokes : loadStrokes(pageInkKey(documentId, p.id)),
       paper: p.paper,
       ruling,
+      templateId: resolvePageTemplateId(defaultTemplateId, p),
       texts: p.id === pageId ? texts : readPageAux(documentId, p.id).texts,
     }));
+    // renderToCanvas is sync — every referenced template bitmap must be
+    // decoded BEFORE export or those pages silently render the paper
+    // fallback (ExportOptions.templateId's pre-ensure contract). Stays
+    // inside this async chunk boundary like the stroke loads above.
+    await Promise.all(
+      [...new Set(pages.map((pg) => pg.templateId).filter((t): t is string => !!t))].map((t) =>
+        ensureTemplateBitmap(t),
+      ),
+    );
     mod.exportPDFPages(pages);
   }, [pageId, appMode, documentId, ruling, texts, drawing.strokes, exportOpts]);
 

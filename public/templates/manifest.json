@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "planner-daily-pastel",
+      "name": "Daily Planner \u2014 Pastel",
+      "category": "planner",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/planner-daily-pastel.webp",
+      "thumb": "/templates/thumb/planner-daily-pastel.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        684,
+        956
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "planner-daily-red",
+      "name": "Daily Planner \u2014 Red",
+      "category": "planner",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/planner-daily-red.webp",
+      "thumb": "/templates/thumb/planner-daily-red.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        788,
+        1106
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "planner-weekly-rainbow",
+      "name": "Weekly Planner \u2014 Rainbow",
+      "category": "planner",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/planner-weekly-rainbow.webp",
+      "thumb": "/templates/thumb/planner-weekly-rainbow.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1198,
+        1920
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "paper-grid-spiral",
+      "name": "Grid Spiral",
+      "category": "paper",
+      "use": "both",
+      "orientation": "portrait",
+      "full": "/templates/full/paper-grid-spiral.webp",
+      "thumb": "/templates/thumb/paper-grid-spiral.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        494,
+        678
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "paper-grid-journal",
+      "name": "Grid Journal",
+      "category": "paper",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/paper-grid-journal.webp",
+      "thumb": "/templates/thumb/paper-grid-journal.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        508,
+        752
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "paper-ruled-classic",
+      "name": "Classic Ruled",
+      "category": "paper",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/paper-ruled-classic.webp",
+      "thumb": "/templates/thumb/paper-ruled-classic.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        496,
+        662
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "paper-ruled-blush",
+      "name": "Blush Ruled Spiral",
+      "category": "paper",
+      "use": "both",
+      "orientation": "portrait",
+      "full": "/templates/full/paper-ruled-blush.webp",
+      "thumb": "/templates/thumb/paper-ruled-blush.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        498,
+        660
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "paper-grid-blush",
+      "name": "Blush Grid",
+      "category": "paper",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/paper-grid-blush.webp",
+      "thumb": "/templates/thumb/paper-grid-blush.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        552,
+        710
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "tracker-homework-grad",
+      "name": "Homework Tracker \u2014 Gradient",
+      "category": "tracker",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/tracker-homework-grad.webp",
+      "thumb": "/templates/thumb/tracker-homework-grad.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1131,
+        1600
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "tracker-homework-snow",
+      "name": "Homework Tracker \u2014 Snowman",
+      "category": "tracker",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/tracker-homework-snow.webp",
+      "thumb": "/templates/thumb/tracker-homework-snow.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1131,
+        1600
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "tracker-assignment",
+      "name": "Assignment Tracker",
+      "category": "tracker",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/tracker-assignment.webp",
+      "thumb": "/templates/thumb/tracker-assignment.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1131,
+        1600
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "finance-monthly-budget",
+      "name": "Monthly Budget",
+      "category": "finance",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/finance-monthly-budget.webp",
+      "thumb": "/templates/thumb/finance-monthly-budget.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1131,
+        1600
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "planner-project",
+      "name": "Project Planner",
+      "category": "planner",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/planner-project.webp",
+      "thumb": "/templates/thumb/planner-project.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1131,
+        1600
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "list-todo-blush",
+      "name": "To-Do List \u2014 Blush",
+      "category": "list",
+      "use": "page",
+      "orientation": "portrait",
+      "full": "/templates/full/list-todo-blush.webp",
+      "thumb": "/templates/thumb/list-todo-blush.webp",
+      "width": 1240,
+      "height": 1754,
+      "srcNative": [
+        1131,
+        1600
+      ],
+      "upscaled": true
+    },
+    {
+      "id": "cover-spiral-tabs",
+      "name": "Spiral Tabs",
+      "category": "cover",
+      "use": "cover",
+      "orientation": "landscape",
+      "full": "/templates/full/cover-spiral-tabs.webp",
+      "thumb": "/templates/thumb/cover-spiral-tabs.webp",
+      "width": 1754,
+      "height": 1240,
+      "srcNative": [
+        1600,
+        1131
+      ],
+      "upscaled": true
+    }
+  ]
+}

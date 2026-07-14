@@ -5,6 +5,7 @@ import {
   ensurePages,
   listPages,
   reorderPages,
+  setPageTemplate,
 } from '../lib/documents';
 import type { PageMeta } from '../lib/documents';
 import type { PaperStyle } from '../types';
@@ -21,6 +22,8 @@ export interface UsePagesResult {
   /** Deletes the ACTIVE page (storage guarantees ≥1 remains). */
   removeActive: () => void;
   reorder: (orderedIds: string[]) => void;
+  /** Set the ACTIVE page's template (null = explicitly plain). */
+  setTemplate: (templateId: string | null) => void;
 }
 
 /**
@@ -97,5 +100,14 @@ export function usePages(docId: string | null, enabled: boolean): UsePagesResult
     [docId, enabled, refresh],
   );
 
-  return { pages, activePageId, activeIndex, goTo, next, prev, add, removeActive, reorder };
+  const setTemplate = useCallback(
+    (templateId: string | null) => {
+      if (!enabled || !docId || !activePageId) return;
+      setPageTemplate(docId, activePageId, templateId);
+      refresh();
+    },
+    [docId, enabled, activePageId, refresh],
+  );
+
+  return { pages, activePageId, activeIndex, goTo, next, prev, add, removeActive, reorder, setTemplate };
 }

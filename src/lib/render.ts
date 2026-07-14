@@ -3,6 +3,7 @@ import type { Bounds } from './geometry';
 import { boundsIntersect, strokeBounds } from './geometry';
 import { drawPaper } from './paper';
 import { penProfile } from './penProfiles';
+import { ensureTemplateBitmap, getTemplateBitmap } from './templates';
 
 /**
  * Per-stroke bounds cache for viewport culling (Phase 0). Keyed on stroke
@@ -117,6 +118,16 @@ export interface RenderOptions {
   pageBounds?: Bounds | null;
   /** Visible world rect, needed to size the backdrop around a bounded page. */
   viewRect?: Bounds | null;
+  /**
+   * Page background template (lib/templates), resolved by the caller via
+   * resolvePageTemplateId — pass the RESOLVED value, never a raw
+   * PageMeta.templateId. When set and decoded, it REPLACES the paper guide
+   * (templates carry their own ruling); until decoded, the paper draws as a
+   * one-frame fallback and `onTemplateReady` schedules the repaint.
+   */
+  templateId?: string | null;
+  /** Repaint scheduler invoked when an async template decode lands. */
+  onTemplateReady?: () => void;
 }
 
 /** Backdrop behind a bounded page, and the page's own edge. */
@@ -161,6 +172,39 @@ function getPaperBitmap(
 }
 
 /**
+ * Draw the template bitmap covering (0,0,w,h) of the CURRENT transform space.
+ * Returns false when the bitmap isn't decoded yet (caller draws the paper
+ * fallback for this frame; the decode's onReady schedules the repaint).
+ * Raster source drawn once through the transform — deliberately NOT routed
+ * through paperCache, whose per-size re-rasterization exists for vector
+ * ruling only (see lib/templates module doc, property 2).
+ */
+function drawTemplate(
+  ctx: CanvasRenderingContext2D,
+  templateId: string,
+  w: number,
+  h: number,
+  onReady?: () => void,
+): boolean {
+  const bmp = getTemplateBitmap(templateId);
+  if (!bmp) {
+    void ensureTemplateBitmap(templateId, onReady);
+    return false;
+  }
+  // Guard for stub contexts (jsdom) the same way getPaperBitmap does.
+  if (typeof ctx.drawImage !== 'function') return false;
+  try {
+    const prev = ctx.imageSmoothingQuality;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, w, h);
+    ctx.imageSmoothingQuality = prev;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Repaint the whole drawing: clear, optional opaque fill, paper guide, then
  * strokes in order. The fill is applied *after* the clear so callers that want
  * an opaque export background actually get one.
@@ -177,6 +221,8 @@ export function renderAll(
     ruling = 'college',
     pageBounds = null,
     viewRect = null,
+    templateId = null,
+    onTemplateReady,
   }: RenderOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
@@ -205,19 +251,29 @@ export function renderAll(
     ctx.rect(pageBounds.minX, pageBounds.minY, pw, ph);
     ctx.clip();
     ctx.translate(pageBounds.minX, pageBounds.minY);
-    if (paper !== 'blank') {
-      const bitmap = getPaperBitmap(paper, pw, ph, ruling);
-      if (bitmap) ctx.drawImage(bitmap, 0, 0, pw, ph);
-      else drawPaper(ctx, paper, pw, ph, ruling);
-    } else {
-      // A blank notebook page is still a white-ish sheet, not the dark canvas.
-      ctx.fillStyle = '#FDF6E3';
-      ctx.fillRect(0, 0, pw, ph);
+    // Template replaces the paper guide when decoded (it carries its own
+    // ruling); until then the paper draws as the one-frame fallback.
+    const templated = templateId
+      ? drawTemplate(ctx, templateId, pw, ph, onTemplateReady)
+      : false;
+    if (!templated) {
+      if (paper !== 'blank') {
+        const bitmap = getPaperBitmap(paper, pw, ph, ruling);
+        if (bitmap) ctx.drawImage(bitmap, 0, 0, pw, ph);
+        else drawPaper(ctx, paper, pw, ph, ruling);
+      } else {
+        // A blank notebook page is still a white-ish sheet, not the dark canvas.
+        ctx.fillStyle = '#FDF6E3';
+        ctx.fillRect(0, 0, pw, ph);
+      }
     }
     ctx.restore();
     ctx.strokeStyle = PAGE_EDGE;
     ctx.lineWidth = 1;
     ctx.strokeRect(pageBounds.minX + 0.5, pageBounds.minY + 0.5, pw - 1, ph - 1);
+  } else if (templateId && drawTemplate(ctx, templateId, width, height, onTemplateReady)) {
+    // Flat path with a template (thumbnails / A4 page export render the page
+    // at 0,0 with a transform pre-applied): template covers the full extent.
   } else if (paper !== 'blank') {
     const bitmap = getPaperBitmap(paper, width, height, ruling);
     if (bitmap) {

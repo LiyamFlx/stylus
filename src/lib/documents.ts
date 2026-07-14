@@ -48,6 +48,19 @@ export interface DocMeta {
   folderId?: string;
   /** Free-form labels, independent of folder placement. */
   tags?: string[];
+  /**
+   * Template shown as this document's cover in the sidebar (see
+   * lib/templates). ID reference to a bundled asset — never a blob, never in
+   * IndexedDB. Optional: legacy docs and non-notebook docs simply have none.
+   */
+  coverTemplateId?: string;
+  /**
+   * Template applied to pages whose own `templateId` is `undefined`
+   * (inherit). Resolution happens at READ time via
+   * {@link resolvePageTemplateId} — createPage stays template-agnostic, so a
+   * later default change flows to every still-inheriting page for free.
+   */
+  defaultPageTemplateId?: string;
 }
 
 /**
@@ -188,7 +201,12 @@ export function setCurrentId(id: string): void {
   writeIndex({ ...idx, currentId: id });
 }
 
-export function createDocument(name: string, now: number, mode: AppMode = 'canvas'): DocMeta {
+export function createDocument(
+  name: string,
+  now: number,
+  mode: AppMode = 'canvas',
+  templates?: { coverTemplateId?: string; defaultPageTemplateId?: string },
+): DocMeta {
   const idx = readIndex() ?? { version: 1 as const, currentId: null, docs: [] };
   const meta: DocMeta = {
     id: uid(),
@@ -196,6 +214,10 @@ export function createDocument(name: string, now: number, mode: AppMode = 'canva
     createdAt: now,
     updatedAt: now,
     mode,
+    ...(templates?.coverTemplateId ? { coverTemplateId: templates.coverTemplateId } : {}),
+    ...(templates?.defaultPageTemplateId
+      ? { defaultPageTemplateId: templates.defaultPageTemplateId }
+      : {}),
   };
   writeIndex({ ...idx, currentId: meta.id, docs: [meta, ...idx.docs] });
   write(auxKey(meta.id), defaultAuxForMode(mode));
@@ -305,6 +327,14 @@ export interface PageMeta {
   index: number;
   /** Per-page paper override (e.g. one blank page in a ruled notebook). */
   paper: PaperStyle;
+  /**
+   * Page background template (lib/templates), three-state:
+   *   `undefined` → inherit `DocMeta.defaultPageTemplateId`
+   *   `null`      → explicitly plain (procedural paper), even with a doc default
+   *   `string`    → this template
+   * Optional on disk → legacy pages deserialize untouched and inherit.
+   */
+  templateId?: string | null;
 }
 
 export interface PageIndex {
@@ -451,6 +481,49 @@ export function setPagePaper(docId: string, pageId: string, paper: PaperStyle): 
   const pages = listPages(docId);
   if (!pages.some((p) => p.id === pageId)) return;
   writePageIndex(docId, pages.map((p) => (p.id === pageId ? { ...p, paper } : p)));
+}
+
+/** Per-page template override. `null` = explicitly plain; to return a page to
+ *  inheriting the doc default, pass `undefined`. */
+export function setPageTemplate(
+  docId: string,
+  pageId: string,
+  templateId: string | null | undefined,
+): void {
+  const pages = listPages(docId);
+  if (!pages.some((p) => p.id === pageId)) return;
+  writePageIndex(
+    docId,
+    pages.map((p) => (p.id === pageId ? { ...p, templateId } : p)),
+  );
+}
+
+/**
+ * The single resolution rule for a page's effective template (see
+ * PageMeta.templateId's three-state contract). Call this at every read site —
+ * never read `page.templateId` raw, for the same reason `doc.mode` is never
+ * read raw (modes.ts resolveMode).
+ */
+export function resolvePageTemplateId(
+  defaultTemplateId: string | undefined,
+  page: Pick<PageMeta, 'templateId'>,
+): string | null {
+  if (page.templateId !== undefined) return page.templateId;
+  return defaultTemplateId ?? null;
+}
+
+/** Set a document's cover and/or default page template. Omitted fields are
+ *  left untouched; explicit `undefined` clears. */
+export function setDocumentTemplates(
+  id: string,
+  templates: { coverTemplateId?: string; defaultPageTemplateId?: string },
+): void {
+  const idx = readIndex();
+  if (!idx) return;
+  writeIndex({
+    ...idx,
+    docs: idx.docs.map((d) => (d.id === id ? { ...d, ...templates } : d)),
+  });
 }
 
 export function readPageAux(docId: string, pageId: string): PageAux {

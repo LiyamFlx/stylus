@@ -37,7 +37,9 @@ export default defineConfig({
       workbox: {
         // Precache the app shell. Tesseract's WASM core + language model are
         // fetched from a CDN at runtime, so cache those on first use instead.
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        // webp: the bundled page-template pack (public/templates, ~680KB) —
+        // covers must render offline like every procedural paper does.
+        globPatterns: ['**/*.{js,css,html,svg,woff2,webp,json}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {

@@ -10,6 +10,8 @@ import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
 import { modeConfig, defaultDocName } from './lib/modes';
 import type { AppMode } from './lib/modes';
+import { resolvePageTemplateId } from './lib/documents';
+import { TemplateGallery } from './components/TemplateGallery';
 import type { HistorySnapshot } from './hooks/useHistory';
 import type { Stroke } from './types';
 import { loadProfile, saveProfile } from './lib/profile';
@@ -114,6 +116,14 @@ export default function App() {
   );
 
   const activePage = pagesApi.pages.find((p) => p.id === pagesApi.activePageId);
+  // Resolved (never raw) template for the active page — inherit → override →
+  // plain, one rule (documents.ts resolvePageTemplateId).
+  const activeTemplateId = activePage
+    ? resolvePageTemplateId(currentDoc?.defaultPageTemplateId, activePage)
+    : null;
+  // Page-template picker; lives here (not Workspace) because applying a
+  // template mutates PageMeta, which pagesApi owns — same reason PageNav does.
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const docModeConfig = modeConfig(currentDoc?.mode);
   const isMobileDoc = docModeConfig.id === 'mobile';
   // Keyboard-safe layout height (--vvh) — only mobile-mode docs consume it.
@@ -165,8 +175,11 @@ export default function App() {
     setSidebarOpen(false);
   }, []);
   const createWithMode = useCallback(
-    (mode: AppMode) => {
-      documents.create(defaultDocName(mode), mode);
+    (
+      mode: AppMode,
+      templates?: { coverTemplateId?: string; defaultPageTemplateId?: string },
+    ) => {
+      documents.create(defaultDocName(mode), mode, templates);
       setNewDocOpen(false);
     },
     [documents],
@@ -220,6 +233,7 @@ export default function App() {
             toolbarVariant={docModeConfig.toolbarVariant}
             appMode={docModeConfig.id}
             pagePaper={activePage?.paper}
+            pageTemplateId={activeTemplateId}
             initialHistory={
               activePage
                 ? historyCache.current.get(cacheKey(activePage.id))
@@ -243,6 +257,8 @@ export default function App() {
                   onNext={pagesApi.next}
                   onAdd={() => pagesApi.add()}
                   onDeleteActive={removeActivePage}
+                  defaultTemplateId={currentDoc?.defaultPageTemplateId}
+                  onOpenTemplates={() => setTemplatePickerOpen(true)}
                 />
               ) : undefined
             }
@@ -295,6 +311,18 @@ export default function App() {
           onCreate={createWithMode}
           onCancel={() => setNewDocOpen(false)}
         />
+
+        {templatePickerOpen && isNotebook && activePage && (
+          <TemplateGallery
+            mode="page"
+            selectedId={activeTemplateId}
+            onSelect={(templateId) => {
+              pagesApi.setTemplate(templateId);
+              setTemplatePickerOpen(false);
+            }}
+            onClose={() => setTemplatePickerOpen(false)}
+          />
+        )}
 
         <Tour controller={tour} />
       </div>

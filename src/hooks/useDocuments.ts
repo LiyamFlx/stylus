@@ -21,7 +21,11 @@ export interface UseDocumentsResult {
   docs: DocMeta[];
   currentId: string | null;
   select: (id: string) => void;
-  create: (name?: string, mode?: AppMode) => void;
+  create: (
+    name?: string,
+    mode?: AppMode,
+    templates?: { coverTemplateId?: string; defaultPageTemplateId?: string },
+  ) => void;
   rename: (id: string, name: string) => void;
   remove: (id: string) => void;
   folders: Folder[];
@@ -57,8 +61,12 @@ export function useDocuments(): UseDocumentsResult {
   }, []);
 
   const create = useCallback(
-    (name?: string, mode?: AppMode) => {
-      createDocument(name ?? 'Untitled', Date.now(), mode);
+    (
+      name?: string,
+      mode?: AppMode,
+      templates?: { coverTemplateId?: string; defaultPageTemplateId?: string },
+    ) => {
+      createDocument(name ?? 'Untitled', Date.now(), mode, templates);
       refresh();
     },
     [refresh],

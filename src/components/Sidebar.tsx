@@ -569,10 +569,28 @@ function DocRow({
           onClick={() => onSelectDoc(doc.id)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <DocumentIcon
-            size={16}
-            className={active ? 'text-brand-500' : 'text-ink-400'}
-          />
+          {doc.coverTemplateId ? (
+            // Bound cover — the template thumb IS the doc icon. Static asset
+            // path derived from the id (manifest layout is stable); if the
+            // asset 404s the alt-less img collapses gracefully to nothing.
+            <img
+              src={`/templates/thumb/${doc.coverTemplateId}.webp`}
+              alt=""
+              width={16}
+              height={22}
+              loading="lazy"
+              draggable={false}
+              className={[
+                'h-[22px] w-4 shrink-0 rounded-[3px] border object-cover',
+                active ? 'border-brand-500' : 'border-border-strong',
+              ].join(' ')}
+            />
+          ) : (
+            <DocumentIcon
+              size={16}
+              className={active ? 'text-brand-500' : 'text-ink-400'}
+            />
+          )}
           <span
             className={[
               'truncate text-sm',
