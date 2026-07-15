@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_lib/db';
-import { requireUserId } from '../_lib/auth';
+import { sql } from '../_lib/db.js';
+import { requireUserId } from '../_lib/auth.js';
 
 /**
  * Notebook page sync (ADR 002). Mirrors api/sync/documents.ts's shape and

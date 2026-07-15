@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_lib/db';
-import { requireUserId } from '../_lib/auth';
+import { sql } from '../_lib/db.js';
+import { requireUserId } from '../_lib/auth.js';
 
 /**
  * First-sign-in migration bookkeeping (ADR 002). The client's initial-sync
