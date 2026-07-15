@@ -7,29 +7,45 @@ import {
   useState,
 } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { RulingDensity, InkPoint, PaperStyle, Stroke, Tool } from '../types';
+import type { RulingDensity, InkPoint, PaperStyle, Shape, ShapeType, Stroke, Tool } from '../types';
 import { useHistory } from './useHistory';
 import type { HistorySnapshot } from './useHistory';
 import { useLocalStorage } from './useLocalStorage';
-import { drawStroke, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
+import type { DrawingContent } from './useLocalStorage';
+import { drawStroke, drawShape, drawLasso, drawSelectionRect, renderAll } from '../lib/render';
 import { RULING_SPACING } from '../lib/paper';
-import { duplicateStrokes, recolorStrokes, reconcileSelection } from '../lib/selectionOps';
+import {
+  duplicateShapes,
+  duplicateStrokes,
+  recolorShapes,
+  recolorStrokes,
+  reconcileSelection,
+  reconcileShapeSelection,
+} from '../lib/selectionOps';
 import { penProfile, type PenType } from '../lib/penProfiles';
 import { smoothPoint } from '../lib/stabilizer';
 import { createId } from '../lib/id';
-import type { Bounds, PinchSample, ZoomRange } from '../lib/geometry';
+import type { Bounds, PinchSample, SelectionHandle, ZoomRange } from '../lib/geometry';
 import {
   applyMoveOffset,
+  applyMoveOffsetToShapes,
+  applyRotateOffset,
+  applyRotateOffsetToShapes,
+  applyScaleOffset,
+  applyScaleOffsetToShapes,
   clampPanToBounds,
   clampScale,
+  combinedBounds,
   pinchDelta,
   eraserRadius,
   hitsSelectionBounds,
-  hitsStroke,
+  hitsSelectionHandle,
   IDENTITY_VIEW,
-  inkBounds,
   screenToWorld,
+  shapeInLasso,
   shiftBounds,
+  snapShapeEndpoint,
+  splitStrokeAtErase,
   strokeInLasso,
 } from '../lib/geometry';
 import type { ViewTransform } from '../lib/geometry';
@@ -57,6 +73,9 @@ interface UseDrawingOptions {
   zoomRange?: ZoomRange;
   /** Active pen type. Defaults to fountain when omitted. */
   penType?: PenType;
+  /** Active shape sub-type for the shape tool. Defaults to 'rect' when
+   *  omitted, matching how penType defaults to 'fountain'. */
+  shapeType?: ShapeType;
   /** When true, damp jitter on the live stroke (low-lag smoothing). */
   stabilizer?: boolean;
   /** localStorage key for this document's strokes. */
@@ -68,7 +87,7 @@ interface UseDrawingOptions {
    * internal engine logic changes (the sanctioned exception to "don't touch
    * useDrawing for pagination").
    */
-  initialHistory?: HistorySnapshot<Stroke[]>;
+  initialHistory?: HistorySnapshot<DrawingContent>;
   /** Fired the moment a pen stroke commits — used for live music feedback. */
   onStrokeEnd?: (stroke: Stroke) => void;
   /** Optional live side-channel for per-sample pen feedback (Learning Mode
@@ -76,15 +95,30 @@ interface UseDrawingOptions {
   onPenStart?: () => void;
   onPenSample?: (point: InkPoint) => void;
   onPenEnd?: () => void;
+  /**
+   * Fired after a debounced local save actually lands in localStorage
+   * (ADR 002 sync boundary — see useLocalStorage's writeNow doc comment for
+   * the ordering guarantee this depends on). Additive, same as the pen
+   * side-channels above: omitting it changes nothing about local
+   * persistence, which is unconditional and untouched by this hook-up.
+   */
+  onStrokesSaved?: (content: DrawingContent, savedAt: number) => void;
 }
 
 /** Selection phase for the lasso tool. */
-export type SelectPhase = 'idle' | 'lasso' | 'moving';
+export type SelectPhase = 'idle' | 'lasso' | 'moving' | 'resizing' | 'rotating';
 
 export interface SelectionState {
   phase: SelectPhase;
-  selectedIds: ReadonlySet<string>;
-  /** Bounds of selected strokes with any in-flight move offset applied. */
+  /** Selected stroke ids and shape ids as two separate sets (not one mixed
+   *  set) — lasso/move/resize/rotate all touch both together, but keeping
+   *  them apart lets every consumer (deleteSelected, duplicateSelected,
+   *  recolorSelected, the render loop) filter each array by its OWN id set
+   *  without first partitioning a combined one by type on every use. */
+  selectedStrokeIds: ReadonlySet<string>;
+  selectedShapeIds: ReadonlySet<string>;
+  /** Bounds of the selected strokes AND shapes together, with any in-flight
+   *  move/resize/rotate offset applied. */
   bounds: Bounds | null;
   clearSelection: () => void;
   deleteSelected: () => void;
@@ -114,13 +148,14 @@ export interface UseDrawingResult {
   /** Top canvas (live stroke + lasso + selection); also the interactive surface. */
   overlayRef: React.RefObject<HTMLCanvasElement>;
   strokes: Stroke[];
+  shapes: Shape[];
   onPointerDown: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   /** Abort the in-flight gesture without committing (pointercancel). */
   onPointerCancel: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   /** Capture the current undo/redo history (notebook page-flip cache). */
-  getHistorySnapshot: () => HistorySnapshot<Stroke[]>;
+  getHistorySnapshot: () => HistorySnapshot<DrawingContent>;
   /** Scroll a bounded page so a world-Y position stays comfortably in view
    *  (notebook "focus follows writing"; no-op on the infinite canvas). */
   scrollToKeepVisible: (worldY: number) => void;
@@ -169,20 +204,23 @@ export function useDrawing({
   panBounds = null,
   zoomRange,
   penType = 'fountain',
+  shapeType = 'rect',
   stabilizer = false,
   storageKey,
   onStrokeEnd,
   onPenStart,
   onPenSample,
   onPenEnd,
+  onStrokesSaved,
   initialHistory,
 }: UseDrawingOptions): UseDrawingResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const EMPTY_CONTENT: DrawingContent = { strokes: [], shapes: [] };
   // Captured once — a history seed only makes sense at mount (the page this
   // instance was created for). Later prop changes are ignored by design.
-  const initialHistoryRef = useRef<HistorySnapshot<Stroke[]> | null>(initialHistory ?? null);
-  const history = useHistory<Stroke[]>([], initialHistoryRef.current ?? undefined);
+  const initialHistoryRef = useRef<HistorySnapshot<DrawingContent> | null>(initialHistory ?? null);
+  const history = useHistory<DrawingContent>(EMPTY_CONTENT, initialHistoryRef.current ?? undefined);
 
   // ─── View (zoom + pan) ────────────────────────────────────────────────────────
   // Ref is authoritative for the render/input hot paths; state drives the UI.
@@ -195,15 +233,20 @@ export function useDrawing({
   // endGesture (both defined below). Declared here to precede endGesture.
   const autoScrollRef = useRef<((stroke: Stroke) => void) | null>(null);
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW);
-  const { save, load } = useLocalStorage(storageKey);
+  const { save, load } = useLocalStorage(storageKey, onStrokesSaved);
 
-  // Latest committed strokes — mirrored in a ref for event handlers and rAF
-  // callbacks so they always read the current value without re-binding.
-  const strokesRef = useRef<Stroke[]>(history.present);
-  strokesRef.current = history.present;
+  // Latest committed strokes/shapes — mirrored in refs for event handlers and
+  // rAF callbacks so they always read the current value without re-binding.
+  const strokesRef = useRef<Stroke[]>(history.present.strokes);
+  strokesRef.current = history.present.strokes;
+  const shapesRef = useRef<Shape[]>(history.present.shapes);
+  shapesRef.current = history.present.shapes;
 
   // In-progress stroke + active-gesture bookkeeping.
   const liveStrokeRef = useRef<Stroke | null>(null);
+  // In-progress shape (drag-to-draw a rect/ellipse/line/arrow) — the shape
+  // analog of liveStrokeRef, a preview only committed to history on pointerup.
+  const liveShapeRef = useRef<Shape | null>(null);
   const activePointerId = useRef<number | null>(null);
 
   // ── Two-finger pinch (Phase 3 item 2) ──
@@ -232,8 +275,8 @@ export function useDrawing({
   const overlayRafId = useRef<number | null>(null);
 
   // Toolbar settings mirrored so handlers always read fresh values.
-  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, ruling, templateId, penType, stabilizer });
-  settingsRef.current = { tool, color, size, paper, ruling, templateId, penType, stabilizer };
+  const settingsRef = useRef<UseDrawingOptions>({ tool, color, size, paper, ruling, templateId, penType, shapeType, stabilizer });
+  settingsRef.current = { tool, color, size, paper, ruling, templateId, penType, shapeType, stabilizer };
   // Previous smoothed world point for the stabilizer; reset at each stroke start.
   const smoothPrevRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -264,29 +307,74 @@ export function useDrawing({
 
   const lassoRef = useRef<{ x: number; y: number }[]>([]);
 
-  // selectedIds: ref is authoritative (read in rAF + event handlers); state
-  // is the React-visible copy kept in sync on every mutation.
-  const selectedIdsRef = useRef<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Selected stroke/shape ids: refs are authoritative (read in rAF + event
+  // handlers); state is the React-visible copy kept in sync on every
+  // mutation. Two separate sets, not one mixed set (see SelectionState's doc
+  // comment) — lasso/move/resize/rotate touch both together, but every
+  // consumer filters ITS OWN array by ITS OWN id set.
+  const selectedStrokeIdsRef = useRef<Set<string>>(new Set());
+  const [selectedStrokeIds, setSelectedStrokeIds] = useState<Set<string>>(new Set());
+  const selectedShapeIdsRef = useRef<Set<string>>(new Set());
+  const [selectedShapeIds, setSelectedShapeIds] = useState<Set<string>>(new Set());
 
   const moveOriginRef = useRef<{ x: number; y: number } | null>(null);
   const moveOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 
-  /** Bounds of selected strokes with the current move offset applied. */
+  // Resize: which corner started the drag (its OPPOSITE corner is the fixed
+  // pivot), the pivot itself, the origin distance (pivot→pointer at
+  // pointerdown, for computing the live scale ratio), and the live scale.
+  const resizeHandleRef = useRef<SelectionHandle | null>(null);
+  const resizePivotRef = useRef<{ x: number; y: number } | null>(null);
+  const resizeOriginDistRef = useRef(0);
+  const resizeScaleRef = useRef(1);
+
+  // Rotate: pivot is the selection's own center (fixed for the gesture —
+  // computed once at pointerdown from the PRE-rotation bounds, not
+  // recomputed live, so the pivot can't drift as points move away from it),
+  // the starting pointer angle relative to that pivot, and the live delta.
+  const rotatePivotRef = useRef<{ x: number; y: number } | null>(null);
+  const rotateOriginAngleRef = useRef(0);
+  const rotateAngleRef = useRef(0);
+
+  /** Bounds of the selected strokes AND shapes together, with the current
+   *  move/resize/rotate offset applied — resize changes the box size,
+   *  rotate changes it too (a rotated shape's AXIS-ALIGNED bounding box
+   *  grows), so both need the same "derive from a transformed copy"
+   *  treatment move already uses, not a cheap shiftBounds()-only path. */
   const selectionBounds = useMemo((): Bounds | null => {
-    if (selectedIds.size === 0) return null;
-    const selected = strokesRef.current.filter((s) => selectedIds.has(s.id));
-    const b = inkBounds(selected);
+    if (selectedStrokeIds.size === 0 && selectedShapeIds.size === 0) return null;
+    const selectedStrokes = strokesRef.current.filter((s) => selectedStrokeIds.has(s.id));
+    const selectedShapes = shapesRef.current.filter((s) => selectedShapeIds.has(s.id));
+    const b = combinedBounds(selectedStrokes, selectedShapes);
     if (!b) return null;
     const { dx, dy } = moveOffsetRef.current;
-    return dx === 0 && dy === 0 ? b : shiftBounds(b, dx, dy);
-    // strokesRef.current changes identity when history.present changes, but
-    // useMemo won't see that — we re-derive inside scheduleRender (the single
-    // authoritative paint path) and also on selectedIds change which covers
-    // all commit points. The memo here is for the public `selection.bounds`
-    // return value consumed by external components.
+    if (dx !== 0 || dy !== 0) return shiftBounds(b, dx, dy);
+
+    const pivot = resizePivotRef.current;
+    if (pivot && resizeScaleRef.current !== 1) {
+      const scale = resizeScaleRef.current;
+      const scaledStrokes = applyScaleOffset(selectedStrokes, selectedStrokeIds, pivot.x, pivot.y, scale);
+      const scaledShapes = applyScaleOffsetToShapes(selectedShapes, selectedShapeIds, pivot.x, pivot.y, scale);
+      return combinedBounds(scaledStrokes, scaledShapes) ?? b;
+    }
+
+    const rPivot = rotatePivotRef.current;
+    if (rPivot && rotateAngleRef.current !== 0) {
+      const angle = rotateAngleRef.current;
+      const rotatedStrokes = applyRotateOffset(selectedStrokes, selectedStrokeIds, rPivot.x, rPivot.y, angle);
+      const rotatedShapes = applyRotateOffsetToShapes(selectedShapes, selectedShapeIds, rPivot.x, rPivot.y, angle);
+      return combinedBounds(rotatedStrokes, rotatedShapes) ?? b;
+    }
+
+    return b;
+    // strokesRef/shapesRef.current change identity when history.present
+    // changes, but useMemo won't see that — we re-derive inside
+    // scheduleRender (the single authoritative paint path) and also on
+    // selectedStrokeIds/selectedShapeIds change which covers all commit
+    // points. The memo here is for the public `selection.bounds` return
+    // value consumed by external components.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, history.present]);
+  }, [selectedStrokeIds, selectedShapeIds, history.present]);
 
   // ─── Canvas sizing + transforms ──────────────────────────────────────────────
 
@@ -320,7 +408,7 @@ export function useDrawing({
 
   // Paint committed strokes + paper onto the static (bottom) canvas.
   const paintStatic = useCallback(
-    (source?: Stroke[]) => {
+    (source?: { strokes: Stroke[]; shapes: Shape[] }) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -334,7 +422,9 @@ export function useDrawing({
       const tl = screenToWorld(0, 0, viewRef.current);
       const br = screenToWorld(canvas.clientWidth, canvas.clientHeight, viewRef.current);
       const viewRect = { minX: tl.x, minY: tl.y, maxX: br.x, maxY: br.y };
-      renderAll(ctx, source ?? strokesRef.current, canvas.clientWidth, canvas.clientHeight, {
+      const strokes = source?.strokes ?? strokesRef.current;
+      const shapes = source?.shapes ?? shapesRef.current;
+      renderAll(ctx, strokes, canvas.clientWidth, canvas.clientHeight, {
         paper: settingsRef.current.paper,
         ruling: settingsRef.current.ruling,
         // Resolved page template; when its async decode lands, repaint. The
@@ -347,6 +437,7 @@ export function useDrawing({
         // rect) with a backdrop around it, not bled to the window edges.
         pageBounds: panBoundsRef.current,
         viewRect,
+        shapes,
       });
     },
     [applyTransform, clearDevice],
@@ -428,27 +519,69 @@ export function useDrawing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Applies whichever selection transform is currently in flight (move,
+   * resize, or rotate — mutually exclusive, gated by selectionPhaseRef) to
+   * both `baseStrokes` and `baseShapes` together. Single choke point for the
+   * three render/commit sites that all need "the content as the user
+   * currently sees it mid-drag," so the live-preview math can't drift
+   * between the static layer, the overlay selection-rect bounds, and the
+   * eventual commit-on-pointerup. Strokes and shapes transform together
+   * (same phase, same pivot/offset) since a mixed selection moves/resizes/
+   * rotates as one group.
+   */
+  const applyLiveSelectionTransform = useCallback(
+    (baseStrokes: Stroke[], baseShapes: Shape[]): { strokes: Stroke[]; shapes: Shape[] } => {
+      const phase = selectionPhaseRef.current;
+      const strokeIds = selectedStrokeIdsRef.current;
+      const shapeIds = selectedShapeIdsRef.current;
+      if (phase === 'moving') {
+        const { dx, dy } = moveOffsetRef.current;
+        if (dx === 0 && dy === 0) return { strokes: baseStrokes, shapes: baseShapes };
+        return {
+          strokes: applyMoveOffset(baseStrokes, strokeIds, dx, dy),
+          shapes: applyMoveOffsetToShapes(baseShapes, shapeIds, dx, dy),
+        };
+      }
+      if (phase === 'resizing' && resizePivotRef.current && resizeScaleRef.current !== 1) {
+        const { x, y } = resizePivotRef.current;
+        const scale = resizeScaleRef.current;
+        return {
+          strokes: applyScaleOffset(baseStrokes, strokeIds, x, y, scale),
+          shapes: applyScaleOffsetToShapes(baseShapes, shapeIds, x, y, scale),
+        };
+      }
+      if (phase === 'rotating' && rotatePivotRef.current && rotateAngleRef.current !== 0) {
+        const { x, y } = rotatePivotRef.current;
+        const angle = rotateAngleRef.current;
+        return {
+          strokes: applyRotateOffset(baseStrokes, strokeIds, x, y, angle),
+          shapes: applyRotateOffsetToShapes(baseShapes, shapeIds, x, y, angle),
+        };
+      }
+      return { strokes: baseStrokes, shapes: baseShapes };
+    },
+    [],
+  );
+
   // ─── Render loop ────────────────────────────────────────────────────────────
 
   /**
    * Repaint the static (committed) layer on the next frame. Coalesced so many
    * triggers per frame collapse into one paint. During an erase drag the
-   * working copy is shown; during a move, the offset is applied to the static
-   * layer (move/erase are bounded, lower-frequency gestures).
+   * working copy is shown; during a move/resize/rotate, the live transform is
+   * applied to the static layer (these are bounded, lower-frequency gestures).
    */
   const scheduleStaticRender = useCallback(() => {
     if (staticRafId.current !== null) return;
     staticRafId.current = requestAnimationFrame(() => {
       staticRafId.current = null;
-      const base = eraseWorkingRef.current ?? strokesRef.current;
-      const { dx, dy } = moveOffsetRef.current;
-      const source =
-        selectionPhaseRef.current === 'moving' && (dx !== 0 || dy !== 0)
-          ? applyMoveOffset(base, selectedIdsRef.current, dx, dy)
-          : base;
-      paintStatic(source);
+      // Eraser only ever touches strokes (see eraseWorkingRef's type) —
+      // shapes are unaffected by an in-flight erase drag, always read fresh.
+      const baseStrokes = eraseWorkingRef.current ?? strokesRef.current;
+      paintStatic(applyLiveSelectionTransform(baseStrokes, shapesRef.current));
     });
-  }, [paintStatic]);
+  }, [paintStatic, applyLiveSelectionTransform]);
 
   /**
    * Repaint the overlay (live stroke + lasso + selection rect) on the next
@@ -467,24 +600,23 @@ export function useDrawing({
       applyTransform(ctx, dpr);
 
       if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
+      if (liveShapeRef.current) drawShape(ctx, liveShapeRef.current);
 
       if (selectionPhaseRef.current === 'lasso') {
         drawLasso(ctx, lassoRef.current);
       }
-      if (selectedIdsRef.current.size > 0) {
-        // Selection bounds follow the in-flight move offset (matches static layer).
-        const { dx, dy } = moveOffsetRef.current;
-        const base = eraseWorkingRef.current ?? strokesRef.current;
-        const display =
-          selectionPhaseRef.current === 'moving' && (dx !== 0 || dy !== 0)
-            ? applyMoveOffset(base, selectedIdsRef.current, dx, dy)
-            : base;
-        const selected = display.filter((s) => selectedIdsRef.current.has(s.id));
-        const b = inkBounds(selected);
+      if (selectedStrokeIdsRef.current.size > 0 || selectedShapeIdsRef.current.size > 0) {
+        // Selection bounds follow whichever transform is in flight (matches
+        // the static layer via the same applyLiveSelectionTransform).
+        const baseStrokes = eraseWorkingRef.current ?? strokesRef.current;
+        const display = applyLiveSelectionTransform(baseStrokes, shapesRef.current);
+        const selectedStrokes = display.strokes.filter((s) => selectedStrokeIdsRef.current.has(s.id));
+        const selectedShapes = display.shapes.filter((s) => selectedShapeIdsRef.current.has(s.id));
+        const b = combinedBounds(selectedStrokes, selectedShapes);
         if (b) drawSelectionRect(ctx, b);
       }
     });
-  }, [applyTransform, clearDevice]);
+  }, [applyTransform, clearDevice, applyLiveSelectionTransform]);
 
   // ─── Restore from storage ───────────────────────────────────────────────────
 
@@ -493,9 +625,10 @@ export function useDrawing({
     // do not overwrite it with the (possibly staler) storage payload.
     if (initialHistoryRef.current) return;
     const restored = load();
-    if (restored.length > 0) {
+    if (restored.strokes.length > 0 || restored.shapes.length > 0) {
       history.reset(restored);
-      strokesRef.current = restored;
+      strokesRef.current = restored.strokes;
+      shapesRef.current = restored.shapes;
       setIsEmpty(false);
       scheduleStaticRender();
     }
@@ -512,9 +645,14 @@ export function useDrawing({
 
   // Clear selection when switching away from the select tool.
   useEffect(() => {
-    if (tool !== 'select' && selectedIdsRef.current.size > 0) {
-      selectedIdsRef.current = new Set();
-      setSelectedIds(new Set());
+    if (
+      tool !== 'select' &&
+      (selectedStrokeIdsRef.current.size > 0 || selectedShapeIdsRef.current.size > 0)
+    ) {
+      selectedStrokeIdsRef.current = new Set();
+      setSelectedStrokeIds(new Set());
+      selectedShapeIdsRef.current = new Set();
+      setSelectedShapeIds(new Set());
       lassoRef.current = [];
       selectionPhaseRef.current = 'idle';
       setSelectionPhase('idle');
@@ -593,15 +731,26 @@ export function useDrawing({
   const eraseAt = useCallback((x: number, y: number, radius: number) => {
     const strokes = eraseWorkingRef.current ?? strokesRef.current;
     const survivors: Stroke[] = [];
-    let removed = false;
+    let changed = false;
     for (const stroke of strokes) {
-      if (hitsStroke(stroke, x, y, radius)) {
-        removed = true;
+      const fragments = splitStrokeAtErase(stroke, x, y, radius);
+      if (fragments === null) {
+        survivors.push(stroke);
         continue;
       }
-      survivors.push(stroke);
+      changed = true;
+      // A stroke that survives untouched keeps its id (selection, etc. stay
+      // stable); split fragments are new strokes since neither half is "the"
+      // original anymore.
+      if (fragments.length === 1 && fragments[0].length === stroke.points.length) {
+        survivors.push(stroke);
+        continue;
+      }
+      for (const points of fragments) {
+        survivors.push({ ...stroke, id: createId(), points });
+      }
     }
-    if (removed) {
+    if (changed) {
       eraseWorkingRef.current = survivors;
       erasedDuringDrag.current = true;
       scheduleStaticRender();
@@ -611,54 +760,85 @@ export function useDrawing({
   // ─── Selection actions ──────────────────────────────────────────────────────
 
   const clearSelection = useCallback(() => {
-    selectedIdsRef.current = new Set();
-    setSelectedIds(new Set());
+    selectedStrokeIdsRef.current = new Set();
+    setSelectedStrokeIds(new Set());
+    selectedShapeIdsRef.current = new Set();
+    setSelectedShapeIds(new Set());
     lassoRef.current = [];
     selectionPhaseRef.current = 'idle';
     setSelectionPhase('idle');
     moveOffsetRef.current = { dx: 0, dy: 0 };
     moveOriginRef.current = null;
+    resizeHandleRef.current = null;
+    resizePivotRef.current = null;
+    resizeScaleRef.current = 1;
+    rotatePivotRef.current = null;
+    rotateAngleRef.current = 0;
     scheduleOverlayRender();
   }, [scheduleOverlayRender]);
 
   const deleteSelected = useCallback(() => {
-    const ids = selectedIdsRef.current;
-    if (ids.size === 0) return;
-    const next = strokesRef.current.filter((s) => !ids.has(s.id));
-    selectedIdsRef.current = new Set();
-    setSelectedIds(new Set());
+    const strokeIds = selectedStrokeIdsRef.current;
+    const shapeIds = selectedShapeIdsRef.current;
+    if (strokeIds.size === 0 && shapeIds.size === 0) return;
+    const nextStrokes = strokesRef.current.filter((s) => !strokeIds.has(s.id));
+    const nextShapes = shapesRef.current.filter((s) => !shapeIds.has(s.id));
+    selectedStrokeIdsRef.current = new Set();
+    setSelectedStrokeIds(new Set());
+    selectedShapeIdsRef.current = new Set();
+    setSelectedShapeIds(new Set());
     selectionPhaseRef.current = 'idle';
     setSelectionPhase('idle');
-    history.set(next);
-    strokesRef.current = next;
-    // Committed ink changed → static repaints via the history effect; clear the
-    // now-stale selection rect off the overlay immediately.
+    history.set({ strokes: nextStrokes, shapes: nextShapes });
+    strokesRef.current = nextStrokes;
+    shapesRef.current = nextShapes;
+    // Committed content changed → static repaints via the history effect;
+    // clear the now-stale selection rect off the overlay immediately.
     scheduleOverlayRender();
   }, [history, scheduleOverlayRender]);
 
   const duplicateSelected = useCallback(() => {
-    const ids = selectedIdsRef.current;
-    if (ids.size === 0) return;
-    const { next, newIds } = duplicateStrokes(strokesRef.current, ids, 16, 16);
-    // No clones produced (e.g. the selection referenced strokes removed by a
-    // prior undo) → don't burn an undo slot on a no-op.
-    if (newIds.size === 0) return;
-    history.set(next);
-    strokesRef.current = next;
-    selectedIdsRef.current = newIds;
-    setSelectedIds(newIds);
+    const strokeIds = selectedStrokeIdsRef.current;
+    const shapeIds = selectedShapeIdsRef.current;
+    if (strokeIds.size === 0 && shapeIds.size === 0) return;
+    const { next: nextStrokes, newIds: newStrokeIds } = duplicateStrokes(
+      strokesRef.current,
+      strokeIds,
+      16,
+      16,
+    );
+    const { next: nextShapes, newIds: newShapeIds } = duplicateShapes(
+      shapesRef.current,
+      shapeIds,
+      16,
+      16,
+    );
+    // No clones produced at all (e.g. the selection referenced content
+    // removed by a prior undo) → don't burn an undo slot on a no-op.
+    if (newStrokeIds.size === 0 && newShapeIds.size === 0) return;
+    history.set({ strokes: nextStrokes, shapes: nextShapes });
+    strokesRef.current = nextStrokes;
+    shapesRef.current = nextShapes;
+    selectedStrokeIdsRef.current = newStrokeIds;
+    setSelectedStrokeIds(newStrokeIds);
+    selectedShapeIdsRef.current = newShapeIds;
+    setSelectedShapeIds(newShapeIds);
     scheduleOverlayRender();
   }, [history, scheduleOverlayRender]);
 
   const recolorSelected = useCallback(
     (color: string) => {
-      const ids = selectedIdsRef.current;
-      if (ids.size === 0) return;
-      const next = recolorStrokes(strokesRef.current, ids, color);
-      // recolorStrokes returns the same reference when nothing changed.
-      if (next === strokesRef.current) return;
-      history.set(next);
-      strokesRef.current = next;
+      const strokeIds = selectedStrokeIdsRef.current;
+      const shapeIds = selectedShapeIdsRef.current;
+      if (strokeIds.size === 0 && shapeIds.size === 0) return;
+      const nextStrokes = recolorStrokes(strokesRef.current, strokeIds, color);
+      const nextShapes = recolorShapes(shapesRef.current, shapeIds, color);
+      // Both helpers return the same reference when their own selection is
+      // empty — a real no-op only when NEITHER array actually changed.
+      if (nextStrokes === strokesRef.current && nextShapes === shapesRef.current) return;
+      history.set({ strokes: nextStrokes, shapes: nextShapes });
+      strokesRef.current = nextStrokes;
+      shapesRef.current = nextShapes;
       scheduleOverlayRender();
     },
     [history, scheduleOverlayRender],
@@ -679,12 +859,19 @@ export function useDrawing({
       liveStrokeRef.current = null;
       onPenEndRef.current?.();
     }
+    liveShapeRef.current = null;
     eraseWorkingRef.current = null;
     erasedDuringDrag.current = false;
     moveOffsetRef.current = { dx: 0, dy: 0 };
     moveOriginRef.current = null;
-    // A cancelled lasso drops back to no selection; a cancelled move keeps the
-    // existing selection but drops the offset. Either way, reset the phase.
+    resizeHandleRef.current = null;
+    resizePivotRef.current = null;
+    resizeScaleRef.current = 1;
+    rotatePivotRef.current = null;
+    rotateAngleRef.current = 0;
+    // A cancelled lasso drops back to no selection; a cancelled move/resize/
+    // rotate keeps the existing selection but drops the in-flight transform.
+    // Either way, reset the phase.
     if (selectionPhaseRef.current === 'lasso') {
       lassoRef.current = [];
     }
@@ -817,7 +1004,12 @@ export function useDrawing({
         settingsRef.current;
 
       // Non-drawing tools release the pointer immediately.
-      if (activeTool !== 'pen' && activeTool !== 'eraser' && activeTool !== 'select') {
+      if (
+        activeTool !== 'pen' &&
+        activeTool !== 'eraser' &&
+        activeTool !== 'select' &&
+        activeTool !== 'shape'
+      ) {
         try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
         activePointerId.current = null;
         return;
@@ -827,13 +1019,51 @@ export function useDrawing({
 
       // ── select ──
       if (activeTool === 'select') {
-        // Compute current bounds from committed strokes (no in-flight offset yet).
-        const ids = selectedIdsRef.current;
-        const currentBounds = ids.size > 0
-          ? inkBounds(strokesRef.current.filter((s) => ids.has(s.id)))
-          : null;
+        // Compute current bounds from committed strokes+shapes (no in-flight
+        // offset yet).
+        const strokeIds = selectedStrokeIdsRef.current;
+        const shapeIds = selectedShapeIdsRef.current;
+        const currentBounds =
+          strokeIds.size > 0 || shapeIds.size > 0
+            ? combinedBounds(
+                strokesRef.current.filter((s) => strokeIds.has(s.id)),
+                shapesRef.current.filter((s) => shapeIds.has(s.id)),
+              )
+            : null;
 
-        if (currentBounds && hitsSelectionBounds(currentBounds, x, y)) {
+        // Handle hit-testing takes priority over "inside the body = move" —
+        // a handle sits ON or just outside the body's edge, so without this
+        // ordering a corner/rotate grab would be swallowed as a move instead.
+        const handle = currentBounds ? hitsSelectionHandle(currentBounds, x, y) : null;
+
+        if (handle === 'rotate' && currentBounds) {
+          const centerX = (currentBounds.minX + currentBounds.maxX) / 2;
+          const centerY = (currentBounds.minY + currentBounds.maxY) / 2;
+          selectionPhaseRef.current = 'rotating';
+          setSelectionPhase('rotating');
+          rotatePivotRef.current = { x: centerX, y: centerY };
+          rotateOriginAngleRef.current = Math.atan2(y - centerY, x - centerX);
+          rotateAngleRef.current = 0;
+        } else if (handle && currentBounds) {
+          // Pivot = the corner OPPOSITE the one grabbed (standard
+          // corner-resize convention — the far corner stays put).
+          const pad = 8; // must match drawSelectionRect's default pad
+          const minX = currentBounds.minX - pad;
+          const minY = currentBounds.minY - pad;
+          const maxX = currentBounds.maxX + pad;
+          const maxY = currentBounds.maxY + pad;
+          const pivot =
+            handle === 'nw' ? { x: maxX, y: maxY } :
+            handle === 'ne' ? { x: minX, y: maxY } :
+            handle === 'sw' ? { x: maxX, y: minY } :
+            /* 'se' */         { x: minX, y: minY };
+          selectionPhaseRef.current = 'resizing';
+          setSelectionPhase('resizing');
+          resizeHandleRef.current = handle;
+          resizePivotRef.current = pivot;
+          resizeOriginDistRef.current = Math.max(1, Math.hypot(x - pivot.x, y - pivot.y));
+          resizeScaleRef.current = 1;
+        } else if (currentBounds && hitsSelectionBounds(currentBounds, x, y)) {
           // Clicked inside selection → start moving.
           selectionPhaseRef.current = 'moving';
           setSelectionPhase('moving');
@@ -844,8 +1074,10 @@ export function useDrawing({
           selectionPhaseRef.current = 'lasso';
           setSelectionPhase('lasso');
           lassoRef.current = [{ x, y }];
-          selectedIdsRef.current = new Set();
-          setSelectedIds(new Set());
+          selectedStrokeIdsRef.current = new Set();
+          setSelectedStrokeIds(new Set());
+          selectedShapeIdsRef.current = new Set();
+          setSelectedShapeIds(new Set());
           scheduleOverlayRender();
         }
         return;
@@ -856,6 +1088,22 @@ export function useDrawing({
         erasedDuringDrag.current = false;
         eraseWorkingRef.current = strokesRef.current;
         eraseAt(x, y, eraserRadius(activeSize));
+        return;
+      }
+
+      // ── shape ──
+      if (activeTool === 'shape') {
+        liveShapeRef.current = {
+          id: createId(),
+          type: settingsRef.current.shapeType ?? 'rect',
+          color: activeColor,
+          size: activeSize,
+          x1: x,
+          y1: y,
+          x2: x,
+          y2: y,
+        };
+        scheduleOverlayRender();
         return;
       }
 
@@ -950,6 +1198,27 @@ export function useDrawing({
           // Moving shifts committed strokes visually (static) + the rect (overlay).
           scheduleStaticRender();
           scheduleOverlayRender();
+        } else if (phase === 'resizing' && resizePivotRef.current) {
+          const last = samples[samples.length - 1];
+          const w = toWorld(last.clientX, last.clientY);
+          const pivot = resizePivotRef.current;
+          const dist = Math.hypot(w.x - pivot.x, w.y - pivot.y);
+          // Clamp so a drag toward/through the pivot can't invert or
+          // collapse the selection (scale floor), nor blow it up absurdly
+          // large from a single fast drag (scale ceiling) — same spirit as
+          // clampScale for the canvas zoom, just local to one selection.
+          const raw = dist / resizeOriginDistRef.current;
+          resizeScaleRef.current = Math.min(20, Math.max(0.05, raw));
+          scheduleStaticRender();
+          scheduleOverlayRender();
+        } else if (phase === 'rotating' && rotatePivotRef.current) {
+          const last = samples[samples.length - 1];
+          const w = toWorld(last.clientX, last.clientY);
+          const pivot = rotatePivotRef.current;
+          const currentAngle = Math.atan2(w.y - pivot.y, w.x - pivot.x);
+          rotateAngleRef.current = currentAngle - rotateOriginAngleRef.current;
+          scheduleStaticRender();
+          scheduleOverlayRender();
         }
         return;
       }
@@ -961,6 +1230,18 @@ export function useDrawing({
           const w = toWorld(ev.clientX, ev.clientY);
           eraseAt(w.x, w.y, radius);
         }
+        return;
+      }
+
+      // ── shape ──
+      if (activeTool === 'shape') {
+        const live = liveShapeRef.current;
+        if (!live) return;
+        const last = samples[samples.length - 1];
+        const w = toWorld(last.clientX, last.clientY);
+        const snapped = snapShapeEndpoint(live.type, live.x1, live.y1, w.x, w.y, last.shiftKey);
+        liveShapeRef.current = { ...live, x2: snapped.x, y2: snapped.y };
+        scheduleOverlayRender();
         return;
       }
 
@@ -1013,15 +1294,21 @@ export function useDrawing({
         if (phase === 'lasso') {
           const lasso = lassoRef.current;
           // Always clear prior selection when a lasso gesture ends, regardless
-          // of how many points were drawn or how many strokes matched.
-          const matched = new Set<string>();
+          // of how many points were drawn or how many strokes/shapes matched.
+          const matchedStrokes = new Set<string>();
+          const matchedShapes = new Set<string>();
           if (lasso.length >= 3) {
             for (const stroke of strokesRef.current) {
-              if (strokeInLasso(stroke, lasso)) matched.add(stroke.id);
+              if (strokeInLasso(stroke, lasso)) matchedStrokes.add(stroke.id);
+            }
+            for (const shape of shapesRef.current) {
+              if (shapeInLasso(shape, lasso)) matchedShapes.add(shape.id);
             }
           }
-          selectedIdsRef.current = matched;
-          setSelectedIds(matched);
+          selectedStrokeIdsRef.current = matchedStrokes;
+          setSelectedStrokeIds(matchedStrokes);
+          selectedShapeIdsRef.current = matchedShapes;
+          setSelectedShapeIds(matchedShapes);
           lassoRef.current = [];
           selectionPhaseRef.current = 'idle';
           setSelectionPhase('idle');
@@ -1030,15 +1317,13 @@ export function useDrawing({
         } else if (phase === 'moving') {
           const { dx, dy } = moveOffsetRef.current;
           if (dx !== 0 || dy !== 0) {
-            // Commit the offset to history as one undoable step.
-            const next = applyMoveOffset(
-              strokesRef.current,
-              selectedIdsRef.current,
-              dx,
-              dy,
-            );
-            history.set(next);
-            strokesRef.current = next;
+            // Commit the offset to history as one undoable step, covering
+            // both strokes and shapes in the selection together.
+            const nextStrokes = applyMoveOffset(strokesRef.current, selectedStrokeIdsRef.current, dx, dy);
+            const nextShapes = applyMoveOffsetToShapes(shapesRef.current, selectedShapeIdsRef.current, dx, dy);
+            history.set({ strokes: nextStrokes, shapes: nextShapes });
+            strokesRef.current = nextStrokes;
+            shapesRef.current = nextShapes;
           }
           moveOffsetRef.current = { dx: 0, dy: 0 };
           moveOriginRef.current = null;
@@ -1046,6 +1331,65 @@ export function useDrawing({
           setSelectionPhase('idle');
           // Committed ink repaints via the history effect; redraw the rect at its
           // final resting place on the overlay.
+          scheduleStaticRender();
+          scheduleOverlayRender();
+
+        } else if (phase === 'resizing') {
+          const pivot = resizePivotRef.current;
+          const scale = resizeScaleRef.current;
+          if (pivot && scale !== 1) {
+            const nextStrokes = applyScaleOffset(
+              strokesRef.current,
+              selectedStrokeIdsRef.current,
+              pivot.x,
+              pivot.y,
+              scale,
+            );
+            const nextShapes = applyScaleOffsetToShapes(
+              shapesRef.current,
+              selectedShapeIdsRef.current,
+              pivot.x,
+              pivot.y,
+              scale,
+            );
+            history.set({ strokes: nextStrokes, shapes: nextShapes });
+            strokesRef.current = nextStrokes;
+            shapesRef.current = nextShapes;
+          }
+          resizeHandleRef.current = null;
+          resizePivotRef.current = null;
+          resizeScaleRef.current = 1;
+          selectionPhaseRef.current = 'idle';
+          setSelectionPhase('idle');
+          scheduleStaticRender();
+          scheduleOverlayRender();
+
+        } else if (phase === 'rotating') {
+          const pivot = rotatePivotRef.current;
+          const angle = rotateAngleRef.current;
+          if (pivot && angle !== 0) {
+            const nextStrokes = applyRotateOffset(
+              strokesRef.current,
+              selectedStrokeIdsRef.current,
+              pivot.x,
+              pivot.y,
+              angle,
+            );
+            const nextShapes = applyRotateOffsetToShapes(
+              shapesRef.current,
+              selectedShapeIdsRef.current,
+              pivot.x,
+              pivot.y,
+              angle,
+            );
+            history.set({ strokes: nextStrokes, shapes: nextShapes });
+            strokesRef.current = nextStrokes;
+            shapesRef.current = nextShapes;
+          }
+          rotatePivotRef.current = null;
+          rotateAngleRef.current = 0;
+          selectionPhaseRef.current = 'idle';
+          setSelectionPhase('idle');
           scheduleStaticRender();
           scheduleOverlayRender();
         }
@@ -1058,11 +1402,30 @@ export function useDrawing({
         eraseWorkingRef.current = null;
         if (erasedDuringDrag.current && working) {
           erasedDuringDrag.current = false;
-          history.set(working); // static repaints via the history effect
+          // Eraser only ever touches strokes (shapes are deleted via
+          // selection, not erased-through) — shapes pass through unchanged.
+          history.set({ strokes: working, shapes: shapesRef.current });
           strokesRef.current = working;
         } else {
           scheduleStaticRender();
         }
+        return;
+      }
+
+      // ── shape ──
+      if (activeTool === 'shape') {
+        const live = liveShapeRef.current;
+        liveShapeRef.current = null;
+        // A tap with no drag (x1===x2 && y1===y2) commits nothing — an
+        // invisible zero-size shape would be a confusing, undo-able no-op.
+        if (!live || (live.x1 === live.x2 && live.y1 === live.y2)) {
+          scheduleOverlayRender();
+          return;
+        }
+        const nextShapes = [...shapesRef.current, live];
+        history.set({ strokes: strokesRef.current, shapes: nextShapes });
+        shapesRef.current = nextShapes;
+        scheduleOverlayRender();
         return;
       }
 
@@ -1076,9 +1439,9 @@ export function useDrawing({
         return;
       }
 
-      const next = [...strokesRef.current, live];
-      history.set(next);
-      strokesRef.current = next;
+      const nextStrokes = [...strokesRef.current, live];
+      history.set({ strokes: nextStrokes, shapes: shapesRef.current });
+      strokesRef.current = nextStrokes;
       onStrokeEndRef.current?.(live);
       // Notebook: gently follow the writing position down the page (and advance
       // a line when the pen reached the right margin). Ref-indirected because
@@ -1135,39 +1498,62 @@ export function useDrawing({
       liveStrokeRef.current = null;
       onPenEndRef.current?.();
     }
+    liveShapeRef.current = null;
     eraseWorkingRef.current = null;
     erasedDuringDrag.current = false;
-    selectedIdsRef.current = new Set();
-    setSelectedIds(new Set());
+    selectedStrokeIdsRef.current = new Set();
+    setSelectedStrokeIds(new Set());
+    selectedShapeIdsRef.current = new Set();
+    setSelectedShapeIds(new Set());
     selectionPhaseRef.current = 'idle';
     setSelectionPhase('idle');
     lassoRef.current = [];
     moveOffsetRef.current = { dx: 0, dy: 0 };
     moveOriginRef.current = null;
-    history.set([]);
+    resizeHandleRef.current = null;
+    resizePivotRef.current = null;
+    resizeScaleRef.current = 1;
+    rotatePivotRef.current = null;
+    rotateAngleRef.current = 0;
+    history.set({ strokes: [], shapes: [] });
     strokesRef.current = [];
+    shapesRef.current = [];
   }, [history]);
 
-  // Whenever committed strokes change (draw/undo/redo/erase/move/delete/clear),
+  // Whenever committed content changes (draw/undo/redo/erase/move/delete/clear),
   // repaint, resync empty flag, and persist to localStorage.
   const hydratedRef = useRef(false);
   useEffect(() => {
-    strokesRef.current = history.present;
-    setIsEmpty(history.present.length === 0);
+    strokesRef.current = history.present.strokes;
+    shapesRef.current = history.present.shapes;
+    setIsEmpty(history.present.strokes.length === 0 && history.present.shapes.length === 0);
 
-    // Reconcile the selection with the new stroke set. undo/redo can bring back
-    // a state where selected strokes no longer exist (or remove them again);
-    // without this the selection toolbar floats over phantom bounds and the
-    // mutating actions operate on ids that aren't on the canvas.
-    const reconciled = reconcileSelection(selectedIdsRef.current, history.present);
-    if (reconciled !== selectedIdsRef.current) {
-      const next = reconciled as Set<string>;
-      selectedIdsRef.current = next;
-      setSelectedIds(next);
-      if (next.size === 0) {
-        selectionPhaseRef.current = 'idle';
-        setSelectionPhase('idle');
-      }
+    // Reconcile the selection with the new content. undo/redo can bring back
+    // a state where selected strokes/shapes no longer exist (or remove them
+    // again); without this the selection toolbar floats over phantom bounds
+    // and the mutating actions operate on ids that aren't on the canvas.
+    const reconciledStrokes = reconcileSelection(selectedStrokeIdsRef.current, history.present.strokes);
+    const reconciledShapes = reconcileShapeSelection(selectedShapeIdsRef.current, history.present.shapes);
+    let selectionChanged = false;
+    if (reconciledStrokes !== selectedStrokeIdsRef.current) {
+      const next = reconciledStrokes as Set<string>;
+      selectedStrokeIdsRef.current = next;
+      setSelectedStrokeIds(next);
+      selectionChanged = true;
+    }
+    if (reconciledShapes !== selectedShapeIdsRef.current) {
+      const next = reconciledShapes as Set<string>;
+      selectedShapeIdsRef.current = next;
+      setSelectedShapeIds(next);
+      selectionChanged = true;
+    }
+    if (
+      selectionChanged &&
+      selectedStrokeIdsRef.current.size === 0 &&
+      selectedShapeIdsRef.current.size === 0
+    ) {
+      selectionPhaseRef.current = 'idle';
+      setSelectionPhase('idle');
     }
 
     scheduleStaticRender();
@@ -1300,7 +1686,8 @@ export function useDrawing({
   const selectionState = useMemo<SelectionState>(
     () => ({
       phase: selectionPhase,
-      selectedIds,
+      selectedStrokeIds,
+      selectedShapeIds,
       bounds: selectionBounds,
       clearSelection,
       deleteSelected,
@@ -1309,7 +1696,8 @@ export function useDrawing({
     }),
     [
       selectionPhase,
-      selectedIds,
+      selectedStrokeIds,
+      selectedShapeIds,
       selectionBounds,
       clearSelection,
       deleteSelected,
@@ -1335,7 +1723,8 @@ export function useDrawing({
     () => ({
       canvasRef,
       overlayRef,
-      strokes: history.present,
+      strokes: history.present.strokes,
+      shapes: history.present.shapes,
       onPointerDown,
       onPointerMove,
       onPointerUp: endGesture,

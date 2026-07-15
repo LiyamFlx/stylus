@@ -17,6 +17,7 @@ import {
   renameFolder,
   searchDocuments,
   setCurrentId,
+  setDocumentPinned,
   setDocumentTags,
   writeAux,
   writePageAux,
@@ -189,6 +190,35 @@ describe('documents', () => {
       const doc = createDocument('Note', NOW + 1);
       setDocumentTags(doc.id, [' school ', 'urgent', 'urgent', '  ']);
       expect(listDocuments().find((d) => d.id === doc.id)?.tags).toEqual(['school', 'urgent']);
+    });
+  });
+
+  describe('pinning', () => {
+    it('pins a doc by stamping pinnedAt, unpins by clearing it', () => {
+      ensureIndex(NOW);
+      const doc = createDocument('Note', NOW + 1);
+      expect(listDocuments().find((d) => d.id === doc.id)?.pinnedAt).toBeUndefined();
+
+      setDocumentPinned(doc.id, true, NOW + 5);
+      expect(listDocuments().find((d) => d.id === doc.id)?.pinnedAt).toBe(NOW + 5);
+
+      setDocumentPinned(doc.id, false, NOW + 9);
+      expect(listDocuments().find((d) => d.id === doc.id)?.pinnedAt).toBeUndefined();
+    });
+
+    it('is a no-op against an id that does not exist', () => {
+      ensureIndex(NOW);
+      expect(() => setDocumentPinned('nope', true, NOW)).not.toThrow();
+    });
+
+    it('leaves other docs untouched', () => {
+      ensureIndex(NOW);
+      const a = createDocument('A', NOW + 1);
+      const b = createDocument('B', NOW + 2);
+      setDocumentPinned(a.id, true, NOW + 5);
+      const docs = listDocuments();
+      expect(docs.find((d) => d.id === a.id)?.pinnedAt).toBe(NOW + 5);
+      expect(docs.find((d) => d.id === b.id)?.pinnedAt).toBeUndefined();
     });
   });
 

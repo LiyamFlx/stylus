@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { PaperStyle, PenSize, Tool } from '../types';
-import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS } from '../types';
+import type { PaperStyle, PenSize, ShapeType, Tool } from '../types';
+import { PAPER_STYLES, PEN_SIZES, PRESET_COLORS, SHAPE_TYPES } from '../types';
 import { PEN_TYPES, penProfile, type PenType } from '../lib/penProfiles';
 import {
   PenIcon,
@@ -29,6 +29,13 @@ import {
   SearchIcon,
   MarkdownIcon,
   PlainTextIcon,
+  ShapeIcon,
+  RectIcon,
+  EllipseIcon,
+  LineIcon,
+  ArrowIcon,
+  DownloadIcon,
+  MoreIcon,
 } from './icons';
 import type { PaletteId } from '../lib/kandinsky/audio';
 import type { ToolbarVariant } from '../lib/modes';
@@ -45,6 +52,20 @@ const PAPER_LABELS: Record<PaperStyle, string> = {
   notebook: 'Notebook',
 };
 
+const SHAPE_LABELS: Record<ShapeType, string> = {
+  rect: 'Rectangle',
+  ellipse: 'Ellipse',
+  line: 'Line',
+  arrow: 'Arrow',
+};
+
+const SHAPE_ICONS: Record<ShapeType, typeof RectIcon> = {
+  rect: RectIcon,
+  ellipse: EllipseIcon,
+  line: LineIcon,
+  arrow: ArrowIcon,
+};
+
 interface ToolbarProps {
   tool: Tool;
   color: string;
@@ -55,10 +76,12 @@ interface ToolbarProps {
   isEmpty: boolean;
   recognizing: boolean;
   penType: PenType;
+  shapeType: ShapeType;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onSizeChange: (size: PenSize) => void;
   onPenTypeChange: (penType: PenType) => void;
+  onShapeTypeChange: (shapeType: ShapeType) => void;
   onPaperSelect: (paper: PaperStyle) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -661,6 +684,283 @@ function PenTypePicker({
   );
 }
 
+function ShapeTypePicker({
+  shapeType,
+  onShapeTypeChange,
+}: {
+  shapeType: ShapeType;
+  onShapeTypeChange: (shapeType: ShapeType) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ref = usePopover(open, setOpen, panelRef);
+  const popoverStyle = usePopoverFixedPosition(open, ref, 'left');
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Same compact-caret pattern as PenTypePicker — a dropdown for the
+          shape SUB-type, distinct from the Shape tool button beside it. */}
+      <button
+        type="button"
+        title={`Shape: ${SHAPE_LABELS[shapeType]}`}
+        aria-label={`Shape type: ${SHAPE_LABELS[shapeType]}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={[
+          'flex h-9 w-6 items-center justify-center rounded-full transition-colors',
+          open ? 'bg-white/[0.08] text-ink-900' : 'text-ink-700 hover:bg-white/[0.06]',
+        ].join(' ')}
+      >
+        <ChevronDownIcon size={16} />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="Shape type"
+            style={popoverStyle}
+            className="z-30 rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+          >
+            {SHAPE_TYPES.map((t) => {
+              const Icon = SHAPE_ICONS[t];
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={shapeType === t}
+                  onClick={() => {
+                    onShapeTypeChange(t);
+                    setOpen(false);
+                  }}
+                  className={[
+                    'flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors',
+                    shapeType === t
+                      ? 'bg-white/[0.08] ring-1 ring-brand-500/50'
+                      : 'hover:bg-white/[0.06]',
+                  ].join(' ')}
+                >
+                  <Icon size={16} className="text-ink-700" />
+                  <span className="text-[13px] font-medium text-ink-900">
+                    {SHAPE_LABELS[t]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+/**
+ * Export menu (item #16): PNG / PDF / Markdown / text grouped behind one
+ * popover trigger instead of four always-visible icon buttons.
+ */
+function ExportMenu({
+  isEmpty,
+  onExportPNG,
+  onExportPDF,
+  onExportMarkdown,
+  onExportText,
+}: {
+  isEmpty: boolean;
+  onExportPNG: () => void;
+  onExportPDF: () => void;
+  onExportMarkdown?: () => void;
+  onExportText?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ref = usePopover(open, setOpen, panelRef);
+  const popoverStyle = usePopoverFixedPosition(open, ref);
+
+  const items: Array<{ label: string; icon: typeof ImageIcon; onClick: () => void }> = [
+    { label: 'Export PNG', icon: ImageIcon, onClick: onExportPNG },
+    { label: 'Export PDF', icon: FileIcon, onClick: onExportPDF },
+  ];
+  if (onExportMarkdown) items.push({ label: 'Export Markdown', icon: MarkdownIcon, onClick: onExportMarkdown });
+  if (onExportText) items.push({ label: 'Export text', icon: PlainTextIcon, onClick: onExportText });
+
+  return (
+    <div ref={ref} className="relative">
+      <IconButton
+        label="Export"
+        active={open}
+        disabled={isEmpty}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <DownloadIcon />
+      </IconButton>
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="Export"
+            style={popoverStyle}
+            className="z-30 min-w-[9rem] rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+          >
+            {items.map(({ label, icon: Icon, onClick }) => (
+              <button
+                key={label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onClick();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+              >
+                <Icon size={16} className="text-ink-700" />
+                <span className="text-[13px] font-medium text-ink-900">{label}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+/**
+ * Overflow menu (item #16): music mode, learning mode, and replay grouped
+ * behind one popover instead of a peripheral row of always-visible buttons.
+ * Toggle rows (music/learning) stay open on click — only the momentary
+ * replay action closes the menu.
+ */
+function MoreMenu({
+  isEmpty,
+  musicMode,
+  onToggleMusic,
+  learningMode,
+  onToggleLearning,
+  playing,
+  onPlayToggle,
+  palette,
+  onCyclePalette,
+  onReplay,
+}: {
+  isEmpty: boolean;
+  musicMode: boolean;
+  onToggleMusic: () => void;
+  learningMode: boolean;
+  onToggleLearning: () => void;
+  playing: boolean;
+  onPlayToggle: () => void;
+  palette: PaletteId;
+  onCyclePalette: () => void;
+  onReplay?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ref = usePopover(open, setOpen, panelRef);
+  const popoverStyle = usePopoverFixedPosition(open, ref);
+
+  return (
+    <div ref={ref} className="relative">
+      <IconButton label="More" active={open} onClick={() => setOpen((o) => !o)}>
+        <MoreIcon />
+      </IconButton>
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="More"
+            style={popoverStyle}
+            className="z-30 min-w-[11rem] rounded-panel border border-border bg-bg-muted/95 p-1.5 shadow-pop backdrop-blur-pill"
+          >
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={musicMode}
+              onClick={onToggleMusic}
+              className={[
+                'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                musicMode ? 'bg-white/[0.08] ring-1 ring-brand-500/50' : 'hover:bg-white/[0.06]',
+              ].join(' ')}
+            >
+              <MusicIcon size={16} className="text-ink-700" />
+              <span className="text-[13px] font-medium text-ink-900">
+                {musicMode ? 'Music mode on' : 'Music mode'}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={learningMode}
+              onClick={onToggleLearning}
+              className={[
+                'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                learningMode ? 'bg-white/[0.08] ring-1 ring-brand-500/50' : 'hover:bg-white/[0.06]',
+              ].join(' ')}
+            >
+              <GaugeIcon size={16} className="text-ink-700" />
+              <span className="text-[13px] font-medium text-ink-900">
+                {learningMode ? 'Learning Mode on' : 'Learning Mode'}
+              </span>
+            </button>
+            {musicMode && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={isEmpty}
+                  onClick={onPlayToggle}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {playing ? <StopIcon size={16} className="text-ink-700" /> : <PlayIcon size={16} className="text-ink-700" />}
+                  <span className="text-[13px] font-medium text-ink-900">
+                    {playing ? 'Stop' : 'Play soundscape'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={onCyclePalette}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+                >
+                  <span
+                    className="h-4 w-4 shrink-0 rounded-full border border-border-strong"
+                    style={{
+                      background:
+                        palette === 'A'
+                          ? 'linear-gradient(90deg, #22c55e 50%, #3b82f6 50%)'
+                          : 'linear-gradient(90deg, #a855f7 50%, #ec4899 50%)',
+                    }}
+                  />
+                  <span className="text-[13px] font-medium text-ink-900">
+                    Sound palette {palette} — tap to switch
+                  </span>
+                </button>
+              </>
+            )}
+            {onReplay && (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={isEmpty}
+                onClick={() => {
+                  onReplay();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <PlayIcon size={16} className="text-ink-700" />
+                <span className="text-[13px] font-medium text-ink-900">Replay drawing</span>
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 export function Toolbar(props: ToolbarProps) {
   const {
     tool,
@@ -672,10 +972,12 @@ export function Toolbar(props: ToolbarProps) {
     canRedo,
     isEmpty,
     recognizing,
+    shapeType,
     onToolChange,
     onColorChange,
     onSizeChange,
     onPenTypeChange,
+    onShapeTypeChange,
     onPaperSelect,
     onUndo,
     onRedo,
@@ -723,6 +1025,14 @@ export function Toolbar(props: ToolbarProps) {
       onToolChange('pen');
     },
     [onPenTypeChange, onToolChange],
+  );
+
+  const handleShapeTypeChange = useCallback(
+    (t: ShapeType) => {
+      onShapeTypeChange(t);
+      onToolChange('shape');
+    },
+    [onShapeTypeChange, onToolChange],
   );
 
   const minimal = variant !== 'full';
@@ -784,6 +1094,16 @@ export function Toolbar(props: ToolbarProps) {
       >
         <TypeIcon />
       </IconButton>
+      <IconButton
+        label="Shape"
+        active={tool === 'shape'}
+        onClick={() => onToolChange('shape')}
+      >
+        <ShapeIcon />
+      </IconButton>
+      {tool === 'shape' && !minimal && (
+        <ShapeTypePicker shapeType={shapeType} onShapeTypeChange={handleShapeTypeChange} />
+      )}
 
       <Divider />
       <SizePicker size={size} onSizeChange={onSizeChange} />
@@ -820,80 +1140,30 @@ export function Toolbar(props: ToolbarProps) {
         recognizing={recognizing}
         onClick={onRecognize}
       />
-      <IconButton label="Export PNG" disabled={isEmpty} onClick={onExportPNG}>
-        <ImageIcon />
-      </IconButton>
-      <IconButton label="Export PDF" disabled={isEmpty} onClick={onExportPDF}>
-        <FileIcon />
-      </IconButton>
-      {onExportMarkdown && (
-        <IconButton label="Export Markdown" disabled={isEmpty} onClick={onExportMarkdown}>
-          <MarkdownIcon />
-        </IconButton>
-      )}
-      {onExportText && (
-        <IconButton label="Export text" disabled={isEmpty} onClick={onExportText}>
-          <PlainTextIcon />
-        </IconButton>
-      )}
+      <ExportMenu
+        isEmpty={isEmpty}
+        onExportPNG={onExportPNG}
+        onExportPDF={onExportPDF}
+        onExportMarkdown={onExportMarkdown}
+        onExportText={onExportText}
+      />
 
       {!minimal && (
-      <>
-      <Divider />
-      <IconButton
-        label={musicMode ? 'Turn music mode off' : 'Turn music mode on'}
-        active={musicMode}
-        onClick={onToggleMusic}
-      >
-        <MusicIcon />
-      </IconButton>
-      <IconButton
-        label={
-          learningMode
-            ? 'Turn Learning Mode off'
-            : 'Learning Mode — audio feedback when drawing too fast'
-        }
-        active={learningMode}
-        onClick={onToggleLearning}
-      >
-        <GaugeIcon />
-      </IconButton>
-      {musicMode && (
         <>
-          <IconButton
-            label={playing ? 'Stop' : 'Play soundscape'}
-            active={playing}
-            disabled={isEmpty}
-            onClick={onPlayToggle}
-          >
-            {playing ? <StopIcon /> : <PlayIcon />}
-          </IconButton>
-          <button
-            type="button"
-            title={`Sound palette ${palette} — tap to switch`}
-            aria-label={`Sound palette ${palette}, tap to switch`}
-            onClick={onCyclePalette}
-            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/[0.06]"
-          >
-            <span
-              className="h-5 w-5 rounded-full border border-border-strong"
-              style={{
-                background:
-                  palette === 'A'
-                    ? 'linear-gradient(90deg, #22c55e 50%, #3b82f6 50%)'
-                    : 'linear-gradient(90deg, #a855f7 50%, #ec4899 50%)',
-              }}
-            />
-          </button>
+          <Divider />
+          <MoreMenu
+            isEmpty={isEmpty}
+            musicMode={musicMode}
+            onToggleMusic={onToggleMusic}
+            learningMode={learningMode}
+            onToggleLearning={onToggleLearning}
+            playing={playing}
+            onPlayToggle={onPlayToggle}
+            palette={palette}
+            onCyclePalette={onCyclePalette}
+            onReplay={onReplay}
+          />
         </>
-      )}
-      </>
-      )}
-
-      {onReplay && !minimal && (
-        <IconButton label="Replay drawing" disabled={isEmpty} onClick={onReplay}>
-          <PlayIcon />
-        </IconButton>
       )}
 
       {onFindReplace && (

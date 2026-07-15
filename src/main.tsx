@@ -1,8 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ClerkProvider } from '@clerk/clerk-react';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { CLERK_PUBLISHABLE_KEY, isClerkConfigured } from './lib/clerkConfig';
 import './index.css';
 
 const rootEl = document.getElementById('root');
@@ -10,11 +12,25 @@ if (!rootEl) {
   throw new Error('Root element #root not found');
 }
 
+// ClerkProvider wraps App here, not inside App.tsx — auth context sits
+// outside the document/canvas state tree entirely (ADR 002). When Clerk
+// isn't configured (no publishable key), skip the provider rather than
+// crash: sign-in is opt-in, so a build with no Clerk env is just a build
+// where every sync hook sees "signed out" and the app runs local-only,
+// exactly as it always has.
+const app = (
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
+
 createRoot(rootEl).render(
   <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    {isClerkConfigured ? (
+      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY!}>{app}</ClerkProvider>
+    ) : (
+      app
+    )}
   </StrictMode>,
 );
 

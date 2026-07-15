@@ -19,7 +19,11 @@ export interface RefineActionDef {
   label: string;
 }
 
-/** Refine chips, in display order. Mirrors the api/refine.ts prompt set. */
+/** Refine chips, in display order. Mirrors the api/refine.ts prompt set.
+ *  Ask/Translate were previously reachable only via the selection toolbar's
+ *  one-tap actions (Workspace.tsx's onAsk/onTranslate) even though the
+ *  backend has always supported both as ordinary zero-argument actions —
+ *  now surfaced here too so they don't require making a selection first. */
 export const REFINE_ACTIONS: RefineActionDef[] = [
   { key: 'polish', label: 'Polish' },
   { key: 'grammar', label: 'Fix grammar' },
@@ -27,22 +31,13 @@ export const REFINE_ACTIONS: RefineActionDef[] = [
   { key: 'todo', label: 'To-do list' },
   { key: 'formal', label: 'Formal' },
   { key: 'casual', label: 'Casual' },
+  { key: 'ask', label: 'Ask Stylus' },
+  { key: 'translate', label: 'Translate' },
 ];
-
-/**
- * Labels for actions not shown as studio chips but triggered from the selection
- * toolbar (Ask Stylus, Translate).
- */
-const EXTRA_LABELS: Partial<Record<RefineAction, string>> = {
-  ask: 'Ask Stylus',
-  translate: 'Translate',
-};
 
 /** Map an action key to its human label. */
 export function refineLabel(key: RefineAction): string {
-  return (
-    REFINE_ACTIONS.find((a) => a.key === key)?.label ?? EXTRA_LABELS[key] ?? key
-  );
+  return REFINE_ACTIONS.find((a) => a.key === key)?.label ?? key;
 }
 
 /** Hard ceiling on a single refine call, so "Thinking…" can't hang forever. */

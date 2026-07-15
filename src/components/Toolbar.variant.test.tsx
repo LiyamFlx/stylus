@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Toolbar } from './Toolbar';
 import type { ComponentProps } from 'react';
@@ -11,6 +11,7 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof Toolbar>> = {}) 
     color: '#000000',
     size: 4,
     penType: 'fountain',
+    shapeType: 'rect',
     paper: 'notebook',
     canUndo: true,
     canRedo: true,
@@ -20,6 +21,7 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof Toolbar>> = {}) 
     onColorChange: noop,
     onSizeChange: noop,
     onPenTypeChange: noop,
+    onShapeTypeChange: noop,
     onPaperSelect: noop,
     onUndo: noop,
     onRedo: noop,
@@ -43,16 +45,20 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof Toolbar>> = {}) 
 describe('Toolbar variants (Phase 1 item 7)', () => {
   it("'full' shows the peripheral groups", () => {
     renderToolbar({ variant: 'full' });
-    expect(screen.getByRole('button', { name: /music mode/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument();
+    // Music mode / learning mode live in the "More" overflow menu now.
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: /music mode/i })).toBeInTheDocument();
+    // Exports live in the "Export" menu now.
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(screen.getByRole('menuitem', { name: /Export PDF/i })).toBeInTheDocument();
   });
 
-  it("'minimal' hides music/learning and the pen-type picker but keeps core editing", () => {
+  it("'minimal' hides the More menu and the pen-type picker but keeps core editing", () => {
     renderToolbar({ variant: 'minimal' });
-    expect(screen.queryByRole('button', { name: /music mode/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Learning Mode/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
     // Core surface intact:
-    expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(screen.getByRole('menuitem', { name: /Export PDF/i })).toBeInTheDocument();
     // Colors live in a dropdown now — open it, then the swatches show.
     fireEvent.click(screen.getByRole('button', { name: /^Color:/i }));
     expect(screen.getAllByRole('button', { name: /^Color /i }).length).toBeGreaterThan(0);
@@ -75,5 +81,51 @@ describe('Toolbar variants (Phase 1 item 7)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Color:/i }));
     expect(screen.getAllByRole('button', { name: /^Color /i })).toHaveLength(2);
     expect(screen.queryByLabelText(/Pick a custom color/i)).toBeNull();
+  });
+});
+
+describe('Shape tool (item #6)', () => {
+  it('shows the Shape button, active when the shape tool is selected', () => {
+    renderToolbar({ tool: 'shape' });
+    expect(screen.getByRole('button', { name: 'Shape' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clicking Shape switches the active tool', () => {
+    const onToolChange = vi.fn();
+    renderToolbar({ tool: 'pen', onToolChange });
+    fireEvent.click(screen.getByRole('button', { name: 'Shape' }));
+    expect(onToolChange).toHaveBeenCalledWith('shape');
+  });
+
+  it('shows the shape-type picker only when the shape tool is active, in full variant', () => {
+    renderToolbar({ tool: 'pen', variant: 'full' });
+    expect(screen.queryByRole('button', { name: /^Shape type:/i })).toBeNull();
+
+    renderToolbar({ tool: 'shape', variant: 'full' });
+    expect(screen.getByRole('button', { name: /^Shape type:/i })).toBeInTheDocument();
+  });
+
+  it('hides the shape-type picker in minimal variant even when the shape tool is active', () => {
+    renderToolbar({ tool: 'shape', variant: 'minimal' });
+    expect(screen.queryByRole('button', { name: /^Shape type:/i })).toBeNull();
+  });
+
+  it('picking a shape sub-type calls onShapeTypeChange and switches to the shape tool', () => {
+    // The picker only mounts while the shape tool is already active (same
+    // pattern as PenTypePicker only showing while the pen tool is active) —
+    // start there; handleShapeTypeChange still re-asserts onToolChange so
+    // picking a sub-type from any starting tool would land on 'shape'.
+    const onShapeTypeChange = vi.fn();
+    const onToolChange = vi.fn();
+    renderToolbar({ tool: 'shape', shapeType: 'rect', onShapeTypeChange, onToolChange });
+    fireEvent.click(screen.getByRole('button', { name: /^Shape type:/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Ellipse' }));
+    expect(onShapeTypeChange).toHaveBeenCalledWith('ellipse');
+    expect(onToolChange).toHaveBeenCalledWith('shape');
+  });
+
+  it('restricted (exam lock) variant hides the Shape tool entirely', () => {
+    renderToolbar({ variant: 'restricted', examLock: true, onToggleExamLock: noop });
+    expect(screen.queryByRole('button', { name: 'Shape' })).toBeNull();
   });
 });

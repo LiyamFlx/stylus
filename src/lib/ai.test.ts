@@ -7,14 +7,16 @@ describe('refineLabel', () => {
     expect(refineLabel('summarize')).toBe('Summarize');
   });
 
-  it('labels the selection-toolbar actions that are not studio chips', () => {
+  it('labels Ask Stylus and Translate the same as the selection toolbar', () => {
+    // Both are also reachable via Workspace's onAsk/onTranslate one-tap
+    // selection-toolbar actions — the label must match everywhere it appears.
     expect(refineLabel('ask')).toBe('Ask Stylus');
     expect(refineLabel('translate')).toBe('Translate');
   });
 
-  it('does not surface ask/translate as studio refine chips', () => {
+  it('surfaces ask/translate as studio refine chips, not selection-only', () => {
     const keys = REFINE_ACTIONS.map((a) => a.key);
-    expect(keys).not.toContain('ask');
-    expect(keys).not.toContain('translate');
+    expect(keys).toContain('ask');
+    expect(keys).toContain('translate');
   });
 });

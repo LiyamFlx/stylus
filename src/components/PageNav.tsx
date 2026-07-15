@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { PageMeta } from '../lib/documents';
 import { pageInkKey, resolvePageTemplateId } from '../lib/documents';
 import { ensureTemplateBitmap, getTemplateBitmap } from '../lib/templates';
-import { loadStrokes } from '../hooks/useLocalStorage';
+import { loadContent } from '../hooks/useLocalStorage';
 import { A4_BOUNDS } from '../lib/geometry';
 import { renderAll } from '../lib/render';
 import { ConfirmDialog } from './Dialog';
-import { PlusIcon, TrashIcon } from './icons';
+import { ChevronDownIcon, ChevronRightIcon, PlusIcon, TrashIcon } from './icons';
 
 interface PageNavProps {
   docId: string;
@@ -21,6 +21,8 @@ interface PageNavProps {
   defaultTemplateId?: string;
   /** Opens the page-template picker for the active page. */
   onOpenTemplates?: () => void;
+  /** Commits a full reordering of the thumbnail rail (drag-to-reorder). */
+  onReorder?: (orderedIds: string[]) => void;
 }
 
 const THUMB_W = 44;
@@ -87,7 +89,9 @@ function renderThumb(docId: string, page: PageMeta, templateId: string | null): 
   const cached = thumbCache.get(page.id);
   if (cached && cached.fp === fp) return cached.url;
 
-  const strokes = raw ? loadStrokes(pageInkKey(docId, page.id)) : [];
+  const { strokes, shapes } = raw
+    ? loadContent(pageInkKey(docId, page.id))
+    : { strokes: [], shapes: [] };
 
   const canvas = document.createElement('canvas');
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -102,7 +106,7 @@ function renderThumb(docId: string, page: PageMeta, templateId: string | null): 
   const ox = (THUMB_W - pageW * scale) / 2;
   const oy = (THUMB_H - pageH * scale) / 2;
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, ox * dpr, oy * dpr);
-  renderAll(ctx, strokes, pageW, pageH, { paper: page.paper, templateId });
+  renderAll(ctx, strokes, pageW, pageH, { paper: page.paper, templateId, shapes });
 
   try {
     const url = canvas.toDataURL('image/png');
@@ -122,13 +126,34 @@ function scheduleIdle(fn: () => void): () => void {
   return () => clearTimeout(id);
 }
 
-function Thumb({ docId, page, active, index, defaultTemplateId, onSelect }: {
+function Thumb({
+  docId,
+  page,
+  active,
+  index,
+  defaultTemplateId,
+  onSelect,
+  draggable,
+  isDragging,
+  isDropTarget,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDrop,
+}: {
   docId: string;
   page: PageMeta;
   active: boolean;
   index: number;
   defaultTemplateId?: string;
   onSelect: (id: string) => void;
+  draggable: boolean;
+  isDragging: boolean;
+  isDropTarget: boolean;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  onDrop: (e: React.DragEvent) => void;
 }) {
   const [url, setUrl] = useState<string | null>(() => thumbCache.get(page.id)?.url ?? null);
 
@@ -157,13 +182,20 @@ function Thumb({ docId, page, active, index, defaultTemplateId, onSelect }: {
       aria-label={`Page ${index + 1}`}
       aria-current={active ? 'page' : undefined}
       onClick={() => onSelect(page.id)}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDrop={onDrop}
       className={[
         'relative shrink-0 overflow-hidden rounded-md border transition-colors',
         active
           ? 'border-brand-500 ring-1 ring-brand-500/50'
           : 'border-border-strong hover:border-ink-400',
+        isDragging ? 'opacity-40' : '',
+        isDropTarget ? 'ring-2 ring-brand-500' : '',
       ].join(' ')}
-      style={{ width: THUMB_W, height: THUMB_H }}
+      style={{ width: THUMB_W, height: THUMB_H, cursor: draggable ? 'grab' : undefined }}
     >
       {url ? (
         <img src={url} alt="" width={THUMB_W} height={THUMB_H} draggable={false} aria-hidden />
@@ -192,11 +224,20 @@ export function PageNav({
   onDeleteActive,
   defaultTemplateId,
   onOpenTemplates,
+  onReorder,
 }: PageNavProps) {
   const [railOpen, setRailOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const activeIndex = pages.findIndex((p) => p.id === activePageId);
   const railRef = useRef<HTMLDivElement>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  // Jump-to-page (item #12): click the count to edit it directly, distinct
+  // from the rail-toggle chevron beside it so the two actions never collide
+  // on the same click target.
+  const [editingIndex, setEditingIndex] = useState(false);
+  const [jumpValue, setJumpValue] = useState('');
+  const jumpInputRef = useRef<HTMLInputElement>(null);
 
   // Keep the active thumb in view when flipping with the rail open.
   useEffect(() => {
@@ -204,6 +245,37 @@ export function PageNav({
     railRef.current
       ?.children[activeIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [railOpen, activeIndex]);
+
+  useEffect(() => {
+    if (!editingIndex) return;
+    jumpInputRef.current?.focus();
+    jumpInputRef.current?.select();
+  }, [editingIndex]);
+
+  const startEditingIndex = () => {
+    setJumpValue(String(activeIndex + 1));
+    setEditingIndex(true);
+  };
+
+  const commitJump = () => {
+    const n = Number(jumpValue);
+    if (Number.isInteger(n) && n >= 1 && n <= pages.length) {
+      onSelect(pages[n - 1].id);
+    }
+    setEditingIndex(false);
+  };
+
+  const commitReorder = (targetId: string) => {
+    if (!onReorder || !dragId || dragId === targetId) return;
+    const ids = pages.map((p) => p.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...ids];
+    next.splice(from, 1);
+    next.splice(to, 0, dragId);
+    onReorder(next);
+  };
 
   if (pages.length === 0) return null;
 
@@ -223,6 +295,25 @@ export function PageNav({
               active={p.id === activePageId}
               defaultTemplateId={defaultTemplateId}
               onSelect={onSelect}
+              draggable={Boolean(onReorder)}
+              isDragging={dragId === p.id}
+              isDropTarget={dropTargetId === p.id && dragId !== p.id}
+              onDragStart={() => setDragId(p.id)}
+              onDragOver={(e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                setDropTargetId(p.id);
+              }}
+              onDragEnd={() => {
+                setDragId(null);
+                setDropTargetId(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                commitReorder(p.id);
+                setDragId(null);
+                setDropTargetId(null);
+              }}
             />
           ))}
         </div>
@@ -239,14 +330,53 @@ export function PageNav({
           ‹
         </button>
 
+        {editingIndex ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              commitJump();
+            }}
+            className="flex items-center gap-0.5 px-1"
+          >
+            <input
+              ref={jumpInputRef}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={pages.length}
+              value={jumpValue}
+              aria-label={`Go to page, 1 to ${pages.length}`}
+              onChange={(e) => setJumpValue(e.target.value)}
+              onBlur={commitJump}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditingIndex(false);
+                }
+              }}
+              className="w-9 rounded-md border border-border-strong bg-bg px-1 py-0.5 text-center font-mono text-[12px] tabular-nums text-ink-900 outline-none focus:border-brand-500"
+            />
+            <span className="font-mono text-[12px] text-ink-400">/ {pages.length}</span>
+          </form>
+        ) : (
+          <button
+            type="button"
+            aria-label={`Page ${activeIndex + 1} of ${pages.length}. Click to jump to a page.`}
+            onClick={startEditingIndex}
+            className="min-w-[52px] rounded-full px-1.5 py-2.5 font-mono text-[12px] tabular-nums text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
+          >
+            {activeIndex + 1} / {pages.length}
+          </button>
+        )}
+
         <button
           type="button"
           aria-label={railOpen ? 'Hide page thumbnails' : 'Show page thumbnails'}
           aria-expanded={railOpen}
           onClick={() => setRailOpen((o) => !o)}
-          className="min-w-[64px] rounded-full px-2 py-2.5 font-mono text-[12px] tabular-nums text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-ink-700 transition-colors hover:bg-white/[0.06] active:bg-white/10"
         >
-          {activeIndex + 1} / {pages.length}
+          {railOpen ? <ChevronDownIcon size={15} /> : <ChevronRightIcon size={15} />}
         </button>
 
         <button

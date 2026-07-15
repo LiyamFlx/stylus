@@ -15,6 +15,7 @@ import {
   renameDocument,
   renameFolder,
   setCurrentId as persistCurrentId,
+  setDocumentPinned,
 } from '../lib/documents';
 
 export interface UseDocumentsResult {
@@ -33,6 +34,7 @@ export interface UseDocumentsResult {
   renameFolder: (id: string, name: string) => void;
   removeFolder: (id: string) => void;
   moveToFolder: (docId: string, folderId?: string) => void;
+  setPinned: (id: string, pinned: boolean) => void;
 }
 
 /** React state over the local multi-document store. */
@@ -128,6 +130,14 @@ export function useDocuments(): UseDocumentsResult {
     [refresh],
   );
 
+  const setPinned = useCallback(
+    (id: string, pinned: boolean) => {
+      setDocumentPinned(id, pinned, Date.now());
+      refresh();
+    },
+    [refresh],
+  );
+
   return {
     docs,
     currentId,
@@ -140,5 +150,6 @@ export function useDocuments(): UseDocumentsResult {
     renameFolder: renameFolderAction,
     removeFolder,
     moveToFolder,
+    setPinned,
   };
 }

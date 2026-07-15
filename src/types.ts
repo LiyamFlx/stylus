@@ -9,7 +9,7 @@
 
 import type { PenType } from './lib/penProfiles';
 
-export type Tool = 'pen' | 'eraser' | 'text' | 'select';
+export type Tool = 'pen' | 'eraser' | 'text' | 'select' | 'shape';
 
 /** A single sampled point along a stroke. */
 export interface InkPoint {
@@ -108,6 +108,53 @@ export interface Stroke {
   /** Pen used to draw it. Optional for back-compat; renders as fountain. */
   penType?: PenType;
   points: InkPoint[];
+}
+
+export const SHAPE_TYPES = ['rect', 'ellipse', 'line', 'arrow'] as const;
+export type ShapeType = (typeof SHAPE_TYPES)[number];
+
+/**
+ * A drawn geometric primitive — distinct from {@link Stroke} (freehand ink
+ * points) rather than a tagged union sharing the strokes array. Every
+ * existing `Stroke[]`-typed call site (culling, hit-testing, rendering,
+ * undo diffing — 39+ in useDrawing.ts alone) stays untouched; shapes are
+ * additive everywhere rather than requiring a discriminant check threaded
+ * through all of them.
+ *
+ * Represented as two corners (x1,y1)–(x2,y2) for every shape type, not a
+ * per-type geometry union: rect/ellipse read them as opposite bounding-box
+ * corners, line/arrow read them as the two endpoints. One drag gesture
+ * (down → move → up) naturally produces exactly this shape regardless of
+ * which tool sub-type is active, so the capture code doesn't need to branch
+ * on type to know what it's recording.
+ */
+export interface Shape {
+  /** Stable id, used for hit-testing / selection — must not collide with
+   *  Stroke ids (both use createId(), so the id spaces are already disjoint
+   *  in practice, but a mixed selection set relies on this holding). */
+  id: string;
+  type: ShapeType;
+  /** Hex color, matches the pen palette. */
+  color: string;
+  /** Stroke line width in CSS px — shapes are outlined, not filled. */
+  size: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /**
+   * Rotation in radians about the shape's own bounding-box center, applied
+   * at render/hit-test time — NOT baked into x1/y1/x2/y2. Rect/ellipse need
+   * this because rotating their two CORNER points directly would stop them
+   * describing an axis-aligned box (the shape would silently render wrong
+   * — an unrotated box drawn from rotated corners is not the same
+   * rectangle). Line/arrow don't strictly need it (rotating their two
+   * endpoints IS correct, since a line has no "axis-aligned" constraint to
+   * violate), but they use the same field for consistency — one rotation
+   * mechanism for every shape type, not two. Undefined = 0 (back-compat /
+   * default for a freshly-drawn, never-rotated shape).
+   */
+  rotation?: number;
 }
 
 /** Pen sizes exposed in the toolbar (CSS px). */

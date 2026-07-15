@@ -1,4 +1,4 @@
-import type { InkPoint, Stroke } from '../types';
+import type { InkPoint, Shape, Stroke } from '../types';
 
 /** Build an InkPoint with sensible defaults; override what the test cares about. */
 export function point(x: number, y: number, over: Partial<InkPoint> = {}): InkPoint {
@@ -15,6 +15,21 @@ export function stroke(
     color: '#fafafa',
     size: 4,
     points: coords.map(([x, y]) => point(x, y)),
+    ...over,
+  };
+}
+
+/** Build a Shape with sensible defaults; override what the test cares about. */
+export function shape(over: Partial<Shape> = {}): Shape {
+  return {
+    id: 'test-shape',
+    type: 'rect',
+    color: '#fafafa',
+    size: 4,
+    x1: 0,
+    y1: 0,
+    x2: 100,
+    y2: 50,
     ...over,
   };
 }

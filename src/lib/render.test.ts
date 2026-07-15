@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { drawStroke, renderAll } from './render';
+import { drawShape, drawStroke, renderAll } from './render';
 import { stroke } from '../test/fixtures';
+import type { Shape } from '../types';
 
 /** A minimal mock 2D context recording the calls render.ts makes. */
 function mockCtx() {
@@ -13,7 +14,9 @@ function mockCtx() {
     globalAlpha: 1,
     globalCompositeOperation: 'source-over',
     beginPath: vi.fn(),
+    closePath: vi.fn(),
     arc: vi.fn(),
+    ellipse: vi.fn(),
     fill: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
@@ -26,8 +29,23 @@ function mockCtx() {
     rect: vi.fn(),
     clip: vi.fn(),
     translate: vi.fn(),
+    rotate: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(),
+  };
+}
+
+function shape(over: Partial<Shape> = {}): Shape {
+  return {
+    id: 'test-shape',
+    type: 'rect',
+    color: '#fafafa',
+    size: 4,
+    x1: 0,
+    y1: 0,
+    x2: 100,
+    y2: 50,
+    ...over,
   };
 }
 
@@ -79,6 +97,78 @@ describe('drawStroke', () => {
   });
 });
 
+describe('drawShape', () => {
+  it('draws a rect via strokeRect, never fills it', () => {
+    const ctx = mockCtx();
+    drawShape(ctx as unknown as CanvasRenderingContext2D, shape({ type: 'rect' }));
+    expect(ctx.strokeRect).toHaveBeenCalledTimes(1);
+    expect(ctx.fill).not.toHaveBeenCalled();
+  });
+
+  it('draws an ellipse via ctx.ellipse + stroke, not strokeRect', () => {
+    const ctx = mockCtx();
+    drawShape(ctx as unknown as CanvasRenderingContext2D, shape({ type: 'ellipse' }));
+    expect(ctx.ellipse).toHaveBeenCalledTimes(1);
+    expect(ctx.strokeRect).not.toHaveBeenCalled();
+  });
+
+  it('rotates a rect about its center when rotation is set', () => {
+    const ctx = mockCtx();
+    drawShape(
+      ctx as unknown as CanvasRenderingContext2D,
+      shape({ type: 'rect', rotation: Math.PI / 4 }),
+    );
+    expect(ctx.translate).toHaveBeenCalledTimes(2); // to center, back from center
+    expect(ctx.rotate).toHaveBeenCalledWith(Math.PI / 4);
+  });
+
+  it('does not rotate when rotation is unset', () => {
+    const ctx = mockCtx();
+    drawShape(ctx as unknown as CanvasRenderingContext2D, shape({ type: 'rect' }));
+    expect(ctx.rotate).not.toHaveBeenCalled();
+  });
+
+  it('draws a line as a single moveTo/lineTo/stroke, no fill', () => {
+    const ctx = mockCtx();
+    drawShape(
+      ctx as unknown as CanvasRenderingContext2D,
+      shape({ type: 'line', x1: 0, y1: 0, x2: 100, y2: 0 }),
+    );
+    expect(ctx.moveTo).toHaveBeenCalledWith(0, 0);
+    expect(ctx.lineTo).toHaveBeenCalledWith(100, 0);
+    expect(ctx.stroke).toHaveBeenCalledTimes(1);
+    expect(ctx.fill).not.toHaveBeenCalled();
+  });
+
+  it('draws an arrow as a line plus a filled triangular head', () => {
+    const ctx = mockCtx();
+    drawShape(
+      ctx as unknown as CanvasRenderingContext2D,
+      shape({ type: 'arrow', x1: 0, y1: 0, x2: 100, y2: 0 }),
+    );
+    expect(ctx.stroke).toHaveBeenCalledTimes(1); // the shaft
+    expect(ctx.closePath).toHaveBeenCalledTimes(1); // the head
+    expect(ctx.fill).toHaveBeenCalledTimes(1); // the head is filled
+  });
+
+  it('applies the shape color to both stroke and fill styles', () => {
+    const ctx = mockCtx();
+    drawShape(
+      ctx as unknown as CanvasRenderingContext2D,
+      shape({ color: '#3b82f6' }),
+    );
+    expect(ctx.strokeStyle).toBe('#3b82f6');
+    expect(ctx.fillStyle).toBe('#3b82f6');
+  });
+
+  it('wraps drawing in save/restore so state never leaks across shapes', () => {
+    const ctx = mockCtx();
+    drawShape(ctx as unknown as CanvasRenderingContext2D, shape());
+    expect(ctx.save).toHaveBeenCalledTimes(1);
+    expect(ctx.restore).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('renderAll', () => {
   it('clears the canvas before drawing the strokes', () => {
     const ctx = mockCtx();
@@ -112,6 +202,50 @@ describe('renderAll', () => {
     renderAll(ctx as unknown as CanvasRenderingContext2D, [], 10, 10);
     expect(ctx.clearRect).toHaveBeenCalledTimes(1);
     expect(ctx.beginPath).not.toHaveBeenCalled();
+  });
+
+  it('draws shapes after every stroke', () => {
+    const ctx = mockCtx();
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [stroke([[0, 0]])], 200, 200, {
+      shapes: [shape({ type: 'rect' })],
+    });
+    expect(ctx.arc).toHaveBeenCalledTimes(1); // the stroke's single-point dot
+    expect(ctx.strokeRect).toHaveBeenCalledTimes(1); // the rect
+  });
+
+  it('omitting shapes entirely draws none (default empty array)', () => {
+    const ctx = mockCtx();
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [], 200, 200);
+    expect(ctx.strokeRect).not.toHaveBeenCalled();
+  });
+
+  it('culls a shape whose bounds miss the visible rect, same as strokes', () => {
+    const ctx = mockCtx();
+    const farShape = shape({ x1: 5000, y1: 5000, x2: 5100, y2: 5050 });
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [], 200, 200, {
+      shapes: [farShape],
+      cull: { minX: 0, minY: 0, maxX: 200, maxY: 200 },
+    });
+    expect(ctx.strokeRect).not.toHaveBeenCalled();
+  });
+
+  it('does not cull a shape whose bounds intersect the visible rect', () => {
+    const ctx = mockCtx();
+    const visibleShape = shape({ x1: 10, y1: 10, x2: 50, y2: 50 });
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [], 200, 200, {
+      shapes: [visibleShape],
+      cull: { minX: 0, minY: 0, maxX: 200, maxY: 200 },
+    });
+    expect(ctx.strokeRect).toHaveBeenCalledTimes(1);
+  });
+
+  it('never culls shapes when cull is omitted (export path)', () => {
+    const ctx = mockCtx();
+    const farShape = shape({ x1: 99999, y1: 99999, x2: 99999, y2: 99999 });
+    renderAll(ctx as unknown as CanvasRenderingContext2D, [], 200, 200, {
+      shapes: [farShape],
+    });
+    expect(ctx.strokeRect).toHaveBeenCalledTimes(1);
   });
 
   it('renders the paper guide for a non-blank style', () => {

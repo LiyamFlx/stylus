@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react';
 import type { DocMeta, Folder } from '../lib/documents';
 import { searchDocuments } from '../lib/documents';
 import { initials } from '../lib/profile';
+import {
+  estimateLocalStorageUsage,
+  formatBytes,
+  STORAGE_WARNING_THRESHOLD,
+} from '../lib/storageUsage';
 import { ConfirmDialog, PromptDialog } from './Dialog';
 import {
   ChevronDownIcon,
@@ -10,6 +15,7 @@ import {
   DocumentIcon,
   EditIcon,
   FolderIcon,
+  PinIcon,
   PlusIcon,
   SearchIcon,
   TrashIcon,
@@ -36,6 +42,7 @@ interface SidebarProps {
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveDoc: (docId: string, folderId?: string) => void;
+  onTogglePin: (id: string, pinned: boolean) => void;
 }
 
 /**
@@ -64,6 +71,7 @@ export function Sidebar({
   onRenameFolder,
   onDeleteFolder,
   onMoveDoc,
+  onTogglePin,
 }: SidebarProps) {
   // Documents targeted by the rename / delete dialogs (null = closed).
   const [renaming, setRenaming] = useState<DocMeta | null>(null);
@@ -82,6 +90,16 @@ export function Sidebar({
   // `docs` in the deps re-triggers a re-scan whenever content changes.
   const searchResults = useMemo(() => searchDocuments(query), [query, docs]);
 
+  // Recomputed each time the drawer opens (and whenever the doc list changes
+  // while it's open) rather than subscribed live — a synchronous scan over
+  // every localStorage key is cheap, but there's no benefit to running it on
+  // renders where the sidebar isn't even visible.
+  const storageUsage = useMemo(
+    () => (open ? estimateLocalStorageUsage() : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [open, docs],
+  );
+
   const toggleCollapsed = (id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -98,6 +116,21 @@ export function Sidebar({
 
   const docsIn = (folderId?: string) =>
     docs.filter((d) => d.folderId === folderId).sort((a, b) => b.updatedAt - a.updatedAt);
+
+  // Pinned/Recent (Phase 1 item #10) live above the folder tree regardless of
+  // which folder a doc is filed in — pinning and organizing are independent.
+  const pinnedDocs = useMemo(
+    () =>
+      docs
+        .filter((d) => d.pinnedAt !== undefined)
+        .sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)),
+    [docs],
+  );
+  const RECENT_LIMIT = 5;
+  const recentDocs = useMemo(
+    () => [...docs].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, RECENT_LIMIT),
+    [docs],
+  );
 
   const handleDropOnFolder = (folderId?: string) => {
     if (dragDocId) onMoveDoc(dragDocId, folderId);
@@ -222,6 +255,58 @@ export function Sidebar({
           </div>
         </div>
 
+        {!query.trim() && (pinnedDocs.length > 0 || recentDocs.length > 0) && (
+          <div className="flex flex-col gap-3 px-2 pb-2 pt-3">
+            {pinnedDocs.length > 0 && (
+              <div>
+                <p className="mb-1 px-1 text-[10.5px] font-semibold uppercase tracking-eyebrow text-ink-400">
+                  Pinned
+                </p>
+                <ul>
+                  {pinnedDocs.map((doc) => (
+                    <DocRow
+                      key={doc.id}
+                      doc={doc}
+                      depth={0}
+                      active={doc.id === currentId}
+                      onSelectDoc={onSelectDoc}
+                      onRenameDoc={setRenaming}
+                      onDeleteDoc={setDeleting}
+                      onTogglePin={onTogglePin}
+                      dragDocId={dragDocId}
+                      setDragDocId={setDragDocId}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+            {recentDocs.length > 0 && (
+              <div>
+                <p className="mb-1 px-1 text-[10.5px] font-semibold uppercase tracking-eyebrow text-ink-400">
+                  Recent
+                </p>
+                <ul>
+                  {recentDocs.map((doc) => (
+                    <DocRow
+                      key={doc.id}
+                      doc={doc}
+                      depth={0}
+                      active={doc.id === currentId}
+                      onSelectDoc={onSelectDoc}
+                      onRenameDoc={setRenaming}
+                      onDeleteDoc={setDeleting}
+                      onTogglePin={onTogglePin}
+                      dragDocId={dragDocId}
+                      setDragDocId={setDragDocId}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="border-t border-border" />
+          </div>
+        )}
+
         {query.trim() ? (
           <ul className="flex-1 overflow-y-auto px-2 pb-4">
             {searchResults.length === 0 ? (
@@ -282,6 +367,7 @@ export function Sidebar({
                 onSelectDoc={onSelectDoc}
                 onRenameDoc={setRenaming}
                 onDeleteDoc={setDeleting}
+                onTogglePin={onTogglePin}
                 onRenameFolder={setRenamingFolder}
                 onDeleteFolder={setDeletingFolder}
                 onNewSubfolder={setNewFolderParent}
@@ -302,6 +388,7 @@ export function Sidebar({
                 onSelectDoc={onSelectDoc}
                 onRenameDoc={setRenaming}
                 onDeleteDoc={setDeleting}
+                onTogglePin={onTogglePin}
                 dragDocId={dragDocId}
                 setDragDocId={setDragDocId}
               />
@@ -316,6 +403,16 @@ export function Sidebar({
         <div className="border-t border-border p-4 text-[11px] leading-relaxed text-ink-400">
           Stylus — write every thought, on every device. Saved locally on this
           device.
+          {storageUsage && storageUsage.ratio >= STORAGE_WARNING_THRESHOLD && (
+            <p className="mt-2 flex items-start gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2.5 py-2 text-danger-text">
+              <span aria-hidden>⚠</span>
+              <span>
+                Storage is {Math.round(storageUsage.ratio * 100)}% full (
+                {formatBytes(storageUsage.usedBytes)} used). Export notes you
+                want to keep, or delete old ones, to avoid losing new changes.
+              </span>
+            </p>
+          )}
         </div>
       </aside>
 
@@ -399,6 +496,7 @@ function FolderNode({
   onSelectDoc,
   onRenameDoc,
   onDeleteDoc,
+  onTogglePin,
   onRenameFolder,
   onDeleteFolder,
   onNewSubfolder,
@@ -419,6 +517,7 @@ function FolderNode({
   onSelectDoc: (id: string) => void;
   onRenameDoc: (doc: DocMeta) => void;
   onDeleteDoc: (doc: DocMeta) => void;
+  onTogglePin: (id: string, pinned: boolean) => void;
   onRenameFolder: (folder: Folder) => void;
   onDeleteFolder: (folder: Folder) => void;
   onNewSubfolder: (folder: Folder) => void;
@@ -510,6 +609,7 @@ function FolderNode({
               onSelectDoc={onSelectDoc}
               onRenameDoc={onRenameDoc}
               onDeleteDoc={onDeleteDoc}
+              onTogglePin={onTogglePin}
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
               onNewSubfolder={onNewSubfolder}
@@ -529,6 +629,7 @@ function FolderNode({
               onSelectDoc={onSelectDoc}
               onRenameDoc={onRenameDoc}
               onDeleteDoc={onDeleteDoc}
+              onTogglePin={onTogglePin}
               dragDocId={dragDocId}
               setDragDocId={setDragDocId}
             />
@@ -547,6 +648,7 @@ function DocRow({
   onSelectDoc,
   onRenameDoc,
   onDeleteDoc,
+  onTogglePin,
   dragDocId,
   setDragDocId,
 }: {
@@ -556,9 +658,11 @@ function DocRow({
   onSelectDoc: (id: string) => void;
   onRenameDoc: (doc: DocMeta) => void;
   onDeleteDoc: (doc: DocMeta) => void;
+  onTogglePin: (id: string, pinned: boolean) => void;
   dragDocId: string | null;
   setDragDocId: (id: string | null) => void;
 }) {
+  const pinned = doc.pinnedAt !== undefined;
   return (
     <li className="group">
       <div
@@ -617,6 +721,18 @@ function DocRow({
               Note
             </span>
           )}
+        </button>
+        <button
+          type="button"
+          aria-label={pinned ? `Unpin ${doc.name}` : `Pin ${doc.name}`}
+          aria-pressed={pinned}
+          onClick={() => onTogglePin(doc.id, !pinned)}
+          className={[
+            'flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/[0.08] focus:opacity-100 group-hover:opacity-100',
+            pinned ? 'text-brand-500 opacity-100' : 'text-ink-400 opacity-0 hover:text-ink-900',
+          ].join(' ')}
+        >
+          <PinIcon size={13} />
         </button>
         <button
           type="button"

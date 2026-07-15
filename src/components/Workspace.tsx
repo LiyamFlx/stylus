@@ -22,7 +22,8 @@ import type { RefineAction } from '../lib/ai';
 import { copyText } from '../lib/clipboard';
 import { createId } from '../lib/id';
 import { useEditingPrefs } from '../lib/editingPrefsContext';
-import { loadStrokes } from '../hooks/useLocalStorage';
+import { loadContent } from '../hooks/useLocalStorage';
+import type { DrawingContent } from '../hooks/useLocalStorage';
 import { useRecognition } from '../hooks/useRecognition';
 import { useScanmarkerScanner } from '../hooks/useScanmarkerScanner';
 import { useBluetoothStylus } from '../hooks/useBluetoothStylus';
@@ -76,6 +77,15 @@ interface WorkspaceProps {
    *  i.e. a paginated notebook document with pages to flip between. */
   onSwipePrevPage?: () => void;
   onSwipeNextPage?: () => void;
+  /** Fired after a debounced local ink+shapes save lands (ADR 002 sync
+   *  boundary). Additive: omitting it changes nothing about local
+   *  persistence. */
+  onStrokesSaved?: (
+    docId: string,
+    pageId: string | null,
+    content: DrawingContent,
+    savedAt: number,
+  ) => void;
   /** Mode color palette (ModeConfig.paletteOverride) — closed set when given. */
   paletteOverride?: readonly string[];
   /** Base toolbar composition from ModeConfig; exam lock overrides to
@@ -85,9 +95,9 @@ interface WorkspaceProps {
    *  entry uses the active box's real <textarea> (native OS keyboard on phones). */
   appMode?: AppMode;
   /** Undo/redo seed from the page-flip history cache. */
-  initialHistory?: HistorySnapshot<Stroke[]>;
+  initialHistory?: HistorySnapshot<DrawingContent>;
   /** Called on unmount so App can cache this page's undo/redo stacks. */
-  onHistorySnapshot?: (pageId: string, snap: HistorySnapshot<Stroke[]>) => void;
+  onHistorySnapshot?: (pageId: string, snap: HistorySnapshot<DrawingContent>) => void;
   /** Exam lock, owned by App so it survives page-flip remounts. */
   examLock?: boolean;
   onToggleExamLock?: () => void;
@@ -115,6 +125,7 @@ export function Workspace({
   pageNav,
   onSwipePrevPage,
   onSwipeNextPage,
+  onStrokesSaved,
   paletteOverride,
   toolbarVariant = 'full',
   appMode = 'canvas',
@@ -129,10 +140,12 @@ export function Workspace({
     color,
     size,
     penType,
+    shapeType,
     setTool: onToolChange,
     setColor: onColorChange,
     setSize: onSizeChange,
     setPenType: onPenTypeChange,
+    setShapeType: onShapeTypeChange,
   } = useEditingPrefs();
 
   // NoteWorkspace.tsx pages read per-page aux (texts + images) + PageMeta paper;
@@ -230,6 +243,7 @@ export function Workspace({
     ruling,
     templateId: pageTemplateId,
     penType,
+    shapeType,
     stabilizer,
     storageKey: pageId ? pageInkKey(documentId, pageId) : inkKey(documentId),
     // NoteWorkspace.tsx pages are A4-shaped: pan can't take the page fully off-screen.
@@ -252,6 +266,9 @@ export function Workspace({
     onPenStart: learningAudio.onStrokeStart,
     onPenSample: learningAudio.onSample,
     onPenEnd: learningAudio.onStrokeEnd,
+    onStrokesSaved: onStrokesSaved
+      ? (content, savedAt) => onStrokesSaved(documentId, pageId, content, savedAt)
+      : undefined,
   });
   const recognition = useRecognition();
 
@@ -468,8 +485,9 @@ export function Workspace({
       height: canvas?.clientHeight ?? window.innerHeight,
       paper,
       texts,
+      shapes: drawing.shapes,
     };
-  }, [drawing.canvasRef, paper, texts]);
+  }, [drawing.canvasRef, drawing.shapes, paper, texts]);
 
   const handleExportPNG = useCallback(async () => {
     const mod = await importChunk(() => import('../lib/export'));
@@ -500,14 +518,17 @@ export function Workspace({
     // boundary so a large noteWorkspace.tsx never blocks the UI thread.
     const defaultTemplateId = listDocuments().find((d) => d.id === documentId)
       ?.defaultPageTemplateId;
-    const pages = listPages(documentId).map((p) => ({
-      strokes:
-        p.id === pageId ? drawing.strokes : loadStrokes(pageInkKey(documentId, p.id)),
-      paper: p.paper,
-      ruling,
-      templateId: resolvePageTemplateId(defaultTemplateId, p),
-      texts: p.id === pageId ? texts : readPageAux(documentId, p.id).texts,
-    }));
+    const pages = listPages(documentId).map((p) => {
+      const other = p.id === pageId ? null : loadContent(pageInkKey(documentId, p.id));
+      return {
+        strokes: p.id === pageId ? drawing.strokes : (other?.strokes ?? []),
+        shapes: p.id === pageId ? drawing.shapes : (other?.shapes ?? []),
+        paper: p.paper,
+        ruling,
+        templateId: resolvePageTemplateId(defaultTemplateId, p),
+        texts: p.id === pageId ? texts : readPageAux(documentId, p.id).texts,
+      };
+    });
     // renderToCanvas is sync — every referenced template bitmap must be
     // decoded BEFORE export or those pages silently render the paper
     // fallback (ExportOptions.templateId's pre-ensure contract). Stays
@@ -518,7 +539,7 @@ export function Workspace({
       ),
     );
     mod.exportPDFPages(pages);
-  }, [pageId, appMode, documentId, ruling, texts, drawing.strokes, exportOpts]);
+  }, [pageId, appMode, documentId, ruling, texts, drawing.strokes, drawing.shapes, exportOpts]);
 
   /** All text boxes across the document — every page's for a notebook doc
    *  (mirrors handleExportPDF's page-gathering), just this doc's for
@@ -572,7 +593,7 @@ export function Workspace({
 
   // Copy the recognized text of the current lasso selection to the clipboard.
   const handleCopySelection = useCallback(async () => {
-    const ids = drawing.selection.selectedIds;
+    const ids = drawing.selection.selectedStrokeIds;
     const selected = drawing.strokes.filter((s) => ids.has(s.id));
     if (selected.length === 0) return;
     const gen = ++requestGen.current;
@@ -591,16 +612,16 @@ export function Workspace({
     } catch {
       if (gen === requestGen.current) toast.error("Couldn't copy — recognition failed.");
     }
-  }, [drawing.selection.selectedIds, drawing.strokes]);
+  }, [drawing.selection.selectedStrokeIds, drawing.strokes]);
 
   // AI action to auto-run in the studio panel once recognition lands (set by
   // the selection toolbar's Ask Stylus / Translate). null = manual studio.
   const [panelAutoAction, setPanelAutoAction] = useState<RefineAction | null>(null);
 
   const selectedStrokes = useCallback(() => {
-    const ids = drawing.selection.selectedIds;
+    const ids = drawing.selection.selectedStrokeIds;
     return drawing.strokes.filter((s) => ids.has(s.id));
-  }, [drawing.selection.selectedIds, drawing.strokes]);
+  }, [drawing.selection.selectedStrokeIds, drawing.strokes]);
 
   // Open the studio on the current selection and (optionally) auto-run an AI
   // action (Ask Stylus / Translate). Falls back to the whole canvas when the
@@ -826,7 +847,9 @@ export function Workspace({
     if (tool === 'eraser') return 'none';
     if (tool === 'select') {
       if (drawing.selection.phase === 'moving') return 'grabbing';
-      if (drawing.selection.selectedIds.size > 0) return 'grab';
+      if (drawing.selection.phase === 'resizing') return 'nwse-resize';
+      if (drawing.selection.phase === 'rotating') return 'grabbing';
+      if (drawing.selection.selectedStrokeIds.size > 0 || drawing.selection.selectedShapeIds.size > 0) return 'grab';
       return 'crosshair'; // lasso phase or idle with no selection
     }
     if (tool === 'text') return 'text';
@@ -898,7 +921,7 @@ export function Workspace({
       {tool === 'select' && (
         <SelectionToolbar
           bounds={drawing.selection.bounds}
-          selectedCount={drawing.selection.selectedIds.size}
+          selectedCount={drawing.selection.selectedStrokeIds.size + drawing.selection.selectedShapeIds.size}
           phase={drawing.selection.phase}
           view={drawing.view}
           onDelete={drawing.selection.deleteSelected}
@@ -964,6 +987,7 @@ export function Workspace({
         color={color}
         size={size}
         penType={penType}
+        shapeType={shapeType}
         paper={paper}
         canUndo={drawing.canUndo}
         canRedo={drawing.canRedo}
@@ -973,6 +997,7 @@ export function Workspace({
         onColorChange={onColorChange}
         onSizeChange={onSizeChange}
         onPenTypeChange={onPenTypeChange}
+        onShapeTypeChange={onShapeTypeChange}
         onPaperSelect={setPaper}
         onUndo={drawing.undo}
         onRedo={drawing.redo}

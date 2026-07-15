@@ -1,0 +1,905 @@
+<title>Stylus — 90-Day Roadmap</title>
+<style>
+  @font-face {
+    font-family: 'Source Serif';
+    src: local('Source Serif 4'), local('Source Serif Pro');
+    font-weight: 400 700;
+  }
+
+  :root {
+    --bg: #F7F5F0;
+    --bg-raised: #FFFFFF;
+    --bg-sunken: #EFEBE2;
+    --ink: #232019;
+    --ink-soft: #4A4640;
+    --ink-faint: #8B857A;
+    --line: #DDD7C9;
+    --line-strong: #C7BFAC;
+    --accent: #2B3A67;
+    --accent-soft: #D9DEEA;
+    --accent-tint: #EEF0F6;
+    --amber: #B4711E;
+    --amber-soft: #F3E3CE;
+    --amber-tint: #FAF1E4;
+    --good: #3E6B4F;
+    --good-soft: #DCEADF;
+    --danger: #A23B2E;
+    --danger-soft: #F3DFDB;
+    --shadow-sm: 0 1px 2px rgba(35,32,25,0.06), 0 1px 3px rgba(35,32,25,0.05);
+    --shadow-md: 0 4px 16px rgba(35,32,25,0.08), 0 2px 6px rgba(35,32,25,0.05);
+    --font-display: 'Source Serif', Georgia, 'Times New Roman', serif;
+    --font-body: 'Inter Variable', Inter, system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181B;
+      --bg-raised: #1E2024;
+      --bg-sunken: #121316;
+      --ink: #EDEBE5;
+      --ink-soft: #C9C6BD;
+      --ink-faint: #857F72;
+      --line: #34363B;
+      --line-strong: #454850;
+      --accent: #8C9BD4;
+      --accent-soft: #2A3247;
+      --accent-tint: #22283A;
+      --amber: #E2A863;
+      --amber-soft: #3D3020;
+      --amber-tint: #2A2418;
+      --good: #7FBB92;
+      --good-soft: #1F3226;
+      --danger: #E08977;
+      --danger-soft: #3A2420;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.25);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #17181B;
+    --bg-raised: #1E2024;
+    --bg-sunken: #121316;
+    --ink: #EDEBE5;
+    --ink-soft: #C9C6BD;
+    --ink-faint: #857F72;
+    --line: #34363B;
+    --line-strong: #454850;
+    --accent: #8C9BD4;
+    --accent-soft: #2A3247;
+    --accent-tint: #22283A;
+    --amber: #E2A863;
+    --amber-soft: #3D3020;
+    --amber-tint: #2A2418;
+    --good: #7FBB92;
+    --good-soft: #1F3226;
+    --danger: #E08977;
+    --danger-soft: #3A2420;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.25);
+  }
+
+  :root[data-theme="light"] {
+    --bg: #F7F5F0;
+    --bg-raised: #FFFFFF;
+    --bg-sunken: #EFEBE2;
+    --ink: #232019;
+    --ink-soft: #4A4640;
+    --ink-faint: #8B857A;
+    --line: #DDD7C9;
+    --line-strong: #C7BFAC;
+    --accent: #2B3A67;
+    --accent-soft: #D9DEEA;
+    --accent-tint: #EEF0F6;
+    --amber: #B4711E;
+    --amber-soft: #F3E3CE;
+    --amber-tint: #FAF1E4;
+    --good: #3E6B4F;
+    --good-soft: #DCEADF;
+    --danger: #A23B2E;
+    --danger-soft: #F3DFDB;
+    --shadow-sm: 0 1px 2px rgba(35,32,25,0.06), 0 1px 3px rgba(35,32,25,0.05);
+    --shadow-md: 0 4px 16px rgba(35,32,25,0.08), 0 2px 6px rgba(35,32,25,0.05);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+
+  .skip-link {
+    position: absolute;
+    left: -999px;
+    top: 0;
+  }
+  .skip-link:focus {
+    left: 1rem;
+    top: 1rem;
+    z-index: 100;
+    background: var(--accent);
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ---------- Header ---------- */
+
+  header {
+    padding: 3.5rem 2rem 2.5rem;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--amber);
+    font-weight: 600;
+    margin: 0 0 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 22px;
+    height: 1px;
+    background: var(--amber);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(2rem, 4.2vw, 3rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.85rem;
+    text-wrap: balance;
+    max-width: 18ch;
+  }
+
+  .lede {
+    font-size: 16.5px;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0 0 2rem;
+  }
+
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  .stat-row {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    max-width: 780px;
+  }
+
+  .stat {
+    flex: 1;
+    padding: 0.9rem 1.25rem 0.9rem 0;
+    border-right: 1px solid var(--line);
+  }
+  .stat:last-child { border-right: none; padding-right: 0; }
+  .stat:not(:first-child) { padding-left: 1.25rem; }
+
+  .stat-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--ink);
+    display: block;
+    line-height: 1.1;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 0.2rem;
+  }
+
+  /* ---------- Legend ---------- */
+
+  .legend {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.4rem;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    margin-bottom: 1.75rem;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+
+  .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  /* ---------- Phases layout ---------- */
+
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 2rem 5rem;
+  }
+
+  .phases {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.75rem;
+    position: relative;
+  }
+
+  @media (max-width: 920px) {
+    .phases { grid-template-columns: 1fr; gap: 2.5rem; }
+  }
+
+  .phase {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .phase-head {
+    margin-bottom: 1.1rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--phase-color, var(--accent));
+  }
+
+  .phase-number {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--phase-color, var(--accent));
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .phase-title {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 0.3rem 0 0.35rem;
+  }
+
+  .phase-days {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .phase-thesis {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+
+  .phase[data-phase="1"] { --phase-color: var(--good); }
+  .phase[data-phase="2"] { --phase-color: var(--accent); }
+  .phase[data-phase="3"] { --phase-color: var(--amber); }
+
+  /* ---------- Cards ---------- */
+
+  .card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.95rem 1.05rem;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+
+  .card:hover, .card:focus-within {
+    box-shadow: var(--shadow-md);
+    border-color: var(--line-strong);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .card-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  .card-title {
+    font-weight: 600;
+    font-size: 14.5px;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  .card-desc {
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+    margin: 0.35rem 0 0.65rem;
+  }
+
+  .card-desc code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--bg-sunken);
+    padding: 0.05rem 0.35rem;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 5px;
+    line-height: 1.4;
+  }
+
+  .chip-effort-low { background: var(--good-soft); color: var(--good); }
+  .chip-effort-medium { background: var(--amber-soft); color: var(--amber); }
+  .chip-effort-high { background: var(--danger-soft); color: var(--danger); }
+
+  .chip-blocker {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  .chip-link {
+    background: var(--accent-tint);
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .chip-link svg { width: 9px; height: 9px; }
+
+  /* ---------- Dependency note ---------- */
+
+  .dep-note {
+    margin-top: 1.1rem;
+    padding: 0.85rem 1rem;
+    background: var(--accent-tint);
+    border: 1px solid var(--accent-soft);
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+
+  .dep-note strong { color: var(--accent); font-weight: 600; }
+
+  /* ---------- Footnote / omitted ---------- */
+
+  .footnote {
+    max-width: 1180px;
+    margin: 3rem auto 0;
+    padding: 1.5rem 2rem 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .footnote-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+  }
+
+  .footnote p {
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    max-width: 68ch;
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  .footnote strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Progress footer ---------- */
+
+  footer {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2rem 2rem 3rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--ink-faint);
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  footer .brand {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+  }
+</style>
+
+<a class="skip-link" href="#phase-1">Skip to Phase 1</a>
+
+<header>
+  <p class="eyebrow">Stylus — Engineering Roadmap</p>
+  <h1>Twenty items, three phases, ninety days.</h1>
+  <p class="lede">
+    Sequenced from the product audit by dependency and leverage — not by
+    section number. <strong>Phase 1</strong> is trust and cheap wins with
+    no new architecture. <strong>Phase 2</strong> is the parity work that
+    every later feature depends on. <strong>Phase 3</strong> is the AI
+    layer nothing else in the market has yet.
+  </p>
+  <div class="stat-row">
+    <div class="stat">
+      <span class="stat-num">18</span>
+      <span class="stat-label">tasks scheduled</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">2</span>
+      <span class="stat-label">omitted, see below</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">1</span>
+      <span class="stat-label">data-loss bug, fixed day one</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">90</span>
+      <span class="stat-label">days end to end</span>
+    </div>
+  </div>
+</header>
+
+<div class="legend" aria-hidden="false">
+  <span class="legend-item"><span class="swatch" style="background:var(--good)"></span>Low effort</span>
+  <span class="legend-item"><span class="swatch" style="background:var(--amber)"></span>Medium effort</span>
+  <span class="legend-item"><span class="swatch" style="background:var(--danger)"></span>High effort</span>
+  <span class="legend-item"><span class="swatch" style="background:var(--accent)"></span>Depends on / unblocks another item</span>
+</div>
+
+<main>
+  <div class="phases">
+
+    <!-- PHASE 1 -->
+    <section class="phase" data-phase="1" id="phase-1" aria-labelledby="phase-1-title">
+      <div class="phase-head">
+        <p class="phase-number">Phase 1 · Foundation</p>
+        <h2 class="phase-title" id="phase-1-title">Critical fixes</h2>
+        <p class="phase-days">Days 1–30</p>
+        <p class="phase-thesis">
+          Trust and cheap wins. Nothing here needs new architecture — mostly
+          wiring things that already exist into the right place. The one
+          exception, the sync spike, runs in parallel because Phase 2 can't
+          start without it designed first.
+        </p>
+      </div>
+
+      <div class="card-list">
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">01</span>
+          </div>
+          <h3 class="card-title">Storage quota warning</h3>
+          <p class="card-desc">
+            In <code>documents.ts</code>, catch write failures and call
+            <code>toast.error()</code>. Add a usage indicator to Sidebar
+            that warns above 80% of the estimated localStorage quota.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-low">Low effort</span>
+            <span class="chip chip-blocker">Fixes data loss</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">08</span>
+          </div>
+          <h3 class="card-title">Surface Ask + Translate in Studio panel</h3>
+          <p class="card-desc">
+            Add both actions as chips in <code>StudioPanel.tsx</code>'s
+            <code>REFINE_ACTIONS</code> array, alongside the existing six.
+            No backend changes needed.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-low">Low effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">09</span>
+          </div>
+          <h3 class="card-title">Keyboard shortcut legend</h3>
+          <p class="card-desc">
+            Add a <code>?</code>-triggered overlay listing all shortcuts.
+            Add keybinding hints to existing toolbar button tooltips.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-low">Low effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">10</span>
+          </div>
+          <h3 class="card-title">Pinned docs + Recents</h3>
+          <p class="card-desc">
+            Add <code>pinnedAt?: number</code> to <code>DocMeta</code>.
+            Add "Pinned" and "Recent" sections to Sidebar above the folder
+            tree.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-low">Low effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">12</span>
+          </div>
+          <h3 class="card-title">Page reorder + jump-to-page</h3>
+          <p class="card-desc">
+            Add drag-to-reorder in the <code>PageNav</code> thumbnail rail
+            (reindex on drop). Add a numeric input to the page-count pill
+            for direct navigation.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">02a</span>
+          </div>
+          <h3 class="card-title">Backend architecture spike</h3>
+          <p class="card-desc">
+            Design only, no ship. Decide auth provider, storage model, and
+            sync protocol. Output: a written ADR committed to the repo.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+            <span class="chip chip-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              unblocks Phase 2
+            </span>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- PHASE 2 -->
+    <section class="phase" data-phase="2" id="phase-2" aria-labelledby="phase-2-title">
+      <div class="phase-head">
+        <p class="phase-number">Phase 2 · Parity</p>
+        <h2 class="phase-title" id="phase-2-title">Competitive parity</h2>
+        <p class="phase-days">Days 31–60</p>
+        <p class="phase-thesis">
+          Sync and PDF import are the two hardest items on the whole list —
+          and both P0 blockers for named user segments. They go here, not
+          later, because every Phase 3 feature is wasted without them.
+        </p>
+      </div>
+
+      <div class="card-list">
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">02</span>
+          </div>
+          <h3 class="card-title">Accounts + sync MVP</h3>
+          <p class="card-desc">
+            Implement auth and local-first sync — write locally, sync in
+            background. Last-write-wins is acceptable for MVP; full
+            conflict resolution isn't required yet.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-high">High effort</span>
+            <span class="chip chip-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+              depends on 02a
+            </span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">03</span>
+          </div>
+          <h3 class="card-title">PDF import + annotation</h3>
+          <p class="card-desc">
+            Integrate <code>pdf.js</code>. Render each PDF page as a
+            background layer under a notebook page, using the existing
+            per-page background template infrastructure.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-high">High effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">05</span>
+          </div>
+          <h3 class="card-title">Selection resize + rotate</h3>
+          <p class="card-desc">
+            Wire the existing decorative corner handles in
+            <code>SelectionToolbar.tsx</code> to real scale/rotate
+            transforms. Add hit-testing in <code>geometry.ts</code>.
+            Commit as one undo step.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">06</span>
+          </div>
+          <h3 class="card-title">Shape tool</h3>
+          <p class="card-desc">
+            Add <code>shape</code> to the <code>Tool</code> type. Implement
+            rect, ellipse, line, arrow with snap-to-angle. Store as a
+            distinct primitive.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+            <span class="chip chip-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              unblocks 18
+            </span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">07</span>
+          </div>
+          <h3 class="card-title">Partial-stroke erase</h3>
+          <p class="card-desc">
+            On eraser contact, split the stroke at the contact point into
+            two strokes instead of deleting the whole object.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-low">Low effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">16</span>
+          </div>
+          <h3 class="card-title">Toolbar declutter</h3>
+          <p class="card-desc">
+            Group all export formats behind a single "Export" button. Move
+            music mode, learning mode, and replay into a secondary overflow
+            row.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">15</span>
+          </div>
+          <h3 class="card-title">Contextual menus</h3>
+          <p class="card-desc">
+            Add right-click (desktop) and long-press (touch) menus for
+            per-object actions: delete, duplicate, recolor.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- PHASE 3 -->
+    <section class="phase" data-phase="3" id="phase-3" aria-labelledby="phase-3-title">
+      <div class="phase-head">
+        <p class="phase-number">Phase 3 · Differentiation</p>
+        <h2 class="phase-title" id="phase-3-title">The AI layer</h2>
+        <p class="phase-days">Days 61–90</p>
+        <p class="phase-thesis">
+          The stuff no competitor has. Handwriting search is the highest
+          leverage item here — it makes the existing OCR investment pay off
+          across the whole product, not just the Convert button.
+        </p>
+      </div>
+
+      <div class="card-list">
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">04</span>
+          </div>
+          <h3 class="card-title">Handwriting search</h3>
+          <p class="card-desc">
+            Run background OCR on save via the existing Tesseract.js
+            pipeline. Store recognized text alongside strokes in the search
+            index — no manual Convert step required.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">13</span>
+          </div>
+          <h3 class="card-title">AI auto-organization</h3>
+          <p class="card-desc">
+            On save, call <code>/api/refine</code> with a new prompt type
+            to suggest tags and a folder for the current document. Surface
+            as a dismissible suggestion.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">14</span>
+          </div>
+          <h3 class="card-title">AI page summaries</h3>
+          <p class="card-desc">
+            Add <code>summary?: string</code> to <code>DocMeta</code>.
+            Generate and cache a one-line summary per document via the
+            refine pipeline. Display in Sidebar list rows.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">11</span>
+          </div>
+          <h3 class="card-title">Custom templates</h3>
+          <p class="card-desc">
+            Add a "Save page as template" action that writes a
+            user-scoped template entry alongside the bundled manifest.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">17</span>
+          </div>
+          <h3 class="card-title">Voice-to-text capture</h3>
+          <p class="card-desc">
+            Add a mic input mode using the Web Speech API or a
+            transcription endpoint, feeding recognized text into the
+            existing text layer pipeline.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">18</span>
+          </div>
+          <h3 class="card-title">Sketch-to-diagram AI</h3>
+          <p class="card-desc">
+            On a selected region, call a vision-capable model and map the
+            output to shape-tool primitives. Treated as a bet, not a
+            commitment.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-high">High effort</span>
+            <span class="chip chip-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+              depends on 06
+            </span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-id">19</span>
+          </div>
+          <h3 class="card-title">Accessibility pass</h3>
+          <p class="card-desc">
+            Add focus-trap to <code>Dialog.tsx</code> and
+            <code>TemplateGallery.tsx</code>. Respect
+            <code>prefers-reduced-motion</code>. Verify layout holds under
+            OS-level font scaling.
+          </p>
+          <div class="chip-row">
+            <span class="chip chip-effort-medium">Medium effort</span>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+  </div>
+
+  <div class="footnote">
+    <p class="footnote-label">Omitted from this window</p>
+    <p>
+      <strong>#20 — Education tier packaging</strong> is deliberately left
+      out of the 90-day plan. It's blocked on accounts existing (Phase 2)
+      and is a business/packaging decision rather than an engineering task
+      — bundling already-shipped classroom features (exam-lock, restricted
+      toolbar) into a named offering once the account system is live.
+    </p>
+  </div>
+</main>
+
+<footer>
+  <span class="brand">Stylus</span>
+  <span>Sourced from the 2026-07-15 product audit · 20 items, 18 scheduled</span>
+</footer>

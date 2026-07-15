@@ -50,7 +50,13 @@ export function SelectionToolbar({
   const [colorOpen, setColorOpen] = useState(false);
   const colorRef = useRef<HTMLDivElement>(null);
 
-  const hidden = !bounds || selectedCount === 0 || phase === 'moving' || phase === 'lasso';
+  const hidden =
+    !bounds ||
+    selectedCount === 0 ||
+    phase === 'moving' ||
+    phase === 'lasso' ||
+    phase === 'resizing' ||
+    phase === 'rotating';
 
   // Close the color popover whenever the selection changes or disappears —
   // the pill stays mounted for the whole select-tool session, so stale open

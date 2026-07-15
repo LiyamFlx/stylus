@@ -313,3 +313,64 @@ export const PlainTextIcon = ({ size = 20, className }: IconProps) => (
     <path d="M8 17h5" />
   </svg>
 );
+
+/** Pin — pinned-document indicator/toggle in the sidebar. */
+export const PinIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M12 2l1.5 5.5L19 9l-5 4 1 6-3-3.5L9 19l1-6-5-4 5.5-1.5z" />
+  </svg>
+);
+
+/** Shape tool — a rect + circle overlap, reads as "shapes" at a glance
+ *  rather than committing to one specific shape type. */
+export const ShapeIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="3" y="3" width="12" height="12" rx="1.5" />
+    <circle cx="15" cy="15" r="6" />
+  </svg>
+);
+
+export const RectIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <rect x="3" y="5" width="18" height="14" rx="1.5" />
+  </svg>
+);
+
+export const EllipseIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <ellipse cx="12" cy="12" rx="9" ry="7" />
+  </svg>
+);
+
+export const LineIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M4 20L20 4" />
+  </svg>
+);
+
+export const ArrowIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M4 20L20 4" />
+    <path d="M20 4v8M20 4h-8" />
+  </svg>
+);
+
+/** Export — a document with a down-arrow, the trigger for the export menu
+ *  (PNG / PDF / Markdown / text grouped behind one popover). */
+export const DownloadIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <path d="M12 3v12" />
+    <path d="M7 10l5 5 5-5" />
+    <path d="M4 19h16" />
+  </svg>
+);
+
+/** Overflow — three dots, the trigger for the "more" menu (music, learning
+ *  mode, replay). */
+export const MoreIcon = ({ size = 20, className }: IconProps) => (
+  <svg {...svgProps(size, className)}>
+    <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+  </svg>
+);

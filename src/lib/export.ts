@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import type { PaperStyle, RulingDensity, Stroke, TextItem } from '../types';
+import type { PaperStyle, RulingDensity, Shape, Stroke, TextItem } from '../types';
 import { A4_BOUNDS } from './geometry';
 import { renderAll } from './render';
 
@@ -47,6 +47,11 @@ interface ExportOptions {
    * the paper fallback instead.
    */
   templateId?: string | null;
+  /** Shapes (rect/ellipse/line/arrow) to bake into the export, same as
+   *  strokes — additive option so every existing call site (which predates
+   *  the shape tool) keeps compiling with no changes; omitting it exports
+   *  exactly as before. */
+  shapes?: Shape[];
 }
 
 function renderToCanvas(
@@ -60,6 +65,7 @@ function renderToCanvas(
     scale = 2,
     ruling,
     templateId = null,
+    shapes = [],
   }: ExportOptions,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -70,10 +76,10 @@ function renderToCanvas(
 
   ctx.scale(scale, scale);
   // renderAll applies the opaque background (after its clear) and the paper
-  // guide, then the strokes — so the export matches what's on screen.
-  // EXPORT PATH — intentionally NO `cull` option: exports need the complete
-  // document, never the visible viewport (see RenderOptions.cull).
-  renderAll(ctx, strokes, width, height, { paper, background, ruling, templateId });
+  // guide, then the strokes and shapes — so the export matches what's on
+  // screen. EXPORT PATH — intentionally NO `cull` option: exports need the
+  // complete document, never the visible viewport (see RenderOptions.cull).
+  renderAll(ctx, strokes, width, height, { paper, background, ruling, templateId, shapes });
   drawTexts(ctx, texts);
   return canvas;
 }
@@ -143,6 +149,8 @@ export interface ExportPage {
   ruling?: RulingDensity;
   /** Resolved template id — see ExportOptions.templateId's pre-ensure rule. */
   templateId?: string | null;
+  /** Shapes on this page — see ExportOptions.shapes. */
+  shapes?: Shape[];
 }
 
 /**
@@ -188,6 +196,7 @@ function buildPagesPDF(pages: ExportPage[]): jsPDF | null {
       ruling: page.ruling,
       templateId: page.templateId,
       texts: page.texts ?? [],
+      shapes: page.shapes ?? [],
       // Notebook paper paints its own opaque cream; other papers export on
       // white like a printed page rather than the dark screen background.
       background: '#ffffff',

@@ -30,17 +30,21 @@ export function Toaster(): React.ReactElement {
         <div
           key={t.id}
           className={`
-            flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm
+            flex items-start gap-2 px-4 py-2.5 rounded-lg border text-sm
             shadow-lg backdrop-blur-sm pointer-events-auto
             animate-in fade-in slide-in-from-bottom-2 duration-200
             ${COLORS[t.type]}
           `}
         >
           <span className="font-bold shrink-0">{ICONS[t.type]}</span>
-          <span className="max-w-xs truncate">{t.message}</span>
+          {/* Was max-w-xs + truncate, which silently clipped anything longer
+              than a short one-liner (every prior call site happened to fit —
+              the storage-quota warning doesn't). Wrap instead of truncating
+              so a longer, actionable message is never silently cut off. */}
+          <span className="max-w-sm">{t.message}</span>
           <button
             onClick={() => toastManager.dismiss(t.id)}
-            className="ml-2 opacity-60 hover:opacity-100 transition-opacity shrink-0"
+            className="ml-2 shrink-0 opacity-60 transition-opacity hover:opacity-100"
             aria-label="Dismiss"
           >
             ✕

@@ -6,15 +6,18 @@ import { NewDocDialog } from './components/NewDocDialog';
 import { ModeTabs } from './components/ModeTabs';
 import { InstallPrompt } from './components/InstallPrompt';
 import { OfflineBadge } from './components/OfflineBadge';
+import { ShortcutLegend } from './components/ShortcutLegend';
 import { useVisualViewport } from './hooks/useVisualViewport';
 import { useDocuments } from './hooks/useDocuments';
 import { usePages } from './hooks/usePages';
+import { useSync } from './hooks/useSync';
 import { modeConfig, defaultDocName } from './lib/modes';
 import type { AppMode } from './lib/modes';
-import { resolvePageTemplateId } from './lib/documents';
+import { resolvePageTemplateId, readAux, readPageAux } from './lib/documents';
+import { queuePush } from './lib/syncQueue';
 import { TemplateGallery } from './components/TemplateGallery';
 import type { HistorySnapshot } from './hooks/useHistory';
-import type { Stroke } from './types';
+import type { DrawingContent } from './hooks/useLocalStorage';
 import { loadProfile, saveProfile } from './lib/profile';
 import { EditingPrefsProvider } from './lib/editingPrefs';
 import { Tour } from './components/Tour';
@@ -45,6 +48,10 @@ export default function App() {
   const documents = useDocuments();
   const currentDoc = documents.docs.find((d) => d.id === documents.currentId);
   const tour = useTour();
+  // Mounted once here, not inside Workspace — Workspace remounts on every
+  // notebook page flip, but the sync queue drain loop must survive that
+  // (ADR 002 / roadmap instruction).
+  useSync();
 
   // Exam lock is per-document: clear it whenever the active document changes so
   // it never carries into another doc.
@@ -72,13 +79,13 @@ export default function App() {
   // silently lose undo history when revisiting an earlier page. Snapshots are
   // small (stroke arrays), so this is cheap.
   const HISTORY_CACHE_MAX = 32;
-  const historyCache = useRef(new Map<string, HistorySnapshot<Stroke[]>>());
+  const historyCache = useRef(new Map<string, HistorySnapshot<DrawingContent>>());
   const cacheKey = useCallback(
     (pageId: string) => `${documents.currentId}:${pageId}`,
     [documents.currentId],
   );
   const cachePageHistory = useCallback(
-    (pageId: string, snap: HistorySnapshot<Stroke[]>) => {
+    (pageId: string, snap: HistorySnapshot<DrawingContent>) => {
       const cache = historyCache.current;
       const key = cacheKey(pageId);
       cache.delete(key); // re-insert to refresh LRU position
@@ -212,6 +219,47 @@ export default function App() {
     documents.create(defaultDocName(currentMode), currentMode);
   }, [currentMode, documents]);
 
+  // Fires only after a debounced local save has already landed (ADR 002 /
+  // useDrawing's onStrokesSaved contract) — enqueues the same edit for sync,
+  // never a substitute for the local write that already happened. Reads
+  // meta fresh from documents.ts rather than closing over `currentDoc`/
+  // `activePage` so a save that lands after those have moved on (e.g. a
+  // flush during a doc switch) still queues the RIGHT doc/page's current
+  // metadata, not a stale snapshot from an earlier render.
+  const queueSyncPush = useCallback(
+    (docId: string, pageId: string | null, content: DrawingContent, savedAt: number) => {
+      // Shapes ride inside `meta` (an open JSONB bag server-side) rather than
+      // a new sync-schema column — the ADR 002 schema predates the shape
+      // tool, and meta.shapes keeps the wire format and API routes
+      // untouched instead of requiring a migration for a field that isn't
+      // core document identity.
+      if (pageId) {
+        const pages = pagesApi.pages;
+        const page = pages.find((p) => p.id === pageId);
+        if (!page) return;
+        queuePush({
+          kind: 'page',
+          id: pageId,
+          documentId: docId,
+          updatedAt: savedAt,
+          meta: { ...page, aux: readPageAux(docId, pageId), shapes: content.shapes },
+          strokes: content.strokes,
+        });
+      } else {
+        const doc = documents.docs.find((d) => d.id === docId);
+        if (!doc) return;
+        queuePush({
+          kind: 'document',
+          id: docId,
+          updatedAt: savedAt,
+          meta: { ...doc, aux: readAux(docId), shapes: content.shapes },
+          strokes: content.strokes,
+        });
+      }
+    },
+    [documents.docs, pagesApi.pages],
+  );
+
   return (
     <EditingPrefsProvider>
       <div
@@ -248,6 +296,7 @@ export default function App() {
             onChromeHiddenChange={setChromeHidden}
             onSwipePrevPage={isNotebook && activePage && !examLock ? pagesApi.prev : undefined}
             onSwipeNextPage={isNotebook && activePage && !examLock ? pagesApi.next : undefined}
+            onStrokesSaved={queueSyncPush}
             pageNav={
               // Hidden while locked so an exam can't be escaped by flipping pages.
               isNotebook && activePage && !examLock ? (
@@ -259,6 +308,7 @@ export default function App() {
                   onPrev={pagesApi.prev}
                   onNext={pagesApi.next}
                   onAdd={() => pagesApi.add()}
+                  onReorder={pagesApi.reorder}
                   onDeleteActive={removeActivePage}
                   defaultTemplateId={currentDoc?.defaultPageTemplateId}
                   onOpenTemplates={() => setTemplatePickerOpen(true)}
@@ -305,10 +355,12 @@ export default function App() {
           onRenameFolder={documents.renameFolder}
           onDeleteFolder={documents.removeFolder}
           onMoveDoc={documents.moveToFolder}
+          onTogglePin={documents.setPinned}
         />
 
         {isMobileDoc && <InstallPrompt />}
         <OfflineBadge />
+        <ShortcutLegend />
 
         <NewDocDialog
           open={newDocOpen}

@@ -1,6 +1,6 @@
-import type { InkPoint, PaperStyle, RulingDensity, Stroke } from '../types';
+import type { InkPoint, PaperStyle, RulingDensity, Shape, Stroke } from '../types';
 import type { Bounds } from './geometry';
-import { boundsIntersect, strokeBounds } from './geometry';
+import { boundsIntersect, shapeBounds, strokeBounds, ROTATE_HANDLE_OFFSET } from './geometry';
 import { drawPaper } from './paper';
 import { penProfile } from './penProfiles';
 import { ensureTemplateBitmap, getTemplateBitmap } from './templates';
@@ -23,6 +23,20 @@ function cachedStrokeBounds(stroke: Stroke): Bounds | null {
   if (hit) return hit;
   const b = strokeBounds(stroke);
   if (b) strokeBoundsCache.set(stroke, b);
+  return b;
+}
+
+/** Same caching strategy as strokeBoundsCache, for shapes — see its doc
+ *  comment. Shapes are also immutable-per-commit (a move/resize/rotate
+ *  produces a new Shape object), so the same WeakMap-by-identity approach
+ *  holds without any extra invalidation logic. */
+const shapeBoundsCache = new WeakMap<Shape, Bounds>();
+
+function cachedShapeBounds(shape: Shape): Bounds {
+  const hit = shapeBoundsCache.get(shape);
+  if (hit) return hit;
+  const b = shapeBounds(shape);
+  shapeBoundsCache.set(shape, b);
   return b;
 }
 
@@ -84,6 +98,78 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void 
   ctx.globalCompositeOperation = 'source-over';
 }
 
+/** Arrowhead half-length/width, in CSS px — fixed size regardless of shape
+ *  scale, matching how e.g. Figma/PowerPoint arrowheads don't grow with a
+ *  very long line (a huge arrowhead on a short arrow would look broken). */
+const ARROWHEAD_LENGTH = 14;
+const ARROWHEAD_WIDTH = 9;
+
+/**
+ * Draw a single shape (rect/ellipse/line/arrow) onto a 2D context. Shapes
+ * are outlined only (no fill) — a filled shape would obscure ink drawn
+ * before it, which breaks the "shapes are just another kind of mark on the
+ * page" mental model the rest of the app already has for strokes.
+ *
+ * rect/ellipse rotate about their own bounding-box center via ctx.rotate()
+ * (see the Shape.rotation doc comment in types.ts for why rotation is a
+ * separate field rather than baked into x1/y1/x2/y2); line/arrow don't use
+ * the rotation field at all — their endpoints already encode any angle.
+ */
+export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
+  const { type, color, size, x1, y1, x2, y2, rotation } = shape;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(size, 1);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (type === 'rect' || type === 'ellipse') {
+    const minX = Math.min(x1, x2);
+    const minY = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1);
+    const h = Math.abs(y2 - y1);
+    const cx = minX + w / 2;
+    const cy = minY + h / 2;
+    if (rotation) {
+      ctx.translate(cx, cy);
+      ctx.rotate(rotation);
+      ctx.translate(-cx, -cy);
+    }
+    if (type === 'rect') {
+      ctx.strokeRect(minX, minY, w, h);
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else {
+    // line / arrow: draw the shaft, arrow adds a filled triangular head at
+    // the END point (x2,y2) — the point the user dragged TO, matching how
+    // every draw-a-line gesture naturally means "arrow points where I let go."
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    if (type === 'arrow') {
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      const backX = x2 - ARROWHEAD_LENGTH * Math.cos(angle);
+      const backY = y2 - ARROWHEAD_LENGTH * Math.sin(angle);
+      const perpX = Math.cos(angle + Math.PI / 2) * (ARROWHEAD_WIDTH / 2);
+      const perpY = Math.sin(angle + Math.PI / 2) * (ARROWHEAD_WIDTH / 2);
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(backX + perpX, backY + perpY);
+      ctx.lineTo(backX - perpX, backY - perpY);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
 export interface RenderOptions {
   /** Paper guide to draw beneath the ink. Defaults to `blank` (none). */
   paper?: PaperStyle;
@@ -128,6 +214,14 @@ export interface RenderOptions {
   templateId?: string | null;
   /** Repaint scheduler invoked when an async template decode lands. */
   onTemplateReady?: () => void;
+  /**
+   * Shapes (rect/ellipse/line/arrow), drawn after every stroke — a simple,
+   * predictable z-order (shapes always on top) rather than interleaving by
+   * creation time, since strokes and shapes are separate arrays with no
+   * shared ordering field to interleave by. Same culling treatment as
+   * strokes: skipped when their cached bounds miss the visible `cull` rect.
+   */
+  shapes?: Shape[];
 }
 
 /** Backdrop behind a bounded page, and the page's own edge. */
@@ -223,6 +317,7 @@ export function renderAll(
     viewRect = null,
     templateId = null,
     onTemplateReady,
+    shapes = [],
   }: RenderOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
@@ -291,6 +386,14 @@ export function renderAll(
     }
     drawStroke(ctx, stroke);
   }
+
+  for (const shape of shapes) {
+    if (cull) {
+      const b = cachedShapeBounds(shape);
+      if (!boundsIntersect(b, cull)) continue;
+    }
+    drawShape(ctx, shape);
+  }
 }
 
 /**
@@ -317,9 +420,12 @@ export function drawLasso(
 }
 
 /**
- * Draw the dashed selection bounding box and corner handles around `bounds`.
- * `pad` controls how much the rect extends beyond the ink bounds — must match
- * the pad used in `hitsSelectionBounds` so the visual and hit zone agree.
+ * Draw the dashed selection bounding box, its 4 corner resize handles, and
+ * a rotate handle on a stem above top-center. `pad` controls how much the
+ * rect extends beyond the ink bounds — must match the pad used in
+ * `hitsSelectionBounds`/`hitsSelectionHandle` so the visual and hit zones
+ * agree. Handle offset/positions mirror ROTATE_HANDLE_OFFSET in geometry.ts
+ * exactly — if that constant changes, this paints in the wrong place.
  */
 export function drawSelectionRect(
   ctx: CanvasRenderingContext2D,
@@ -330,6 +436,8 @@ export function drawSelectionRect(
   const y = bounds.minY - pad;
   const w = bounds.maxX - bounds.minX + pad * 2;
   const h = bounds.maxY - bounds.minY + pad * 2;
+  const centerX = x + w / 2;
+  const rotateY = y - ROTATE_HANDLE_OFFSET;
 
   ctx.save();
 
@@ -340,19 +448,32 @@ export function drawSelectionRect(
   ctx.globalAlpha = 0.9;
   ctx.strokeRect(x, y, w, h);
 
-  // Corner handles.
+  // Stem connecting the box to the rotate handle.
+  ctx.beginPath();
+  ctx.moveTo(centerX, y);
+  ctx.lineTo(centerX, rotateY);
+  ctx.stroke();
+
   ctx.setLineDash([]);
-  ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#3b82f6';
   ctx.lineWidth = 1.5;
   ctx.globalAlpha = 1;
+
+  // Corner resize handles — small filled squares, distinct from the round
+  // rotate handle below so the two affordances never look interchangeable.
   const r = 4;
+  ctx.fillStyle = '#ffffff';
   for (const [cx, cy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]] as const) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
   }
+
+  // Rotate handle — a circle, on the stem.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(centerX, rotateY, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
 
   ctx.restore();
 }

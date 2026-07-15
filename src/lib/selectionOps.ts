@@ -1,5 +1,5 @@
 import { createId } from './id';
-import type { Stroke } from '../types';
+import type { Shape, Stroke } from '../types';
 
 /**
  * Clone the selected strokes with fresh ids, offset by (dx,dy) in world px.
@@ -58,6 +58,54 @@ export function recolorStrokes(
   selectedIds: ReadonlySet<string>,
   color: string,
 ): Stroke[] {
+  if (selectedIds.size === 0) return all;
+  return all.map((s) => (selectedIds.has(s.id) ? { ...s, color } : s));
+}
+
+/** Clone the selected shapes with fresh ids, offset by (dx,dy) — the shape
+ *  analog of {@link duplicateStrokes}. */
+export function duplicateShapes(
+  all: Shape[],
+  selectedIds: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+): { next: Shape[]; newIds: Set<string> } {
+  if (selectedIds.size === 0) return { next: all, newIds: new Set() };
+  const newIds = new Set<string>();
+  const clones: Shape[] = [];
+  for (const s of all) {
+    if (!selectedIds.has(s.id)) continue;
+    const id = createId('shp_');
+    newIds.add(id);
+    clones.push({ ...s, id, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy });
+  }
+  return { next: [...all, ...clones], newIds };
+}
+
+/** Drop from the selection any ids no longer present in `shapes` — the shape
+ *  analog of {@link reconcileSelection}. */
+export function reconcileShapeSelection(
+  selectedIds: ReadonlySet<string>,
+  shapes: Shape[],
+): ReadonlySet<string> {
+  if (selectedIds.size === 0) return selectedIds;
+  const liveIds = new Set(shapes.map((s) => s.id));
+  let changed = false;
+  const next = new Set<string>();
+  for (const id of selectedIds) {
+    if (liveIds.has(id)) next.add(id);
+    else changed = true;
+  }
+  return changed ? next : selectedIds;
+}
+
+/** Set `color` on the selected shapes — the shape analog of
+ *  {@link recolorStrokes}. */
+export function recolorShapes(
+  all: Shape[],
+  selectedIds: ReadonlySet<string>,
+  color: string,
+): Shape[] {
   if (selectedIds.size === 0) return all;
   return all.map((s) => (selectedIds.has(s.id) ? { ...s, color } : s));
 }

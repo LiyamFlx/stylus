@@ -2,6 +2,7 @@ import type { ImageItem, PaperStyle, TextItem } from '../types';
 import { createId } from './id';
 import { modeConfig, resolveMode } from './modes';
 import type { AppMode } from './modes';
+import { warnStorageWriteFailed } from './storageWriteWarning';
 
 /**
  * Local, offline-first multi-document store (no backend, no login).
@@ -61,6 +62,13 @@ export interface DocMeta {
    * later default change flows to every still-inheriting page for free.
    */
   defaultPageTemplateId?: string;
+  /**
+   * When set, this doc is pinned — shown in a dedicated Sidebar section above
+   * the folder tree (Phase 1 item #10). The timestamp (not a bare boolean) is
+   * the sort key for multiple pinned docs, same reasoning as `updatedAt`:
+   * newest pin first, no separate ordering field to keep in sync.
+   */
+  pinnedAt?: number;
 }
 
 /**
@@ -126,6 +134,7 @@ function write(key: string, value: unknown): void {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (err) {
     console.warn('[stylus] document save failed', err);
+    warnStorageWriteFailed();
   }
 }
 
@@ -647,6 +656,19 @@ export function setDocumentTags(id: string, tags: string[]): void {
   writeIndex({
     ...idx,
     docs: idx.docs.map((d) => (d.id === id ? { ...d, tags: cleaned } : d)),
+  });
+}
+
+/** Toggle pin state; `pinnedAt` is stamped `now` so multiple pins sort
+ *  newest-first without a separate ordering field (mirrors `updatedAt`). */
+export function setDocumentPinned(id: string, pinned: boolean, now: number): void {
+  const idx = readIndex();
+  if (!idx) return;
+  writeIndex({
+    ...idx,
+    docs: idx.docs.map((d) =>
+      d.id === id ? { ...d, pinnedAt: pinned ? now : undefined } : d,
+    ),
   });
 }
 
