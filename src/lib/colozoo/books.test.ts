@@ -27,6 +27,20 @@ describe('colozoo books', () => {
     }
   });
 
+  it('ships the expected shelf of books at their intended page counts', () => {
+    const counts = Object.fromEntries(COLOZOO_BOOKS.map((b) => [b.id, b.pages.length]));
+    expect(counts).toMatchObject({
+      trucks: 8,
+      animals: 8,
+      ocean: 8,
+      bugs: 6,
+      castle: 6,
+    });
+    // Every page id is globally unique across the whole shelf.
+    const allPageIds = COLOZOO_BOOKS.flatMap((b) => b.pages.map((p) => p.id));
+    expect(new Set(allPageIds).size).toBe(allPageIds.length);
+  });
+
   it('bookById falls back to the first book for a missing id', () => {
     expect(bookById('trucks').id).toBe('trucks');
     expect(bookById('does-not-exist')).toBe(COLOZOO_BOOKS[0]);

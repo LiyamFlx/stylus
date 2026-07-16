@@ -60,7 +60,7 @@ describe('ColozooWorkspace', () => {
   it('tapping a zone in bucket mode fills it and raises the star rating', () => {
     render(<ColozooWorkspace documentId="d1" onOpenSidebar={() => {}} />);
     // Pick a colour, then tap the first zone.
-    fireEvent.click(screen.getByRole('button', { name: 'Ocean' })); // #3B82F6
+    fireEvent.click(screen.getByRole('button', { name: 'Royal' })); // #3B82F6
     const zone = firstZone();
     expect(zone.getAttribute('fill')).toBe('transparent');
 
@@ -96,6 +96,24 @@ describe('ColozooWorkspace', () => {
     expect(screen.getByText(new RegExp(second.pages[1].name))).toBeInTheDocument();
     expect(readColozooState('d1')?.bookId).toBe(second.id);
     expect(readColozooState('d1')?.pageIndex).toBe(1);
+  });
+
+  it('celebrates with "Amazing!" once every page of the book is complete', () => {
+    render(<ColozooWorkspace documentId="d1" onOpenSidebar={() => {}} />);
+    const book = COLOZOO_BOOKS[0];
+    // Colour every zone of every page (bucket mode is the default), advancing
+    // page by page. Filling all zones → 3★, and all pages 3★ → book complete.
+    for (let i = 0; i < book.pages.length; i++) {
+      const zones = document.querySelectorAll('svg path[fill]');
+      zones.forEach((z) => fireEvent.pointerDown(z));
+      if (i < book.pages.length - 1) {
+        fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+      }
+    }
+    expect(screen.getByText('Amazing!')).toBeInTheDocument();
+    // Dismissable — "Keep coloring" closes it without nagging again.
+    fireEvent.click(screen.getByRole('button', { name: 'Keep coloring' }));
+    expect(screen.queryByText('Amazing!')).not.toBeInTheDocument();
   });
 
   it('toggles glow mode', () => {

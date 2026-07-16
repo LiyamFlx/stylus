@@ -29,7 +29,7 @@ export const TEMPERA_12: readonly NamedColor[] = [
   { name: 'Grass', hex: '#22C55E' },
   { name: 'Teal', hex: '#14B8A6' },
   { name: 'Sky', hex: '#38BDF8' },
-  { name: 'Ocean', hex: '#3B82F6' },
+  { name: 'Royal', hex: '#3B82F6' },
   { name: 'Grape', hex: '#8B5CF6' },
   { name: 'Bubblegum', hex: '#EC4899' },
   { name: 'Cocoa', hex: '#8B5E34' },

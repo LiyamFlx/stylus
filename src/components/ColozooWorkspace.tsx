@@ -4,6 +4,7 @@ import { COLOZOO_BRUSHES, penProfile } from '../lib/penProfiles';
 import type { ColozooBrush } from '../lib/penProfiles';
 import { createId } from '../lib/id';
 import { useColoringPage } from '../hooks/useColoringPage';
+import { useShakeUndo, requestShakePermission } from '../hooks/useShakeUndo';
 import {
   COLOZOO_ACCENT,
   COLOZOO_BG,
@@ -12,6 +13,8 @@ import {
   type NamedColor,
 } from '../lib/colozoo/palettes';
 import { drawColozooStroke } from '../lib/colozoo/drawStroke';
+import { savePagePNG } from '../lib/colozoo/exportPage';
+import { fireConfetti } from '../lib/confetti';
 
 /**
  * ColozooWorkspace — the entire kids' coloring-book UI, self-contained.
@@ -143,6 +146,12 @@ export function ColozooWorkspace({
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (tool !== 'brush') return;
+      // First real gesture → ask for motion permission so shake-to-undo can arm
+      // (iOS only prompts from a user activation). Fire-and-forget, once.
+      if (!askedShake.current) {
+        askedShake.current = true;
+        void requestShakePermission();
+      }
       e.currentTarget.setPointerCapture?.(e.pointerId);
       const start = performance.now();
       const p = buildPoint(e, 0);
@@ -185,6 +194,27 @@ export function ColozooWorkspace({
     },
     [tool, cp, color],
   );
+
+  // Shake-to-undo (device only). Permission is requested lazily on the first
+  // draw gesture (a user activation), which iOS requires.
+  useShakeUndo(cp.undo);
+  const askedShake = useRef(false);
+
+  // Book completion: when every page hits 3★, celebrate ONCE. Dismissable, and
+  // re-armed only if the book leaves the complete state (never nags on revisit).
+  const [showComplete, setShowComplete] = useState(false);
+  const wasComplete = useRef(false);
+  useEffect(() => {
+    if (cp.bookComplete && !wasComplete.current) {
+      setShowComplete(true);
+      fireConfetti();
+    }
+    wasComplete.current = cp.bookComplete;
+  }, [cp.bookComplete]);
+
+  const savePage = useCallback(() => {
+    void savePagePNG(cp.page, { fills: cp.fills, ink: cp.ink, glow });
+  }, [cp.page, cp.fills, cp.ink, glow]);
 
   const showNice = cp.coverage >= NICE_AT;
   const bg = glow ? '#0A0010' : COLOZOO_BG;
@@ -444,6 +474,50 @@ export function ColozooWorkspace({
           ✨
         </button>
       </div>
+
+      {/* Book completion celebration — every page at 3★ */}
+      {showComplete && (
+        <div
+          className="absolute inset-0 z-50 grid place-items-center p-6"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Book complete"
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl px-6 py-8 text-center shadow-2xl"
+            style={{ background: glow ? '#160A2A' : '#fff' }}
+          >
+            <div className="text-6xl" aria-hidden>
+              🎉
+            </div>
+            <h2 className="mt-2 text-3xl font-black" style={{ color: COLOZOO_ACCENT }}>
+              Amazing!
+            </h2>
+            <p className="mt-1 text-base font-semibold" style={{ color: glow ? '#fff' : '#2A2320' }}>
+              You coloured every page of {cp.book.name}!
+            </p>
+            <div className="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={savePage}
+                className="h-14 rounded-2xl text-lg font-black text-white transition-transform active:scale-95"
+                style={{ background: COLOZOO_ACCENT }}
+              >
+                💾 Save &amp; share
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowComplete(false)}
+                className="h-12 rounded-2xl text-base font-bold transition-transform active:scale-95"
+                style={{ background: glow ? '#2A1B40' : '#FFF1E6', color: glow ? '#fff' : '#2A2320' }}
+              >
+                Keep coloring
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
