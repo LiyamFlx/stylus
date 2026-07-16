@@ -26,6 +26,8 @@ interface FillAction {
   pageId: string;
   zoneId: string;
   prevColor: string | undefined;
+  /** Value AFTER this action (for redo). */
+  redoColor: string | undefined;
 }
 
 export interface ColoringPageApi {
@@ -44,6 +46,12 @@ export interface ColoringPageApi {
   fillZone: (zoneId: string, color: string) => void;
   /** Undo the last zone fill on the active page. Returns false if nothing to undo. */
   undoFill: () => boolean;
+  /** Erase one zone's fill on the active page (eraser). */
+  clearZone: (zoneId: string) => void;
+  /** Re-apply the last undone fill/clear. Returns false if nothing to redo. */
+  redoFill: () => boolean;
+  /** True when there is an undone action to re-apply. */
+  canRedo: boolean;
   goTo: (pageNumber: number) => void;
   next: () => void;
   prev: () => void;
@@ -57,6 +65,8 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
     readColozooState(docId, initialBookId),
   );
   const undoStack = useRef<FillAction[]>([]);
+  const redoStack = useRef<FillAction[]>([]);
+  const [, setRedoTick] = useState(0);
   const inkPages = useRef(new Set<string>());
   // Bump to re-derive activeStars when ink lands (fills alone don't change).
   const [, setInkTick] = useState(0);
@@ -103,7 +113,13 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
   const fillZone = useCallback(
     (zoneId: string, color: string) => {
       if (!page) return;
-      undoStack.current.push({ pageId: page.id, zoneId, prevColor: fills[zoneId] });
+      undoStack.current.push({
+        pageId: page.id,
+        zoneId,
+        prevColor: fills[zoneId],
+        redoColor: color,
+      });
+      redoStack.current = [];
       const nextFills = { ...fills, [zoneId]: color };
       persist(
         settleStars(
@@ -115,6 +131,23 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
     [page, fills, state, persist, settleStars],
   );
 
+  const clearZone = useCallback(
+    (zoneId: string) => {
+      if (!page || fills[zoneId] === undefined) return;
+      undoStack.current.push({
+        pageId: page.id,
+        zoneId,
+        prevColor: fills[zoneId],
+        redoColor: undefined,
+      });
+      redoStack.current = [];
+      const nextFills = { ...fills };
+      delete nextFills[zoneId];
+      persist({ ...state, zoneColors: { ...state.zoneColors, [page.id]: nextFills } });
+    },
+    [page, fills, state, persist],
+  );
+
   const undoFill = useCallback((): boolean => {
     if (!page) return false;
     // Only undo fills on the page the child is looking at.
@@ -122,13 +155,29 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
       ? undoStack.current[undoStack.current.length - 1]
       : undefined;
     if (!last || last.pageId !== page.id) return false;
-    undoStack.current.pop();
+    const undone = undoStack.current.pop()!;
+    redoStack.current.push(undone);
+    setRedoTick((t) => t + 1);
     const nextFills = { ...(state.zoneColors[page.id] ?? {}) };
-    if (last.prevColor === undefined) delete nextFills[last.zoneId];
-    else nextFills[last.zoneId] = last.prevColor;
+    if (undone.prevColor === undefined) delete nextFills[undone.zoneId];
+    else nextFills[undone.zoneId] = undone.prevColor;
     persist({ ...state, zoneColors: { ...state.zoneColors, [page.id]: nextFills } });
     return true;
   }, [page, state, persist]);
+
+  const redoFill = useCallback((): boolean => {
+    if (!page) return false;
+    const last = redoStack.current[redoStack.current.length - 1];
+    if (!last || last.pageId !== page.id) return false;
+    redoStack.current.pop();
+    setRedoTick((t) => t + 1);
+    const cur = { ...(state.zoneColors[page.id] ?? {}) };
+    if (last.redoColor === undefined) delete cur[last.zoneId];
+    else cur[last.zoneId] = last.redoColor;
+    undoStack.current.push(last);
+    persist(settleStars({ ...state, zoneColors: { ...state.zoneColors, [page.id]: cur } }, page));
+    return true;
+  }, [page, state, persist, settleStars]);
 
   const goTo = useCallback(
     (pageNumber: number) => {
@@ -155,6 +204,7 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
       // switching back to a book restores its progress intact.
       persist({ ...state, bookId, currentPage: readColozooBookPage(state, bookId) });
       undoStack.current = [];
+      redoStack.current = [];
     },
     [state, persist],
   );
@@ -170,6 +220,9 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
     pageComplete,
     fillZone,
     undoFill,
+    clearZone,
+    redoFill,
+    canRedo: redoStack.current.length > 0,
     goTo,
     next,
     prev,
