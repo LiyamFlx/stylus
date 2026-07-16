@@ -332,7 +332,7 @@ export default function App() {
         {/* Mode tabs: fast browser-tab switching between the three document
             modes, plus a New button. Top-centre, above the toolbar, so it's the
             same prominent control in every mode. */}
-        {documents.currentId && !examLock && !chromeHidden && (
+        {documents.currentId && !examLock && !chromeHidden && !isColozoo && (
           <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center">
             <ModeTabs
               current={currentMode}

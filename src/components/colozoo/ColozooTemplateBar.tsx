@@ -25,7 +25,7 @@ export function ColozooTemplateBar({ books, activeBookId, onPick, onSave, glow }
 
   return (
     <div
-      className="relative z-10 mx-4 mb-3 flex items-center gap-3 overflow-x-auto rounded-[2rem] p-3 shadow-lg"
+      className="relative z-10 mx-6 mb-4 flex items-center gap-3 overflow-x-auto rounded-[2rem] px-5 py-3 shadow-lg"
       style={{ background: glow ? '#1b1226' : '#fff' }}
     >
       <div className="flex gap-3">
