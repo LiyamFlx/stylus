@@ -48,9 +48,6 @@ export interface ColozooBook {
   title: string;
   /** Shelf cover — emoji, per the brand ("🚒 Trucks"), not abstract icons. */
   coverEmoji: string;
-  /** Optional inline-SVG thumbnail (viewBox 0 0 64 64, no <svg> wrapper) for
-   *  the template bar. Falls back to coverEmoji when absent. */
-  thumbSvg?: string;
   pages: ColoringPage[];
 }
 
