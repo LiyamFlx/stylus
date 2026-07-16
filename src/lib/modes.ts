@@ -13,7 +13,7 @@ import type { PaperStyle, Tool } from '../types';
  * every read site via {@link resolveMode}. Never read `doc.mode` raw.
  */
 
-export type AppMode = 'mobile' | 'notebook' | 'canvas';
+export type AppMode = 'mobile' | 'notebook' | 'canvas' | 'colozoo';
 
 /** Toolbar composition presets. `'minimal'` is designed around "non-classroom,
  *  non-desktop peripheral features" so Mobile Mode (Phase 2) can reuse it;
@@ -83,6 +83,24 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
     defaultTool: 'text', // typing-first
     zoomRange: { min: 0.5, max: 4 },
   },
+  // Colozoo (kids' coloring-book mode). This config exists only so the mode
+  // resolves and lists cleanly through the SAME choke points as every other
+  // mode — ColozooWorkspace is self-contained and reads NONE of these layout
+  // fields (it owns its own toolbar, palette, and touch handling). The values
+  // are the neutral, do-no-harm defaults: if anything ever routes a Colozoo
+  // doc through the classic Workspace by mistake, it degrades to a plain
+  // single-array canvas rather than crashing.
+  colozoo: {
+    id: 'colozoo',
+    defaultPaper: 'blank',
+    paletteOverride: null,
+    toolbarVariant: 'minimal',
+    layout: 'infinite',
+    touchActionDefault: 'none',
+    toolbarPosition: 'top',
+    defaultTool: 'pen',
+    zoomRange: { min: 0.5, max: 4 },
+  },
 };
 
 /**
@@ -92,7 +110,10 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
  * fallback is a null-mode crash.
  */
 export function resolveMode(mode: unknown): AppMode {
-  return mode === 'mobile' || mode === 'notebook' || mode === 'canvas'
+  return mode === 'mobile' ||
+    mode === 'notebook' ||
+    mode === 'canvas' ||
+    mode === 'colozoo'
     ? mode
     : 'canvas';
 }
@@ -110,6 +131,7 @@ const DEFAULT_DOC_NAMES: Record<AppMode, string> = {
   canvas: 'My notes',
   notebook: 'Notebook',
   mobile: 'Quick note',
+  colozoo: 'Coloring book',
 };
 
 export function defaultDocName(mode: unknown): string {

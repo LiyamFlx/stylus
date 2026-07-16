@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { penProfile, PEN_TYPES } from './penProfiles';
+import {
+  penProfile,
+  PEN_TYPES,
+  COLOZOO_BRUSHES,
+  COLOZOO_MIN_WIDTH,
+} from './penProfiles';
 
 describe('penProfile', () => {
   it('defines a profile for every pen type', () => {
@@ -57,5 +62,39 @@ describe('phase 3 brushes', () => {
     for (const t of ['fountain', 'ballpoint', 'brush', 'highlighter', 'pencil'] as const) {
       expect(penProfile(t).blend).toBeUndefined();
     }
+  });
+});
+
+describe('colozoo brushes', () => {
+  it('lists 11 brushes, each with a working profile, none in the classic toolbar', () => {
+    expect(COLOZOO_BRUSHES).toHaveLength(11);
+    expect(new Set(COLOZOO_BRUSHES).size).toBe(COLOZOO_BRUSHES.length);
+    for (const b of COLOZOO_BRUSHES) {
+      expect(penProfile(b).label).toBeTruthy();
+      // The classic toolbar must NEVER surface a colozoo brush.
+      expect(PEN_TYPES).not.toContain(b);
+    }
+  });
+
+  it('enforces the COLOZOO_MIN_WIDTH floor for every brush except czPorcelain', () => {
+    // Even at the lightest possible press and the smallest base, a kids' brush
+    // must still lay down a bold mark.
+    for (const b of COLOZOO_BRUSHES) {
+      if (b === 'czPorcelain') continue;
+      const light = penProfile(b).widthFor(0, 0.5);
+      const heavy = penProfile(b).widthFor(1, 4);
+      expect(light).toBeGreaterThanOrEqual(COLOZOO_MIN_WIDTH);
+      expect(heavy).toBeGreaterThanOrEqual(COLOZOO_MIN_WIDTH);
+    }
+  });
+
+  it('czPorcelain is the one deliberate hairline — exempt from the floor', () => {
+    const w = penProfile('czPorcelain').widthFor(0, 1);
+    expect(w).toBeLessThan(COLOZOO_MIN_WIDTH);
+    expect(w).toBeGreaterThan(0);
+  });
+
+  it('czGlow uses the additive screen blend for the dark glow background', () => {
+    expect(penProfile('czGlow').blend).toBe('screen');
   });
 });

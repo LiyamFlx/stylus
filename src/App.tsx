@@ -4,6 +4,7 @@ import { Workspace } from './components/Workspace';
 import { PageNav } from './components/PageNav';
 import { NewDocDialog } from './components/NewDocDialog';
 import { ModeTabs } from './components/ModeTabs';
+import { ColozooWorkspace } from './components/ColozooWorkspace';
 import { InstallPrompt } from './components/InstallPrompt';
 import { OfflineBadge } from './components/OfflineBadge';
 import { ShortcutLegend } from './components/ShortcutLegend';
@@ -63,6 +64,9 @@ export default function App() {
   // Page state lives here — above Workspace — because flipping pages remounts
   // Workspace (keyed below), and the state must survive that.
   const isNotebook = currentDoc?.mode === 'notebook';
+  // Colozoo is a self-contained workspace — it renders instead of <Workspace>
+  // and owns its own chrome, so the shared toolbar/mode-tabs stay out of it.
+  const isColozoo = currentDoc?.mode === 'colozoo';
   const pagesApi = usePages(documents.currentId, isNotebook);
 
   // Workspace remounts reset its internal distraction-free state to "chrome
@@ -267,7 +271,15 @@ export default function App() {
         // iOS keyboards overlay 100% heights; visualViewport is the truth.
         style={isMobileDoc ? { height: 'var(--vvh, 100%)' } : undefined}
       >
-        {documents.currentId && (!isNotebook || activePage) && (
+        {documents.currentId && isColozoo && (
+          <ColozooWorkspace
+            key={`cz:${documents.currentId}`}
+            documentId={documents.currentId}
+            onOpenSidebar={() => setSidebarOpen(true)}
+          />
+        )}
+
+        {documents.currentId && !isColozoo && (!isNotebook || activePage) && (
           <Workspace
             // Page flips remount the editor — same mechanism as doc switches,
             // one level deeper (spec: "nothing new to invent").
@@ -321,7 +333,7 @@ export default function App() {
         {/* Mode tabs: fast browser-tab switching between the three document
             modes, plus a New button. Top-centre, above the toolbar, so it's the
             same prominent control in every mode. */}
-        {documents.currentId && !examLock && !chromeHidden && (
+        {documents.currentId && !examLock && !chromeHidden && !isColozoo && (
           <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center">
             <ModeTabs
               current={currentMode}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { effectiveTouchAction, modeConfig, resolveMode } from './modes';
+import { defaultDocName, effectiveTouchAction, modeConfig, resolveMode } from './modes';
 
 describe('resolveMode / modeConfig (legacy fallback gate)', () => {
   it('falls back to canvas for undefined/garbage', () => {
@@ -10,6 +10,23 @@ describe('resolveMode / modeConfig (legacy fallback gate)', () => {
   it('passes valid modes through', () => {
     expect(resolveMode('notebook')).toBe('notebook');
     expect(modeConfig('mobile').id).toBe('mobile');
+  });
+});
+
+describe('colozoo mode (kids coloring)', () => {
+  it('resolves and configs cleanly through the same gate', () => {
+    expect(resolveMode('colozoo')).toBe('colozoo');
+    expect(modeConfig('colozoo').id).toBe('colozoo');
+  });
+  it('has its own default document name', () => {
+    expect(defaultDocName('colozoo')).toBe('Coloring book');
+  });
+  it('degrades to a harmless single-array canvas layout if mis-routed', () => {
+    // ColozooWorkspace ignores these fields, but they must be safe defaults so
+    // a Colozoo doc accidentally routed through <Workspace> never crashes.
+    const cfg = modeConfig('colozoo');
+    expect(cfg.layout).toBe('infinite');
+    expect(cfg.touchActionDefault).toBe('none');
   });
 });
 

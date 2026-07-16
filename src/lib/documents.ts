@@ -2,6 +2,7 @@ import type { ImageItem, PaperStyle, TextItem } from '../types';
 import { createId } from './id';
 import { modeConfig, resolveMode } from './modes';
 import type { AppMode } from './modes';
+import { purgeColozooKeys } from './colozoo/storage';
 import { warnStorageWriteFailed } from './storageWriteWarning';
 
 /**
@@ -288,6 +289,10 @@ export function deleteDocument(id: string): string {
     localStorage.removeItem(customColorsKey(id));
     localStorage.removeItem(inkKey(id));
     localStorage.removeItem(auxKey(id));
+    // Colozoo docs keep their own per-page fill/ink keys under a separate
+    // namespace; sweep them here so a deleted coloring book leaves no orphaned
+    // blobs (same quota-leak reasoning as the page-payload sweep above).
+    purgeColozooKeys(id);
   } catch {
     // ignore
   }

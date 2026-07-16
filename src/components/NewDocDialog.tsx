@@ -29,6 +29,7 @@ const MODE_CARDS: { mode: AppMode; title: string; blurb: string }[] = [
   { mode: 'canvas', title: 'Canvas', blurb: 'Infinite space for sketching and thinking. Pan, zoom, no edges.' },
   { mode: 'notebook', title: 'Notebook', blurb: 'A4 pages, ruled paper, page navigation. Made for class.' },
   { mode: 'mobile', title: 'Quick note', blurb: 'Typing-first capture, phone-shaped. Jot it down and go.' },
+  { mode: 'colozoo', title: 'Colozoo', blurb: 'A coloring book for little hands. Tap to fill, doodle, earn stars.' },
 ];
 
 export function NewDocDialog({ open, onCreate, onCancel }: NewDocDialogProps) {
