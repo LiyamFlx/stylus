@@ -29,6 +29,10 @@ import {
 import { colozooInkKey } from '../lib/colozoo/storage';
 import { useColoringPage } from '../hooks/useColoringPage';
 import { createId } from '../lib/id';
+import { hexToHsb, hsbToHex } from '../lib/color';
+import { fireConfetti } from '../lib/confetti';
+import { saveColozooPage } from '../lib/colozoo/exportPage';
+import { useShakeUndo, requestShakePermission } from '../hooks/useShakeUndo';
 
 interface ColozooWorkspaceProps {
   documentId: string;
@@ -67,6 +71,86 @@ function writeStrokes(key: string, strokes: Stroke[]): void {
   }
 }
 
+// ── Brush textures (ColoZoo-only; render.ts is never touched) ────────────────
+// Everything here is DETERMINISTIC — a pure function of point coords/index, not
+// Math.random — because redraw() repaints every stroke on every frame of a
+// gesture. Random texture would crawl; hashed texture stays put.
+
+function hash01(n: number): number {
+  const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/** Unit vector perpendicular to a→b. */
+function perp(ax: number, ay: number, bx: number, by: number): { x: number; y: number } {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: -dy / len, y: dx / len };
+}
+
+/** Paintbrush bristle wobble: nudge points ±3px along their perpendicular,
+ *  scaled by drawing speed. Returns a new array (never mutates input). */
+function jitterPoints(points: InkPoint[]): InkPoint[] {
+  const MAX = 3;
+  return points.map((p, i) => {
+    if (i === 0) return p;
+    const prev = points[i - 1];
+    const velocity = Math.hypot(p.x - prev.x, p.y - prev.y);
+    const amount = Math.min(velocity * 0.4, MAX) * (hash01(i * 2.7 + p.x) - 0.5) * 2;
+    const n = perp(prev.x, prev.y, p.x, p.y);
+    return { ...p, x: p.x + n.x * amount, y: p.y + n.y * amount };
+  });
+}
+
+/** Pencil/chalk grain: scatter faint speckles across the stroke width. */
+function stipple(ctx: CanvasRenderingContext2D, pts: InkPoint[], color: string, dense: boolean): void {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = color;
+  const per = dense ? 5 : 3;
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i];
+    const w = p.width ?? 8;
+    const n = perp(pts[i - 1].x, pts[i - 1].y, p.x, p.y);
+    for (let k = 0; k < per; k++) {
+      const seed = i * 7.3 + k * 3.1;
+      const off = (hash01(seed) - 0.5) * w;
+      const r = (0.1 + hash01(seed + 1) * 0.16) * w;
+      ctx.globalAlpha = 0.1 + hash01(seed + 2) * 0.18;
+      ctx.beginPath();
+      ctx.arc(p.x + n.x * off, p.y + n.y * off, Math.max(0.5, r), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/** Ceramic gloss: a thin bright streak riding just off the stroke centre. */
+function shimmer(ctx: CanvasRenderingContext2D, pts: InkPoint[], color: string): void {
+  const hsb = hexToHsb(color);
+  const hi = hsb ? hsbToHex({ h: hsb.h, s: hsb.s * 0.4, b: Math.min(1, hsb.b * 1.5 + 0.3) }) : '#ffffff';
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = hi;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = 0.4;
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const w = p.width ?? 8;
+    const n = perp(pts[Math.max(0, i - 1)].x, pts[Math.max(0, i - 1)].y, p.x, p.y);
+    const x = p.x + n.x * w * 0.2;
+    const y = p.y + n.y * w * 0.2;
+    ctx.lineWidth = w * 0.28;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspaceProps) {
   const coloring = useColoringPage(documentId, COLOZOO_BOOKS[0].id);
   const [brush, setBrush] = useState<ColozooBrush>('czCrayon');
@@ -77,6 +161,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   const [hint, setHint] = useState<string | null>(null);
   const [showNice, setShowNice] = useState(false);
   const [shelfOpen, setShelfOpen] = useState(false);
+  const [showComplete, setShowComplete] = useState(false);
 
   // Load Nunito once, on mode entry only.
   useEffect(() => {
@@ -106,9 +191,18 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   // Ordered mark log — the ONE undo button dispatches to strokes or fills by
   // whichever the child did last.
   const markLog = useRef<('stroke' | 'fill')[]>([]);
+  // Shake-to-undo permission is asked lazily on first interaction (iOS rule).
+  const askedShake = useRef(false);
+  const wasComplete = useRef(false);
+  const requestShakeOnce = useCallback(() => {
+    if (askedShake.current) return;
+    askedShake.current = true;
+    void requestShakePermission();
+  }, []);
 
   const drawStroke = useCallback((ctx: CanvasRenderingContext2D, s: Stroke) => {
-    const prof = penProfile(s.penType ?? 'czCrayon');
+    const brush = (s.penType ?? 'czCrayon') as ColozooBrush;
+    const prof = penProfile(brush);
     ctx.save();
     ctx.globalCompositeOperation = prof.blend ?? 'source-over';
     ctx.lineCap = 'round';
@@ -116,21 +210,41 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     ctx.strokeStyle = s.color;
     ctx.fillStyle = s.color;
     ctx.globalAlpha = prof.opacity;
-    const pts = s.points;
+
+    // Paintbrush frays with speed; every other brush traces the exact path.
+    const pts = brush === 'czPaintbrush' ? jitterPoints(s.points) : s.points;
+
     if (pts.length === 1) {
       const w = pts[0].width ?? prof.widthFor(pts[0].pressure, s.size);
       ctx.beginPath();
       ctx.arc(pts[0].x, pts[0].y, w / 2, 0, Math.PI * 2);
       ctx.fill();
-    } else {
-      for (let i = 1; i < pts.length; i++) {
-        ctx.beginPath();
-        ctx.lineWidth = pts[i].width ?? prof.widthFor(pts[i].pressure, s.size);
-        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-        ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.stroke();
-      }
+      ctx.restore();
+      return;
     }
+
+    // Magic marker: hue rotates +2° per 100px along the stroke's length.
+    const baseHsb = brush === 'czMagicMarker' ? hexToHsb(s.color) : null;
+    let lengthSoFar = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      if (baseHsb) {
+        lengthSoFar += Math.hypot(b.x - a.x, b.y - a.y);
+        ctx.strokeStyle = hsbToHex({ ...baseHsb, h: baseHsb.h + (lengthSoFar / 100) * 2 });
+      }
+      ctx.beginPath();
+      ctx.lineWidth = b.width ?? prof.widthFor(b.pressure, s.size);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+
+    // Texture overlays on top of the base line.
+    if (brush === 'czPencil') stipple(ctx, pts, s.color, false);
+    else if (brush === 'czChalk') stipple(ctx, pts, s.color, true);
+    else if (brush === 'czCeramic') shimmer(ctx, pts, s.color);
+
     ctx.restore();
   }, []);
 
@@ -197,6 +311,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (fillMode || !page) return;
+      requestShakeOnce();
       e.currentTarget.setPointerCapture(e.pointerId);
       startedAt.current = performance.now();
       const point = buildPoint(e, startedAt.current);
@@ -217,7 +332,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
       liveStroke.current = s;
       redraw();
     },
-    [fillMode, page, buildPoint, color, brush, commitStroke, redraw],
+    [fillMode, page, buildPoint, color, brush, commitStroke, redraw, requestShakeOnce],
   );
 
   const onPointerMove = useCallback(
@@ -239,6 +354,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     (zoneId: string) => {
       const zone = page?.zones.find((z) => z.id === zoneId);
       if (!zone) return;
+      requestShakeOnce();
       coloring.fillZone(zoneId, color);
       markLog.current.push('fill');
       if (zone.educationalHint) {
@@ -247,7 +363,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         hintTimer.current = window.setTimeout(() => setHint(null), 2000);
       }
     },
-    [page, color, coloring],
+    [page, color, coloring, requestShakeOnce],
   );
 
   // "Nice!" stamp at ≥90% zone coverage (fires once per crossing).
@@ -284,6 +400,9 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     }
   }, [inkKey, coloring, redraw]);
 
+  // Shake the tablet to undo the last mark (device-only; no-op on desktop).
+  useShakeUndo(undo);
+
   // Page flips invalidate the mark log ordering for strokes on other pages.
   useEffect(() => {
     markLog.current = [];
@@ -299,6 +418,26 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     () => COLOZOO_BOOKS.find((b) => b.id === coloring.bookId),
     [coloring.bookId],
   );
+
+  // Book completion: every page in the book at 3★. Celebrate ONCE (confetti +
+  // "Amazing!"), re-armed only if it leaves the complete state — never nags.
+  const bookComplete = useMemo(
+    () => !!book && book.pages.length > 0 && book.pages.every((p) => (coloring.stars[p.id] ?? 0) >= 3),
+    [book, coloring.stars],
+  );
+  useEffect(() => {
+    if (bookComplete && !wasComplete.current) {
+      setShowComplete(true);
+      fireConfetti();
+    }
+    wasComplete.current = bookComplete;
+  }, [bookComplete]);
+
+  const savePage = useCallback(() => {
+    if (page) {
+      void saveColozooPage({ page, fills: coloring.fills, inkCanvas: canvasRef.current, glow });
+    }
+  }, [page, coloring.fills, glow]);
 
   return (
     <div
@@ -423,6 +562,18 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
               </div>
             </div>
           )}
+
+          {/* Empty-state tagline — a gentle brand nudge on an untouched page */}
+          {page && coverage === 0 && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center">
+              <span
+                className="text-lg font-black tracking-wide"
+                style={{ color: COLOZOO_ACCENT, opacity: 0.55 }}
+              >
+                Create Happiness
+              </span>
+            </div>
+          )}
         </div>
 
         {/* big undo — bottom corner, kid-sized */}
@@ -541,6 +692,48 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           </span>
         </div>
       </div>
+
+      {/* Book-complete celebration — every page at 3★ */}
+      {showComplete && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Book complete"
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl px-6 py-8 text-center shadow-2xl"
+            style={{ background: glow ? '#160A2A' : '#fff' }}
+          >
+            <div className="text-6xl" aria-hidden>🎉</div>
+            <h2 className="mt-2 text-4xl font-black" style={{ color: COLOZOO_ACCENT }}>
+              Amazing!
+            </h2>
+            <p className="mt-1 text-lg font-extrabold" style={{ color: glow ? '#fff' : '#444' }}>
+              You finished every page of {book?.title}!
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={savePage}
+                className="h-16 rounded-2xl text-xl font-black text-white transition-transform active:scale-95"
+                style={{ background: COLOZOO_ACCENT }}
+              >
+                💾 Save &amp; share
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowComplete(false)}
+                className="h-14 rounded-2xl text-lg font-extrabold transition-transform active:scale-95"
+                style={{ background: glow ? '#2A1B40' : '#F4F1E8', color: glow ? '#fff' : '#444' }}
+              >
+                Keep coloring
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
