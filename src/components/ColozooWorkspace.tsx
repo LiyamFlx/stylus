@@ -22,7 +22,7 @@ import { COLOZOO_BOOKS } from '../lib/colozoo/books';
 import {
   COLOZOO_ACCENT,
   COLOZOO_GLOW_BG,
-  paletteForBrush,
+  ALL_COLOZOO_COLORS,
   speakColorName,
 } from '../lib/colozoo/palettes';
 import { colozooInkKey } from '../lib/colozoo/storage';
@@ -34,6 +34,7 @@ import { saveColozooPage } from '../lib/colozoo/exportPage';
 import { useShakeUndo, requestShakePermission } from '../hooks/useShakeUndo';
 import { COLOZOO_THEME, LEAF_SVG, SPARKLE_PATH } from '../lib/colozoo/theme';
 import { ColozooBrushCard } from './colozoo/ColozooBrushCard';
+import { ColozooPalette } from './colozoo/ColozooPalette';
 
 interface ColozooWorkspaceProps {
   documentId: string;
@@ -155,8 +156,10 @@ function shimmer(ctx: CanvasRenderingContext2D, pts: InkPoint[], color: string):
 export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspaceProps) {
   const coloring = useColoringPage(documentId, COLOZOO_BOOKS[0].id);
   const [brush, setBrush] = useState<ColozooBrush>('czCrayon');
-  const palette = paletteForBrush(brush);
-  const [color, setColor] = useState(palette[0].hex);
+  // The visible picker is always the branded named set (Core/Accent), not a
+  // per-brush SKU set — the palette column shows the same colors for every brush.
+  const palette = ALL_COLOZOO_COLORS;
+  const [color, setColor] = useState(ALL_COLOZOO_COLORS[0].hex);
   const [glow, setGlow] = useState(false);
   const [fillMode, setFillMode] = useState(true); // fill bucket = primary action
   const [hint, setHint] = useState<string | null>(null);
@@ -179,12 +182,11 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     document.head.appendChild(link);
   }, []);
 
-  // Palette switches with brush type (SKU sets); keep color valid.
+  // Selecting the glow brush turns on glow mode (dark canvas). The color set is
+  // constant now, so no per-brush color revalidation is needed.
   useEffect(() => {
-    const p = paletteForBrush(brush);
-    if (!p.some((c) => c.hex === color)) setColor(p[0].hex);
     if (brush === 'czGlow') setGlow(true);
-  }, [brush]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [brush]);
 
   // ── Freehand ink layer ──────────────────────────────────────────────────────
   const page = coloring.page;
@@ -779,6 +781,18 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           ↩️
         </button>
       </div>
+
+        {/* Right palette column (tablet) — named Core/Accent swatches */}
+        <ColozooPalette
+          color={color}
+          onPick={pickColor}
+          fillMode={fillMode && !eraser}
+          onFillMode={(on) => {
+            setFillMode(on);
+            setEraser(false);
+          }}
+          glow={glow}
+        />
       </div>
 
       {/* page dots: done / active / upcoming */}
@@ -847,8 +861,8 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           })}
         </div>
 
-        {/* paint pots — physical, named */}
-        <div className="flex items-center gap-2 overflow-x-auto rounded-3xl p-2 shadow-md"
+        {/* paint pots — physical, named (phone only; tablet uses the column) */}
+        <div className="flex min-[860px]:hidden items-center gap-2 overflow-x-auto rounded-3xl p-2 shadow-md"
           style={{ background: glow ? '#1b1226' : '#fff' }}
         >
           {palette.map((c) => {
