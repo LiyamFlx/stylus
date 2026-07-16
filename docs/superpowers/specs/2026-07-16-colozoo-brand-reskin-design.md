@@ -114,10 +114,9 @@ Optional decorative badges: "Washes Out" (Magic Pens), "3D Puffy Effect"
 - **Redo** — add a redo stack mirroring the existing `markLog`/undo. On undo,
   push the undone mark onto a redo stack; Redo re-applies it; any new mark clears
   the redo stack. Covers both stroke and fill marks.
-- **Eraser** — a mode: tapping a filled zone clears its fill (`undoFill`-style
-  removal by zone id → new `clearZone(id)` on the hook); dragging over ink erases
-  strokes it crosses (or, simplest v1: eraser clears the last stroke under a tap —
-  decide in plan). Records into markLog so undo/redo still work.
+- **Eraser** — a mode: tapping a filled zone clears its fill via new
+  `clearZone(id)` on the hook (records into markLog so undo/redo still work).
+  Tap-clears-fill only in v1; no drag stroke-erasing (see §12).
 - **Share** (header 🔗) — calls existing `saveColozooPage(...)` (PNG export +
   native share/download). Same function the completion screen uses.
 
@@ -158,8 +157,19 @@ freehand ink canvas + `drawStroke` textures, `saveColozooPage`, shake-to-undo,
   width collapses cleanly. Glow reachable via ⚙️.
 - No regression to other modes (mobile/notebook/canvas).
 
-## 12. Open decisions deferred to the plan
+## 12. Resolved decisions (settled — build to these)
 
-- Eraser precision (tap-clears-fill only vs. also stroke-erase on drag).
-- Whether redo lives in the hook or the component.
-- Whether the brush card is a permanent panel or a popover off the FAB on tablet.
+- **Eraser precision:** v1 is **tap-clears-fill only**. Tapping a filled zone
+  clears just that zone's fill (new `clearZone(id)` on the hook, records into
+  markLog). No drag stroke-erasing — that would need vector intersection logic
+  and violates the "don't touch the drawing engine" non-goal. Deleting whole ink
+  strokes via markLog is the acceptable escalation if needed later, never
+  Boolean vector ops.
+- **Redo lives in the hook** (`useColoringPage`). Undo/redo is core state; the
+  hook already owns `markLog` and drawing state. A redo stack mirroring it stays
+  in the hook — no logic split into the component.
+- **Brush card is a popover/drawer off the FAB on tablet**, not a permanent
+  panel. Closed by default → maximizes canvas width; the FAB opens it; the v3
+  mockup depicts its *open* state. Left rail stays ultra-clean (actions only),
+  and closing it prevents accidental tool changes mid-color. On phone it remains
+  the collapsed bottom strip.
