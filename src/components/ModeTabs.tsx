@@ -15,6 +15,7 @@ const TABS: { mode: AppMode; label: string; short: string; Icon: typeof PaperIco
   { mode: 'canvas', label: 'Canvas', short: 'Canvas', Icon: LassoIcon },
   { mode: 'notebook', label: 'Notebook', short: 'Notes', Icon: PaperIcon },
   { mode: 'mobile', label: 'Quick note', short: 'Quick', Icon: TypeIcon },
+  { mode: 'colozoo', label: 'ColoZoo', short: 'Zoo', Icon: PaperIcon },
 ];
 
 /**

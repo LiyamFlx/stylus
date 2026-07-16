@@ -3,6 +3,7 @@ import { createId } from './id';
 import { modeConfig, resolveMode } from './modes';
 import type { AppMode } from './modes';
 import { warnStorageWriteFailed } from './storageWriteWarning';
+import { purgeColozooKeys } from './colozoo/storage';
 
 /**
  * Local, offline-first multi-document store (no backend, no login).
@@ -288,6 +289,8 @@ export function deleteDocument(id: string): string {
     localStorage.removeItem(customColorsKey(id));
     localStorage.removeItem(inkKey(id));
     localStorage.removeItem(auxKey(id));
+    // ColoZoo docs: zone fills + per-page ink live under their own namespace.
+    purgeColozooKeys(id);
   } catch {
     // ignore
   }

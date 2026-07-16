@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
+import { ColozooWorkspace } from './components/ColozooWorkspace';
 import { PageNav } from './components/PageNav';
 import { NewDocDialog } from './components/NewDocDialog';
 import { ModeTabs } from './components/ModeTabs';
@@ -63,6 +64,7 @@ export default function App() {
   // Page state lives here — above Workspace — because flipping pages remounts
   // Workspace (keyed below), and the state must survive that.
   const isNotebook = currentDoc?.mode === 'notebook';
+  const isColozoo = currentDoc?.mode === 'colozoo';
   const pagesApi = usePages(documents.currentId, isNotebook);
 
   // Workspace remounts reset its internal distraction-free state to "chrome
@@ -267,7 +269,16 @@ export default function App() {
         // iOS keyboards overlay 100% heights; visualViewport is the truth.
         style={isMobileDoc ? { height: 'var(--vvh, 100%)' } : undefined}
       >
-        {documents.currentId && (!isNotebook || activePage) && (
+        {documents.currentId && isColozoo && (
+          // ColoZoo owns its whole surface — no shared Workspace/Toolbar.
+          <ColozooWorkspace
+            key={documents.currentId}
+            documentId={documents.currentId}
+            onOpenSidebar={() => setSidebarOpen(true)}
+          />
+        )}
+
+        {documents.currentId && !isColozoo && (!isNotebook || activePage) && (
           <Workspace
             // Page flips remount the editor — same mechanism as doc switches,
             // one level deeper (spec: "nothing new to invent").

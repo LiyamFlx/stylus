@@ -13,7 +13,7 @@ import type { PaperStyle, Tool } from '../types';
  * every read site via {@link resolveMode}. Never read `doc.mode` raw.
  */
 
-export type AppMode = 'mobile' | 'notebook' | 'canvas';
+export type AppMode = 'mobile' | 'notebook' | 'canvas' | 'colozoo';
 
 /** Toolbar composition presets. `'minimal'` is designed around "non-classroom,
  *  non-desktop peripheral features" so Mobile Mode (Phase 2) can reuse it;
@@ -83,6 +83,20 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
     defaultTool: 'text', // typing-first
     zoomRange: { min: 0.5, max: 4 },
   },
+  colozoo: {
+    id: 'colozoo',
+    defaultPaper: 'blank',
+    // ColoZoo owns its palette entirely (named colors, per-brush sets) inside
+    // ColozooWorkspace — the shared toolbar/palette never renders in this
+    // mode, so paletteOverride is unused. null keeps the config honest.
+    paletteOverride: null,
+    toolbarVariant: 'minimal',
+    layout: 'paginated',
+    touchActionDefault: 'none',
+    toolbarPosition: 'bottom',
+    defaultTool: 'pen',
+    zoomRange: { min: 1, max: 1 }, // fixed-fit coloring page, no zoom
+  },
 };
 
 /**
@@ -92,7 +106,7 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
  * fallback is a null-mode crash.
  */
 export function resolveMode(mode: unknown): AppMode {
-  return mode === 'mobile' || mode === 'notebook' || mode === 'canvas'
+  return mode === 'mobile' || mode === 'notebook' || mode === 'canvas' || mode === 'colozoo'
     ? mode
     : 'canvas';
 }
@@ -110,6 +124,7 @@ const DEFAULT_DOC_NAMES: Record<AppMode, string> = {
   canvas: 'My notes',
   notebook: 'Notebook',
   mobile: 'Quick note',
+  colozoo: 'My coloring book',
 };
 
 export function defaultDocName(mode: unknown): string {
