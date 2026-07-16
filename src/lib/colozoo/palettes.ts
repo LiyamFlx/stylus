@@ -71,3 +71,32 @@ export function speakColorName(name: string): void {
     // never let audio failure break painting
   }
 }
+
+/** The visible palette column: named pills grouped Core / Accent (v3 mockup). */
+export const COLOZOO_PALETTE_GROUPS: { label: string; colors: NamedColor[] }[] = [
+  {
+    label: 'Core Colors',
+    colors: [
+      { name: 'Black', hex: '#212121' },
+      { name: 'White', hex: '#FFFFFF' },
+      { name: 'Brown', hex: '#8B5E3C' },
+      { name: 'Primary Red', hex: '#EF5B5B' },
+      { name: 'Blue', hex: '#4A90E2' },
+      { name: 'Yellow', hex: '#FBD24E' },
+      { name: 'Orange', hex: '#F5943B' },
+    ],
+  },
+  {
+    label: 'Colozoo Accent Colors',
+    colors: [
+      { name: 'Pink', hex: '#F49AC2' },
+      { name: 'Lavender', hex: '#C3B1E1' },
+      { name: 'Teal', hex: '#3BBAC6' },
+      { name: 'Lime Green', hex: '#6DBE6A' },
+    ],
+  },
+];
+
+export const ALL_COLOZOO_COLORS: NamedColor[] = COLOZOO_PALETTE_GROUPS.flatMap(
+  (g) => g.colors,
+);
