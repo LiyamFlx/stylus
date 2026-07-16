@@ -371,6 +371,7 @@ export const COLOZOO_BOOKS: ColozooBook[] = [
     id: 'trucks',
     title: 'Trucks',
     coverEmoji: '🚒',
+    thumbSvg: '<rect x="8" y="26" width="40" height="20" rx="3" fill="#EF5B5B"/><rect x="30" y="18" width="18" height="14" rx="2" fill="#EF5B5B"/><rect x="34" y="21" width="10" height="7" fill="#BFE7F5"/><circle cx="18" cy="50" r="6" fill="#333"/><circle cx="44" cy="50" r="6" fill="#333"/>',
     pages: [
       page('trucks', 1, fireTruck),
       page('trucks', 2, dumpTruck),
@@ -386,6 +387,7 @@ export const COLOZOO_BOOKS: ColozooBook[] = [
     id: 'animals',
     title: 'Animals',
     coverEmoji: '🦁',
+    thumbSvg: '<circle cx="32" cy="32" r="20" fill="#F5943B"/><circle cx="32" cy="34" r="13" fill="#FBD24E"/><circle cx="25" cy="32" r="2.5" fill="#333"/><circle cx="39" cy="32" r="2.5" fill="#333"/><path d="M28 40 q4 4 8 0" stroke="#333" stroke-width="2" fill="none"/>',
     pages: [
       page('animals', 1, cat, catWhiskers),
       page('animals', 2, fish),
@@ -401,6 +403,7 @@ export const COLOZOO_BOOKS: ColozooBook[] = [
     id: 'ocean',
     title: 'Ocean',
     coverEmoji: '🐠',
+    thumbSvg: '<ellipse cx="30" cy="32" rx="18" ry="12" fill="#4A90E2"/><path d="M48 32 l10 -8 v16 z" fill="#4A90E2"/><circle cx="22" cy="30" r="2.5" fill="#fff"/><circle cx="22" cy="30" r="1.2" fill="#333"/>',
     pages: [
       page('ocean', 1, clownfish),
       page('ocean', 2, octopus),
@@ -416,6 +419,7 @@ export const COLOZOO_BOOKS: ColozooBook[] = [
     id: 'bugs',
     title: 'Bugs',
     coverEmoji: '🐞',
+    thumbSvg: '<circle cx="32" cy="34" r="18" fill="#EF5B5B"/><path d="M32 16 v36" stroke="#333" stroke-width="2"/><circle cx="24" cy="30" r="2.5" fill="#333"/><circle cx="40" cy="30" r="2.5" fill="#333"/><circle cx="26" cy="42" r="2.5" fill="#333"/><circle cx="38" cy="42" r="2.5" fill="#333"/><circle cx="32" cy="14" r="5" fill="#333"/>',
     pages: [
       page('bugs', 1, ladybug),
       page('bugs', 2, butterfly, butterflyAntennae),
@@ -429,6 +433,7 @@ export const COLOZOO_BOOKS: ColozooBook[] = [
     id: 'castle',
     title: 'Castle',
     coverEmoji: '🏰',
+    thumbSvg: '<rect x="14" y="28" width="36" height="24" fill="#C3B1E1"/><rect x="12" y="20" width="8" height="12" fill="#C3B1E1"/><rect x="28" y="20" width="8" height="12" fill="#C3B1E1"/><rect x="44" y="20" width="8" height="12" fill="#C3B1E1"/><rect x="28" y="40" width="8" height="12" fill="#6DBE6A"/>',
     pages: [
       page('castle', 1, castle),
       page('castle', 2, tower),
