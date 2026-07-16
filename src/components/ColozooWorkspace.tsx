@@ -33,6 +33,7 @@ import { fireConfetti } from '../lib/confetti';
 import { saveColozooPage } from '../lib/colozoo/exportPage';
 import { useShakeUndo, requestShakePermission } from '../hooks/useShakeUndo';
 import { COLOZOO_THEME, LEAF_SVG, SPARKLE_PATH } from '../lib/colozoo/theme';
+import { ColozooBrushCard } from './colozoo/ColozooBrushCard';
 
 interface ColozooWorkspaceProps {
   documentId: string;
@@ -163,6 +164,9 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   const [shelfOpen, setShelfOpen] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [brushSize, setBrushSize] = useState(8);
+  const [eraser, setEraser] = useState(false);
+  const [brushCardOpen, setBrushCardOpen] = useState(false);
 
   // Load Nunito + Fredoka once, on mode entry only.
   useEffect(() => {
@@ -192,6 +196,10 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   // Ordered mark log — the ONE undo button dispatches to strokes or fills by
   // whichever the child did last.
   const markLog = useRef<('stroke' | 'fill')[]>([]);
+  // Mirrors markLog for redo: undo pushes the undone kind here, redo pops it.
+  const redoLog = useRef<('stroke' | 'fill')[]>([]);
+  // Strokes popped by undo, ready to be re-applied by redo (LIFO).
+  const strokeRedoStack = useRef<Stroke[]>([]);
   // Shake-to-undo permission is asked lazily on first interaction (iOS rule).
   const askedShake = useRef(false);
   const wasComplete = useRef(false);
@@ -290,12 +298,12 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
         pressure,
-        width: prof.widthFor(pressure, 8),
+        width: prof.widthFor(pressure, brushSize),
         opacity: prof.opacity,
         t: performance.now() - t0,
       };
     },
-    [brush],
+    [brush, brushSize],
   );
 
   const commitStroke = useCallback(() => {
@@ -304,6 +312,8 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     if (!s || !inkKey) return;
     strokesRef.current = [...strokesRef.current, s];
     markLog.current.push('stroke');
+    redoLog.current = [];
+    strokeRedoStack.current = [];
     writeStrokes(inkKey, strokesRef.current);
     coloring.markInk();
     redraw();
@@ -320,7 +330,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         id: createId('s_'),
         startedAt: Date.now(),
         color,
-        size: 8,
+        size: brushSize,
         penType: brush,
         points: [point],
       };
@@ -333,7 +343,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
       liveStroke.current = s;
       redraw();
     },
-    [fillMode, page, buildPoint, color, brush, commitStroke, redraw, requestShakeOnce],
+    [fillMode, page, buildPoint, color, brush, brushSize, commitStroke, redraw, requestShakeOnce],
   );
 
   const onPointerMove = useCallback(
@@ -356,15 +366,21 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
       const zone = page?.zones.find((z) => z.id === zoneId);
       if (!zone) return;
       requestShakeOnce();
-      coloring.fillZone(zoneId, color);
+      if (eraser) {
+        coloring.clearZone(zoneId);
+      } else {
+        coloring.fillZone(zoneId, color);
+      }
       markLog.current.push('fill');
+      redoLog.current = [];
+      strokeRedoStack.current = [];
       if (zone.educationalHint) {
         setHint(zone.educationalHint);
         window.clearTimeout(hintTimer.current);
         hintTimer.current = window.setTimeout(() => setHint(null), 2000);
       }
     },
-    [page, color, coloring, requestShakeOnce],
+    [page, color, coloring, requestShakeOnce, eraser],
   );
 
   // "Nice!" stamp at ≥90% zone coverage (fires once per crossing).
@@ -384,18 +400,53 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   const undo = useCallback(() => {
     const last = markLog.current.pop();
     if (last === 'stroke' && inkKey && strokesRef.current.length > 0) {
+      const popped = strokesRef.current[strokesRef.current.length - 1];
       strokesRef.current = strokesRef.current.slice(0, -1);
+      strokeRedoStack.current.push(popped);
+      redoLog.current.push('stroke');
       writeStrokes(inkKey, strokesRef.current);
       redraw();
       return;
     }
     if (last === 'fill') {
-      coloring.undoFill();
+      if (coloring.undoFill()) redoLog.current.push('fill');
       return;
     }
     // Log empty/desynced (e.g. after page flip) — try fills, then strokes.
-    if (!coloring.undoFill() && inkKey && strokesRef.current.length > 0) {
+    if (coloring.undoFill()) {
+      redoLog.current.push('fill');
+    } else if (inkKey && strokesRef.current.length > 0) {
+      const popped = strokesRef.current[strokesRef.current.length - 1];
       strokesRef.current = strokesRef.current.slice(0, -1);
+      strokeRedoStack.current.push(popped);
+      redoLog.current.push('stroke');
+      writeStrokes(inkKey, strokesRef.current);
+      redraw();
+    }
+  }, [inkKey, coloring, redraw]);
+
+  // Redo: mirrors undo — dispatches by whichever kind was undone last.
+  const redo = useCallback(() => {
+    const last = redoLog.current.pop();
+    if (last === 'stroke' && inkKey && strokeRedoStack.current.length > 0) {
+      const restored = strokeRedoStack.current.pop()!;
+      strokesRef.current = [...strokesRef.current, restored];
+      markLog.current.push('stroke');
+      writeStrokes(inkKey, strokesRef.current);
+      redraw();
+      return;
+    }
+    if (last === 'fill') {
+      if (coloring.redoFill()) markLog.current.push('fill');
+      return;
+    }
+    // Log empty/desynced — try fills, then buffered strokes.
+    if (coloring.redoFill()) {
+      markLog.current.push('fill');
+    } else if (inkKey && strokeRedoStack.current.length > 0) {
+      const restored = strokeRedoStack.current.pop()!;
+      strokesRef.current = [...strokesRef.current, restored];
+      markLog.current.push('stroke');
       writeStrokes(inkKey, strokesRef.current);
       redraw();
     }
@@ -407,6 +458,8 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   // Page flips invalidate the mark log ordering for strokes on other pages.
   useEffect(() => {
     markLog.current = [];
+    redoLog.current = [];
+    strokeRedoStack.current = [];
   }, [page?.id]);
 
   const pickColor = useCallback((hex: string, name: string) => {
@@ -554,8 +607,78 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         </div>
       )}
 
-      {/* ── Coloring surface (mint stage behind it) ── */}
-      <div className="relative z-10 mx-auto my-3 w-full max-w-4xl flex-1 px-4">
+      {/* ── Rail + coloring surface row ── */}
+      <div className="relative z-10 mx-auto my-3 flex w-full max-w-4xl flex-1 items-stretch gap-2 px-4">
+        {/* Left action rail (tablet+): brush FAB, undo, redo, eraser */}
+        <div className="relative hidden min-[860px]:flex shrink-0 flex-col items-center gap-3 py-2">
+          <button
+            type="button"
+            aria-label="Brush selection"
+            aria-expanded={brushCardOpen}
+            onClick={() => setBrushCardOpen((v) => !v)}
+            className="flex h-16 w-16 items-center justify-center rounded-full text-3xl shadow-lg transition-transform active:scale-90"
+            style={{ background: COLOZOO_ACCENT, boxShadow: '0 4px 14px rgba(255,107,43,.4)' }}
+          >
+            {BRUSH_EMOJI[brush]}
+          </button>
+          <ColozooBrushCard
+            open={brushCardOpen}
+            brush={brush}
+            size={brushSize}
+            onPickFamily={(primary) => {
+              setBrush(primary);
+              setFillMode(false);
+              setEraser(false);
+            }}
+            onSize={setBrushSize}
+            onClose={() => setBrushCardOpen(false)}
+          />
+
+          <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              aria-label="Undo"
+              onClick={undo}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl shadow-sm active:scale-90"
+              style={{ background: glow ? '#1b1226' : '#fff' }}
+            >
+              ↩️
+            </button>
+            <span className="text-xs font-extrabold" style={{ color: glow ? '#fff' : '#555' }}>Undo</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              aria-label="Redo"
+              onClick={redo}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl shadow-sm active:scale-90"
+              style={{ background: glow ? '#1b1226' : '#fff' }}
+            >
+              ↪️
+            </button>
+            <span className="text-xs font-extrabold" style={{ color: glow ? '#fff' : '#555' }}>Redo</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              aria-label="Eraser"
+              aria-pressed={eraser}
+              onClick={() => {
+                setEraser((v) => !v);
+                setFillMode(false);
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl shadow-sm active:scale-90"
+              style={eraser ? { background: COLOZOO_ACCENT, boxShadow: '0 4px 14px rgba(255,107,43,.4)' } : { background: glow ? '#1b1226' : '#fff' }}
+            >
+              🧽
+            </button>
+            <span className="text-xs font-extrabold" style={{ color: glow ? '#fff' : '#555' }}>Eraser</span>
+          </div>
+        </div>
+
+      <div className="relative flex-1">
         <div
           className="absolute inset-4 rounded-[2rem]"
           style={{ background: glow ? 'transparent' : COLOZOO_THEME.stage }}
@@ -582,8 +705,11 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
                     d={z.path}
                     fill={coloring.fills[z.id] ?? 'transparent'}
                     aria-label={z.label}
-                    style={{ cursor: fillMode ? 'pointer' : undefined, pointerEvents: fillMode ? 'auto' : 'none' }}
-                    onPointerDown={fillMode ? () => onZoneTap(z.id) : undefined}
+                    style={{
+                      cursor: fillMode || eraser ? 'pointer' : undefined,
+                      pointerEvents: fillMode || eraser ? 'auto' : 'none',
+                    }}
+                    onPointerDown={fillMode || eraser ? () => onZoneTap(z.id) : undefined}
                   />
                 ))}
               </svg>
@@ -591,7 +717,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
               <canvas
                 ref={canvasRef}
                 className="absolute inset-0 h-full w-full"
-                style={{ touchAction: 'none', pointerEvents: fillMode ? 'none' : 'auto' }}
+                style={{ touchAction: 'none', pointerEvents: fillMode || eraser ? 'none' : 'auto' }}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
@@ -653,6 +779,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           ↩️
         </button>
       </div>
+      </div>
 
       {/* page dots: done / active / upcoming */}
       <div className="flex items-center justify-center gap-3 pb-2">
@@ -686,16 +813,19 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           <button
             type="button"
             aria-label="Fill bucket"
-            aria-pressed={fillMode}
-            onClick={() => setFillMode(true)}
+            aria-pressed={fillMode && !eraser}
+            onClick={() => {
+              setFillMode(true);
+              setEraser(false);
+            }}
             className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl transition-transform active:scale-90"
-            style={fillMode ? { background: COLOZOO_ACCENT, boxShadow: '0 4px 14px rgba(255,107,43,.4)' } : { background: glow ? '#2a2138' : '#F4F1E8' }}
+            style={fillMode && !eraser ? { background: COLOZOO_ACCENT, boxShadow: '0 4px 14px rgba(255,107,43,.4)' } : { background: glow ? '#2a2138' : '#F4F1E8' }}
           >
             🪣
           </button>
           <span className="h-10 w-px shrink-0" style={{ background: glow ? '#3a2f4a' : '#E8E4D8' }} />
           {COLOZOO_BRUSHES.map((b) => {
-            const active = !fillMode && brush === b;
+            const active = !fillMode && !eraser && brush === b;
             return (
               <button
                 key={b}
@@ -706,6 +836,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
                 onClick={() => {
                   setBrush(b);
                   setFillMode(false);
+                  setEraser(false);
                 }}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl transition-transform active:scale-90"
                 style={active ? { background: COLOZOO_ACCENT, boxShadow: '0 4px 14px rgba(255,107,43,.4)' } : { background: glow ? '#2a2138' : '#F4F1E8' }}
