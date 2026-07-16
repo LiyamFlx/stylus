@@ -35,6 +35,7 @@ import { useShakeUndo, requestShakePermission } from '../hooks/useShakeUndo';
 import { COLOZOO_THEME, LEAF_SVG, SPARKLE_PATH } from '../lib/colozoo/theme';
 import { ColozooBrushCard } from './colozoo/ColozooBrushCard';
 import { ColozooPalette } from './colozoo/ColozooPalette';
+import { ColozooTemplateBar } from './colozoo/ColozooTemplateBar';
 
 interface ColozooWorkspaceProps {
   documentId: string;
@@ -164,7 +165,6 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   const [fillMode, setFillMode] = useState(true); // fill bucket = primary action
   const [hint, setHint] = useState<string | null>(null);
   const [showNice, setShowNice] = useState(false);
-  const [shelfOpen, setShelfOpen] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [brushSize, setBrushSize] = useState(8);
@@ -531,16 +531,13 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         >
           colozoo
         </span>
-        <button
-          type="button"
-          onClick={() => setShelfOpen((v) => !v)}
+        <div
           className="flex h-11 items-center gap-2 rounded-2xl px-4 text-lg font-extrabold shadow-sm"
           style={{ background: glow ? '#1b1226' : '#fff', color: glow ? '#fff' : '#333' }}
         >
           <span className="text-xl">{book?.coverEmoji}</span>
           {book?.title}
-          <span className="text-sm opacity-50">▾</span>
-        </button>
+        </div>
         <div className="flex items-center gap-1 text-2xl" aria-label={`${coloring.activeStars} stars`}>
           {[1, 2, 3].map((n) => (
             <span key={n} style={{ opacity: coloring.activeStars >= n ? 1 : 0.25 }}>⭐</span>
@@ -588,26 +585,6 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         </div>
       </div>
 
-      {/* Book shelf */}
-      {shelfOpen && (
-        <div className="absolute left-4 top-16 z-40 flex flex-col gap-2 rounded-3xl bg-white p-3 shadow-xl">
-          {COLOZOO_BOOKS.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => {
-                coloring.switchBook(b.id);
-                setShelfOpen(false);
-              }}
-              className="flex items-center gap-3 rounded-2xl px-4 py-2 text-lg font-extrabold text-gray-700 hover:bg-orange-50"
-              style={b.id === coloring.bookId ? { background: '#FFF0E6', color: COLOZOO_ACCENT } : undefined}
-            >
-              <span className="text-2xl">{b.coverEmoji}</span>
-              {b.title}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* ── Rail + coloring surface row ── */}
       <div className="relative z-10 mx-auto my-3 flex w-full max-w-4xl flex-1 items-stretch gap-2 px-4">
@@ -817,6 +794,15 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         })}
         <button type="button" aria-label="Next page" onClick={coloring.next} className="text-2xl opacity-60">›</button>
       </div>
+
+      {/* ── Template bar: pick a book + SAVE MY ART! ── */}
+      <ColozooTemplateBar
+        books={COLOZOO_BOOKS}
+        activeBookId={coloring.bookId}
+        onPick={coloring.switchBook}
+        onSave={savePage}
+        glow={glow}
+      />
 
       {/* ── Bottom toolbar: fill bucket (primary), brushes, pots, glow ── */}
       <div className="flex flex-col gap-2 px-4 pb-4">
