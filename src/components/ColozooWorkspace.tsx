@@ -21,7 +21,6 @@ import { penProfile, COLOZOO_BRUSHES, type ColozooBrush } from '../lib/penProfil
 import { COLOZOO_BOOKS } from '../lib/colozoo/books';
 import {
   COLOZOO_ACCENT,
-  COLOZOO_BG,
   COLOZOO_GLOW_BG,
   paletteForBrush,
   speakColorName,
@@ -33,6 +32,7 @@ import { hexToHsb, hsbToHex } from '../lib/color';
 import { fireConfetti } from '../lib/confetti';
 import { saveColozooPage } from '../lib/colozoo/exportPage';
 import { useShakeUndo, requestShakePermission } from '../hooks/useShakeUndo';
+import { COLOZOO_THEME, LEAF_SVG, SPARKLE_PATH } from '../lib/colozoo/theme';
 
 interface ColozooWorkspaceProps {
   documentId: string;
@@ -162,15 +162,16 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   const [showNice, setShowNice] = useState(false);
   const [shelfOpen, setShelfOpen] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Load Nunito once, on mode entry only.
+  // Load Nunito + Fredoka once, on mode entry only.
   useEffect(() => {
     const id = 'colozoo-nunito';
     if (document.getElementById(id)) return;
     const link = document.createElement('link');
     link.id = id;
     link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800;900&display=swap';
     document.head.appendChild(link);
   }, []);
 
@@ -413,7 +414,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     speakColorName(name);
   }, []);
 
-  const bg = glow ? COLOZOO_GLOW_BG : COLOZOO_BG;
+  const bg = glow ? COLOZOO_GLOW_BG : COLOZOO_THEME.teal;
   const book = useMemo(
     () => COLOZOO_BOOKS.find((b) => b.id === coloring.bookId),
     [coloring.bookId],
@@ -444,17 +445,37 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
       className="absolute inset-0 flex flex-col overflow-hidden transition-colors duration-500"
       style={{ background: bg, fontFamily: "'Nunito', ui-rounded, system-ui, sans-serif" }}
     >
-      {/* ── Top bar: menu, book title, stars, page dots ── */}
-      <div className="flex items-center gap-3 px-4 pt-3">
-        <button
-          type="button"
-          aria-label="Open menu"
-          onClick={onOpenSidebar}
-          className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl shadow-sm"
-          style={{ background: glow ? '#1b1226' : '#fff', color: glow ? '#fff' : '#333' }}
+      {/* ── Corner leaf motif + header sparkles (decorative, behind chrome) ── */}
+      <svg className="pointer-events-none absolute -left-6 -top-6 z-0 h-28 w-28 opacity-40" viewBox="0 0 100 100">
+        <path d={LEAF_SVG.leafA} fill={COLOZOO_THEME.yellow} />
+      </svg>
+      <svg className="pointer-events-none absolute -right-8 -top-10 z-0 h-32 w-32 rotate-45 opacity-35" viewBox="0 0 100 100">
+        <path d={LEAF_SVG.leafB} fill={COLOZOO_THEME.lavender} />
+      </svg>
+      <svg className="pointer-events-none absolute -left-8 -bottom-10 z-0 h-32 w-32 -rotate-12 opacity-35" viewBox="0 0 100 100">
+        <path d={LEAF_SVG.leafB} fill={COLOZOO_THEME.tealDeep} />
+      </svg>
+      <svg className="pointer-events-none absolute -right-6 -bottom-6 z-0 h-28 w-28 rotate-90 opacity-40" viewBox="0 0 100 100">
+        <path d={LEAF_SVG.leafA} fill={COLOZOO_THEME.yellow} />
+      </svg>
+      <svg className="pointer-events-none absolute left-24 top-2 z-0 h-4 w-4 opacity-80" viewBox="0 0 24 24">
+        <path d={SPARKLE_PATH} fill="#fff" />
+      </svg>
+      <svg className="pointer-events-none absolute right-32 top-6 z-0 h-3 w-3 opacity-70" viewBox="0 0 24 24">
+        <path d={SPARKLE_PATH} fill="#fff" />
+      </svg>
+      <svg className="pointer-events-none absolute right-16 top-1 z-0 h-2.5 w-2.5 opacity-60" viewBox="0 0 24 24">
+        <path d={SPARKLE_PATH} fill="#fff" />
+      </svg>
+
+      {/* ── Top bar: wordmark, book title, stars, settings, share ── */}
+      <div className="relative z-10 flex items-center gap-3 px-4 pt-3">
+        <span
+          className="text-2xl font-semibold text-white"
+          style={{ fontFamily: "'Fredoka', ui-rounded, system-ui, sans-serif" }}
         >
-          ☰
-        </button>
+          colozoo
+        </span>
         <button
           type="button"
           onClick={() => setShelfOpen((v) => !v)}
@@ -465,10 +486,50 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           {book?.title}
           <span className="text-sm opacity-50">▾</span>
         </button>
-        <div className="ml-auto flex items-center gap-1 text-2xl" aria-label={`${coloring.activeStars} stars`}>
+        <div className="flex items-center gap-1 text-2xl" aria-label={`${coloring.activeStars} stars`}>
           {[1, 2, 3].map((n) => (
             <span key={n} style={{ opacity: coloring.activeStars >= n ? 1 : 0.25 }}>⭐</span>
           ))}
+        </div>
+        <div className="relative ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Share page"
+            onClick={savePage}
+            className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl shadow-sm"
+            style={{ background: glow ? '#1b1226' : '#fff', color: glow ? '#fff' : '#333' }}
+          >
+            🔗
+          </button>
+          <button
+            type="button"
+            aria-label="Settings"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((v) => !v)}
+            className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl shadow-sm"
+            style={{ background: glow ? '#1b1226' : '#fff', color: glow ? '#fff' : '#333' }}
+          >
+            ⚙️
+          </button>
+          {settingsOpen && (
+            <div className="absolute right-0 top-14 z-40 flex flex-col gap-1 rounded-2xl bg-white p-2 shadow-xl">
+              <button
+                type="button"
+                onClick={onOpenSidebar}
+                className="flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-left text-base font-extrabold text-gray-700 hover:bg-gray-50"
+              >
+                ☰ Menu
+              </button>
+              <button
+                type="button"
+                aria-pressed={glow}
+                onClick={() => setGlow((v) => !v)}
+                className="flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-left text-base font-extrabold text-gray-700 hover:bg-gray-50"
+              >
+                🌙 Glow mode{glow ? ' · On' : ''}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -493,8 +554,13 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         </div>
       )}
 
-      {/* ── Coloring surface ── */}
-      <div className="relative mx-auto my-3 w-full max-w-4xl flex-1 px-4">
+      {/* ── Coloring surface (mint stage behind it) ── */}
+      <div className="relative z-10 mx-auto my-3 w-full max-w-4xl flex-1 px-4">
+        <div
+          className="absolute inset-4 rounded-[2rem]"
+          style={{ background: glow ? 'transparent' : COLOZOO_THEME.stage }}
+          aria-hidden
+        />
         <div
           className="relative h-full w-full overflow-hidden rounded-3xl shadow-lg"
           style={{ background: glow ? '#120818' : '#fff' }}
@@ -648,17 +714,6 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
               </button>
             );
           })}
-          <span className="h-10 w-px shrink-0" style={{ background: glow ? '#3a2f4a' : '#E8E4D8' }} />
-          <button
-            type="button"
-            aria-label="Glow mode"
-            aria-pressed={glow}
-            onClick={() => setGlow((v) => !v)}
-            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl transition-transform active:scale-90"
-            style={glow ? { background: '#3D5AFE' } : { background: '#F4F1E8' }}
-          >
-            🌙
-          </button>
         </div>
 
         {/* paint pots — physical, named */}
