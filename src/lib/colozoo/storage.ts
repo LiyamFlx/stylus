@@ -24,6 +24,9 @@ export interface ColozooDocState {
   zoneColors: Record<string, Record<string, string>>;
   /** pageId → stars earned (monotonic — stars are never taken away). */
   stars: Record<string, StarRating>;
+  /** Canvas-first: true = free-draw blank canvas (no template loaded).
+   *  Loading a template clears this; new docs start blank. */
+  blank: boolean;
 }
 
 export const colozooKey = (docId: string) => `stylus.doc.v1.${docId}.colozoo`;
@@ -34,7 +37,7 @@ export const colozooInkKey = (docId: string, pageId: string) =>
   `stylus.doc.v1.${docId}.colozoo.${pageId}.ink`;
 
 export function defaultColozooState(bookId: string): ColozooDocState {
-  return { version: 1, bookId, currentPage: 1, zoneColors: {}, stars: {} };
+  return { version: 1, bookId, currentPage: 1, zoneColors: {}, stars: {}, blank: true };
 }
 
 export function readColozooState(docId: string, fallbackBookId: string): ColozooDocState {
@@ -51,6 +54,8 @@ export function readColozooState(docId: string, fallbackBookId: string): Colozoo
       currentPage: typeof v.currentPage === 'number' && v.currentPage >= 1 ? v.currentPage : 1,
       zoneColors: v.zoneColors && typeof v.zoneColors === 'object' ? v.zoneColors : {},
       stars: v.stars && typeof v.stars === 'object' ? (v.stars as Record<string, StarRating>) : {},
+      // Older saved docs (pre-canvas-first) had a template loaded — preserve that.
+      blank: typeof v.blank === 'boolean' ? v.blank : false,
     };
   } catch {
     return defaultColozooState(fallbackBookId);

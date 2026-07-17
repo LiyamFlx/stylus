@@ -17,6 +17,10 @@ interface Props {
   /** Hide the SAVE pill (when the bar opens as a panel and SAVE lives in the
    *  collapsed bottom row already). */
   showSave?: boolean;
+  /** Return to the free-draw blank canvas. When set, a "Blank" tile leads the row. */
+  onBlank?: () => void;
+  /** True when the blank canvas (no template) is active. */
+  blankActive?: boolean;
 }
 
 function BookThumb({ book, active, onClick, glow }: { book: ColozooBook; active: boolean; onClick: () => void; glow?: boolean }) {
@@ -48,7 +52,7 @@ function BookThumb({ book, active, onClick, glow }: { book: ColozooBook; active:
   );
 }
 
-export function ColozooTemplateBar({ books, activeBookId, onPickBook, onSave, glow, showSave = true }: Props) {
+export function ColozooTemplateBar({ books, activeBookId, onPickBook, onSave, glow, showSave = true, onBlank, blankActive }: Props) {
   const mid = Math.ceil(books.length / 2);
   const left = showSave ? books.slice(0, mid) : books;
   const right = showSave ? books.slice(mid) : [];
@@ -57,6 +61,23 @@ export function ColozooTemplateBar({ books, activeBookId, onPickBook, onSave, gl
       className="flex items-center justify-evenly gap-3 overflow-x-auto rounded-3xl px-4 pb-2 pt-3 shadow-xl"
       style={{ background: glow ? '#160A2A' : COLOZOO_THEME.card }}
     >
+      {onBlank && (
+        <button
+          type="button"
+          aria-label="Blank canvas"
+          aria-pressed={blankActive}
+          onClick={onBlank}
+          className="flex shrink-0 flex-col items-center gap-1 transition-transform active:scale-95"
+        >
+          <span
+            className="flex h-16 w-20 items-center justify-center overflow-hidden rounded-xl bg-white text-3xl shadow-sm"
+            style={{ outline: blankActive ? `3px solid ${COLOZOO_THEME.teal}` : '1.5px solid #E2E8EA' }}
+          >
+            ✏️
+          </span>
+          <span className="text-[11px] font-black" style={{ color: glow ? '#fff' : '#5b6b6e' }}>Blank</span>
+        </button>
+      )}
       {left.map((b) => (
         <BookThumb key={b.id} book={b} active={b.id === activeBookId} onClick={() => onPickBook(b.id)} glow={glow} />
       ))}

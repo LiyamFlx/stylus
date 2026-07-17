@@ -193,7 +193,9 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
 
   // ── Freehand ink layer ──────────────────────────────────────────────────────
   const page = coloring.page;
-  const inkKey = page ? colozooInkKey(documentId, page.id) : null;
+  // Blank canvas ink persists under a stable synthetic page id, so free-draw
+  // survives reloads and exports just like a template page.
+  const inkKey = colozooInkKey(documentId, page ? page.id : '__blank__');
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokesRef = useRef<Stroke[]>([]);
@@ -277,7 +279,11 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   // box gets explicit pixel dimensions from a measured fit.
   const areaRef = useRef<HTMLDivElement>(null);
   const [boxSize, setBoxSize] = useState<{ w: number; h: number } | null>(null);
-  const pageDims = page ? page.viewBox.split(/\s+/).map(Number) : [0, 0, 1, 1];
+  // Blank canvas uses a default 4:3 landscape frame; a loaded template uses its
+  // own viewBox. Either way the box always has dimensions to fit.
+  const BLANK_VIEWBOX = '0 0 800 600';
+  const activeViewBox = page ? page.viewBox : BLANK_VIEWBOX;
+  const pageDims = activeViewBox.split(/\s+/).map(Number);
   const pageW = pageDims[2];
   const pageH = pageDims[3];
   useEffect(() => {
@@ -403,10 +409,10 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!page) return;
       requestShakeOnce();
       e.currentTarget.setPointerCapture(e.pointerId);
-      pending.current = { x: e.clientX, y: e.clientY, zoneId: zoneAt(e.clientX, e.clientY) };
+      // Blank canvas has no zones → zoneId is null → every gesture is a stroke.
+      pending.current = { x: e.clientX, y: e.clientY, zoneId: page ? zoneAt(e.clientX, e.clientY) : null };
       startedAt.current = performance.now();
     },
     [page, zoneAt, requestShakeOnce],
@@ -414,9 +420,8 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!page) return;
-      // Eraser drag: clear every dot crossed.
-      if (eraser) {
+      // Eraser drag: clear every dot crossed (template only).
+      if (eraser && page) {
         if (pending.current || liveStroke.current) {
           const z = zoneAt(e.clientX, e.clientY);
           if (z && coloring.fills[z]) applyToZone(z);
@@ -549,9 +554,19 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   }, [bookComplete]);
 
   const savePage = useCallback(() => {
-    if (page) {
-      void saveColozooPage({ page, fills: coloring.fills, inkCanvas: canvasRef.current, glow });
-    }
+    // On a blank canvas there is no template page — synthesize a minimal one
+    // (default frame, no zones/outline) so the exporter still composites the
+    // child's freehand drawing onto a cream background.
+    const exportPage = page ?? {
+      id: '__blank__',
+      bookId: '__blank__',
+      pageNumber: 1,
+      title: 'My Drawing',
+      viewBox: BLANK_VIEWBOX,
+      zones: [],
+      outlinesSvg: '',
+    };
+    void saveColozooPage({ page: exportPage, fills: coloring.fills, inkCanvas: canvasRef.current, glow });
   }, [page, coloring.fills, glow]);
 
   const stageBg = glow ? COLOZOO_THEME.glowBg : COLOZOO_THEME.stage;
@@ -715,14 +730,16 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
               includes the space reserved for floating chrome. */}
           <div className="min-h-0 min-w-0 flex-1 px-2 pb-14 pt-2 lg:px-16 lg:pb-14">
           <div ref={areaRef} className="relative flex h-full w-full items-center justify-center">
-            {page && boxSize && (
+            {boxSize && (
               <div
                 ref={boxRef}
                 className="relative overflow-hidden rounded-2xl shadow-lg"
                 style={{
                   width: boxSize.w,
                   height: boxSize.h,
-                  background: glow ? '#120818' : '#fff',
+                  // Inviting cream paper on the blank canvas, white under a
+                  // loaded template (so its printed line-art reads cleanly).
+                  background: glow ? '#120818' : page ? '#fff' : '#FFF8E7',
                   touchAction: 'none',
                 }}
                 onPointerDown={onPointerDown}
@@ -730,18 +747,20 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerUp}
               >
-                {/* zone fills */}
-                <svg viewBox={page.viewBox} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-                  {page.zones.map((z) =>
-                    coloring.fills[z.id] ? (
-                      <path key={z.id} d={z.path} fill={coloring.fills[z.id]} aria-label={z.label} />
-                    ) : null,
-                  )}
-                </svg>
-                {/* child's freehand ink */}
+                {/* zone fills — only when a template is loaded */}
+                {page && (
+                  <svg viewBox={page.viewBox} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
+                    {page.zones.map((z) =>
+                      coloring.fills[z.id] ? (
+                        <path key={z.id} d={z.path} fill={coloring.fills[z.id]} aria-label={z.label} />
+                      ) : null,
+                    )}
+                  </svg>
+                )}
+                {/* child's freehand ink — always */}
                 <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-                {/* locked outline, always on top */}
-                {page.outlineImg ? (
+                {/* locked outline, always on top — only when a template is loaded */}
+                {page && (page.outlineImg ? (
                   <img
                     src={page.outlineImg}
                     alt={page.title ?? ''}
@@ -757,7 +776,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
                     style={glow ? { filter: 'invert(1)' } : undefined}
                     dangerouslySetInnerHTML={{ __html: page.outlinesSvg }}
                   />
-                )}
+                ))}
 
                 {/* educational hint — curious, never corrective */}
                 {hint && (
@@ -809,6 +828,8 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
             {railButtons}
           </div>
           {bookToggle}
+          {/* page navigation is template-only — a blank canvas has no pages */}
+          {!coloring.blank && (
           <div className="hidden items-center gap-1.5 sm:flex">
             <button type="button" aria-label="Previous page" onClick={coloring.prev} className="px-0.5 text-lg opacity-60">‹</button>
             {book?.pages.map((p) => {
@@ -831,6 +852,7 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
             })}
             <button type="button" aria-label="Next page" onClick={coloring.next} className="px-0.5 text-lg opacity-60">›</button>
           </div>
+          )}
           {/* phone: the header share button covers save — keep the row tight */}
           <button
             type="button"
@@ -883,6 +905,11 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
               onSave={savePage}
               glow={glow}
               showSave={false}
+              onBlank={() => {
+                coloring.startBlank();
+                setPanel(null);
+              }}
+              blankActive={coloring.blank}
             />
           </div>
         )}
@@ -931,6 +958,11 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
                 }}
                 onSave={savePage}
                 showSave={false}
+                onBlank={() => {
+                  coloring.startBlank();
+                  setPanel(null);
+                }}
+                blankActive={coloring.blank}
               />
             )}
           </div>

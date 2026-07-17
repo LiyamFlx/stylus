@@ -35,6 +35,8 @@ export interface ColoringPageApi {
   page: ColoringPage | null;
   pageCount: number;
   currentPage: number;
+  /** True = free-draw blank canvas (no template loaded). */
+  blank: boolean;
   /** zoneId → hex for the active page. */
   fills: Record<string, string>;
   /** Stars earned per pageId (monotonic). */
@@ -58,6 +60,8 @@ export interface ColoringPageApi {
   /** Report that freehand ink exists on the active page (1-star rule). */
   markInk: () => void;
   switchBook: (bookId: string) => void;
+  /** Return to the free-draw blank canvas. */
+  startBlank: () => void;
 }
 
 export function useColoringPage(docId: string, initialBookId: string): ColoringPageApi {
@@ -82,8 +86,9 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
   const book = getBook(state.bookId) ?? null;
   const pageCount = book?.pages.length ?? 0;
   const page = useMemo(
-    () => book?.pages.find((p) => p.pageNumber === state.currentPage) ?? null,
-    [book, state.currentPage],
+    // Canvas-first: no page when blank — the child is free-drawing.
+    () => (state.blank ? null : book?.pages.find((p) => p.pageNumber === state.currentPage) ?? null),
+    [state.blank, book, state.currentPage],
   );
 
   const fills = (page && state.zoneColors[page.id]) || {};
@@ -200,20 +205,29 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
   const switchBook = useCallback(
     (bookId: string) => {
       if (!getBook(bookId)) return;
+      // Loading a book/template exits blank canvas mode.
       // Keep zoneColors/stars — they're keyed by globally-unique pageId, so
       // switching back to a book restores its progress intact.
-      persist({ ...state, bookId, currentPage: readColozooBookPage(state, bookId) });
+      persist({ ...state, bookId, currentPage: readColozooBookPage(state, bookId), blank: false });
       undoStack.current = [];
       redoStack.current = [];
     },
     [state, persist],
   );
 
+  /** Return to the free-draw blank canvas (no template loaded). */
+  const startBlank = useCallback(() => {
+    persist({ ...state, blank: true });
+    undoStack.current = [];
+    redoStack.current = [];
+  }, [state, persist]);
+
   return {
     bookId: state.bookId,
     page,
     pageCount,
     currentPage: state.currentPage,
+    blank: state.blank,
     fills,
     stars: state.stars,
     activeStars,
@@ -228,6 +242,7 @@ export function useColoringPage(docId: string, initialBookId: string): ColoringP
     prev,
     markInk,
     switchBook,
+    startBlank,
   };
 }
 
