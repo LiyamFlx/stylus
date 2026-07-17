@@ -77,11 +77,27 @@ export async function buildColozooPageBlob({
   }
 
   // 3 — outlines on top (kept dark for a printable page, even in glow mode).
-  const outlineSvg = `<svg xmlns="${XMLNS}" viewBox="${page.viewBox}" width="${W}" height="${H}">${page.outlinesSvg}</svg>`;
-  try {
-    ctx.drawImage(await svgToImage(outlineSvg), 0, 0, W, H);
-  } catch {
-    // ignore
+  // Dot-marker pages carry a raster outline (outlineImg) — draw it natively;
+  // SVG-as-image can't load external refs, so it must not ride in outlinesSvg.
+  if (page.outlineImg) {
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res();
+        img.onerror = rej;
+        img.src = page.outlineImg!;
+      });
+      ctx.drawImage(img, 0, 0, W, H);
+    } catch {
+      // ignore
+    }
+  } else {
+    const outlineSvg = `<svg xmlns="${XMLNS}" viewBox="${page.viewBox}" width="${W}" height="${H}">${page.outlinesSvg}</svg>`;
+    try {
+      ctx.drawImage(await svgToImage(outlineSvg), 0, 0, W, H);
+    } catch {
+      // ignore
+    }
   }
 
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));

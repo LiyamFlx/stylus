@@ -38,6 +38,11 @@ export interface ColoringPage {
   /** Locked outline layer markup (inner SVG, no <svg> wrapper). Rendered on
    *  top at 100% opacity, pointer-events: none. */
   outlinesSvg: string;
+  /** Raster outline layer (URL) — used INSTEAD of outlinesSvg for dot-marker
+   *  pages so the export compositor can draw it natively. */
+  outlineImg?: string;
+  /** Kid-readable page name ("Fire Truck"). */
+  title?: string;
   /** Optional sky/ground/scene markup rendered beneath everything. */
   backgroundSvg?: string;
 }
@@ -48,6 +53,8 @@ export interface ColozooBook {
   title: string;
   /** Shelf cover — emoji, per the brand ("🚒 Trucks"), not abstract icons. */
   coverEmoji: string;
+  /** Illustrated cover thumbnail (URL) for the template bar; emoji fallback. */
+  coverImg?: string;
   pages: ColoringPage[];
 }
 

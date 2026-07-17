@@ -1,8 +1,9 @@
 /**
  * ColoZoo named color palettes. Every swatch has a NAME — kids learn color
- * names this way ("Firetruck Red", not "#EF5350"). Names follow the physical
- * Colozoo product naming conventions; palettes map to product SKU sets
- * ("Tempera 12", "Glow 8") and switch with the active brush type.
+ * names this way ("Primary Red", not "#E73F3E"). The visible palette column is
+ * COLOZOO_PALETTE_GROUPS (Core / Colozoo Accent), hexes sampled from the
+ * approved v3 mockup. Brush-locked SKU sets (Glow 8, Metallic 2) still apply
+ * for their brushes.
  */
 
 import type { ColozooBrush } from '../penProfiles';
@@ -12,28 +13,41 @@ export interface NamedColor {
   hex: string;
 }
 
-/** ColoZoo brand accent — replaces Scanmarker orange in this mode only. */
-export const COLOZOO_ACCENT = '#FF6B2B';
-/** Cream canvas base — matches the brand's clean product packaging. */
-export const COLOZOO_BG = '#FFFDF7';
+/** ColoZoo brand accent (v3 teal) — replaces Scanmarker orange in this mode. */
+export const COLOZOO_ACCENT = '#3DB7C4';
+/** Stage base behind the page (v3 pale aqua). */
+export const COLOZOO_BG = '#C7E9EA';
 /** Glow-mode canvas background (near-black, faint violet). */
 export const COLOZOO_GLOW_BG = '#0A0010';
 
-/** "Tempera 12" — the default palette for most brushes. */
-export const TEMPERA_12: NamedColor[] = [
-  { name: 'Firetruck Red', hex: '#E53935' },
-  { name: 'Sunny Yellow', hex: '#FDD835' },
-  { name: 'Gecko Green', hex: '#43A047' },
-  { name: 'Ocean Blue', hex: '#1E88E5' },
-  { name: 'Grape Purple', hex: '#8E24AA' },
-  { name: 'Tangerine Orange', hex: '#FB8C00' },
-  { name: 'Bubblegum Pink', hex: '#EC407A' },
-  { name: 'Chocolate Brown', hex: '#6D4C41' },
-  { name: 'Sky Blue', hex: '#4FC3F7' },
-  { name: 'Grass Green', hex: '#9CCC65' },
-  { name: 'Cloud White', hex: '#FFFFFF' },
-  { name: 'Midnight Black', hex: '#212121' },
+/** The visible palette column: full-width named bars grouped per v3. */
+export const COLOZOO_PALETTE_GROUPS: { label: string; colors: NamedColor[] }[] = [
+  {
+    label: 'Core Colors',
+    colors: [
+      { name: 'Black', hex: '#1A1A1A' },
+      { name: 'White', hex: '#FFFFFF' },
+      { name: 'Brown', hex: '#784A28' },
+      { name: 'Primary Red', hex: '#E73F3E' },
+      { name: 'Blue', hex: '#4483E0' },
+      { name: 'Yellow', hex: '#FCDB34' },
+      { name: 'Orange', hex: '#F2912A' },
+    ],
+  },
+  {
+    label: 'Colozoo Accent Colors',
+    colors: [
+      { name: 'Pink', hex: '#F394C0' },
+      { name: 'Lavender', hex: '#BEA7DD' },
+      { name: 'Teal', hex: '#228E8E' },
+      { name: 'Lime Green', hex: '#8CC746' },
+    ],
+  },
 ];
+
+export const ALL_COLOZOO_COLORS: NamedColor[] = COLOZOO_PALETTE_GROUPS.flatMap(
+  (g) => g.colors,
+);
 
 /** "Glow 8" — neon set, active in glow mode / acrylic glow brush. */
 export const GLOW_8: NamedColor[] = [
@@ -57,7 +71,7 @@ export const METALLIC_2: NamedColor[] = [
 export function paletteForBrush(brush: ColozooBrush): NamedColor[] {
   if (brush === 'czGlow') return GLOW_8;
   if (brush === 'czCeramic') return METALLIC_2;
-  return TEMPERA_12;
+  return ALL_COLOZOO_COLORS;
 }
 
 /** Reads the color name aloud — zero-dependency SpeechSynthesis. Safe no-op

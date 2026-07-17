@@ -72,3 +72,33 @@ body {
   box-shadow: 0 0 22px 6px rgba(129, 140, 248, 0.55);
   animation: kandinsky-pulse 0.32s ease-out forwards;
 }
+
+/* ColoZoo v3 brush-size slider */
+.colozoo-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 7px;
+  border-radius: 4px;
+  background: #d8e8e8;
+  outline: none;
+}
+.colozoo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 5px solid #3db7c4;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.colozoo-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 5px solid #3db7c4;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
