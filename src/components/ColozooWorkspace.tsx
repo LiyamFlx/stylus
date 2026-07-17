@@ -180,14 +180,14 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     [],
   );
 
-  // Load Nunito once, on mode entry only.
+  // Load Nunito + Fredoka (wordmark/headings) once, on mode entry only.
   useEffect(() => {
     const id = 'colozoo-nunito';
     if (document.getElementById(id)) return;
     const link = document.createElement('link');
     link.id = id;
     link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800;900&display=swap';
     document.head.appendChild(link);
   }, []);
 
@@ -657,7 +657,14 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
     >
       {/* ── Header: wordmark · stars · gear · share ── */}
       <div className="relative z-30 flex h-14 shrink-0 items-center gap-3 px-4">
-        <img src="/colozoo/ui/wordmark.png" alt="colozoo" className="h-8 w-auto select-none" draggable={false} />
+        {/* Text wordmark, not the image asset — that PNG export is clipped
+            (truncated letters + a stray artifact) at any render size. */}
+        <span
+          className="select-none text-2xl font-semibold text-white"
+          style={{ fontFamily: "'Fredoka', ui-rounded, system-ui, sans-serif" }}
+        >
+          colozoo
+        </span>
         <div className="ml-auto flex items-center gap-2">
           <div className="mr-1 flex items-center gap-0.5 text-lg" aria-label={`${coloring.activeStars} stars`}>
             {[1, 2, 3].map((n) => (
