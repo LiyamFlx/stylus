@@ -693,12 +693,13 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
           </button>
           <button
             type="button"
-            aria-label="Save and share"
+            aria-label="Save and share your art"
             onClick={savePage}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm transition-transform active:scale-90"
-            style={{ color: '#7C8A8E' }}
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-black tracking-wide text-white shadow-md transition-transform active:scale-95"
+            style={{ background: COLOZOO_THEME.pill }}
           >
             <IconShare />
+            <span className="hidden sm:inline">Save My Art!</span>
           </button>
         </div>
         {gearOpen && (
@@ -745,8 +746,11 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         <div className="relative z-10 flex min-h-0 flex-1 items-stretch">
           {/* Center: the page — full stage minus slim floating rails. The
               measured element sits INSIDE the padding so the fit math never
-              includes the space reserved for floating chrome. */}
-          <div className="min-h-0 min-w-0 flex-1 px-2 pb-14 pt-2 lg:px-16 lg:pb-14">
+              includes the space reserved for floating chrome. Gutter is just
+              wide enough to clear the floating rail buttons, not a full
+              quarter of the screen — the canvas should be the biggest thing
+              on screen. */}
+          <div className="min-h-0 min-w-0 flex-1 px-2 pb-16 pt-2 lg:px-[60px] lg:pb-16">
           <div ref={areaRef} className="relative flex h-full w-full items-center justify-center">
             {boxSize && (
               <div
@@ -828,13 +832,16 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
         )}
 
         {/* ── Floating collapsed chrome ── */}
-        {/* left rail (≥lg): brush toggle + undo/redo/eraser */}
-        <div className="absolute left-2 top-3 z-30 hidden flex-col items-center gap-2 lg:flex">
+        {/* left rail (≥lg): brush toggle + undo/redo/eraser. Vertically
+            centered against the canvas (not pinned to the stage's top edge)
+            so Undo/Redo are a short reach from wherever a child is coloring,
+            not a long diagonal reach up to a far corner. */}
+        <div className="absolute left-2 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-2 lg:flex">
           {brushToggle}
           {railButtons}
         </div>
         {/* right rail (≥lg): color chip */}
-        <div className="absolute right-2 top-3 z-30 hidden flex-col items-center gap-2 lg:flex">
+        <div className="absolute right-2 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-2 lg:flex">
           {colorToggle}
         </div>
 
@@ -846,10 +853,19 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
             {railButtons}
           </div>
           {bookToggle}
-          {/* page navigation is template-only — a blank canvas has no pages */}
+          {/* page navigation is template-only — a blank canvas has no pages.
+              Enlarged tap targets (arrows + dots) now that Save no longer
+              crowds this row — easier for small fingers to flip pages. */}
           {!coloring.blank && (
-          <div className="hidden items-center gap-1.5 sm:flex">
-            <button type="button" aria-label="Previous page" onClick={coloring.prev} className="px-0.5 text-lg opacity-60">‹</button>
+          <div className="hidden items-center gap-2 rounded-full bg-white/90 px-2 py-1.5 shadow-sm sm:flex">
+            <button
+              type="button"
+              aria-label="Previous page"
+              onClick={coloring.prev}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-xl opacity-70 transition-transform active:scale-90"
+            >
+              ‹
+            </button>
             {book?.pages.map((p) => {
               const done = (coloring.stars[p.id] ?? 0) >= 3;
               const active = p.pageNumber === coloring.currentPage;
@@ -859,27 +875,29 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
                   type="button"
                   aria-label={`Page ${p.pageNumber}: ${p.title ?? ''}`}
                   onClick={() => coloring.goTo(p.pageNumber)}
-                  className="h-2.5 w-2.5 rounded-full transition-transform"
+                  className="h-4 w-4 shrink-0 rounded-full transition-transform active:scale-90"
                   style={{
                     background: done ? '#43A047' : active ? COLOZOO_THEME.teal : glow ? '#3a2f4a' : '#fff',
-                    boxShadow: active ? `0 0 0 3px ${COLOZOO_THEME.mint}` : 'inset 0 0 0 1px rgba(0,0,0,.1)',
-                    transform: active ? 'scale(1.35)' : undefined,
+                    boxShadow: active ? `0 0 0 3px ${COLOZOO_THEME.mint}` : 'inset 0 0 0 1px rgba(0,0,0,.15)',
+                    transform: active ? 'scale(1.25)' : undefined,
                   }}
                 />
               );
             })}
-            <button type="button" aria-label="Next page" onClick={coloring.next} className="px-0.5 text-lg opacity-60">›</button>
+            <button
+              type="button"
+              aria-label="Next page"
+              onClick={coloring.next}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-xl opacity-70 transition-transform active:scale-90"
+            >
+              ›
+            </button>
           </div>
           )}
-          {/* phone: the header share button covers save — keep the row tight */}
-          <button
-            type="button"
-            onClick={savePage}
-            className="hidden h-11 shrink-0 rounded-full px-5 text-sm font-black tracking-wide text-white shadow-md transition-transform active:scale-95 sm:block"
-            style={{ background: COLOZOO_THEME.pill }}
-          >
-            ✨ SAVE MY ART! ✨
-          </button>
+          {/* Save now lives in the header (top-right, away from the coloring
+              surface) — no button directly under the canvas where a
+              child's hand rests while coloring, and no bottom-row crowding
+              against the page carousel. */}
         </div>
 
         {/* ── Panels (one at a time, over the canvas) ── */}
