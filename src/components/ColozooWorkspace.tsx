@@ -622,10 +622,21 @@ export function ColozooWorkspace({ documentId, onOpenSidebar }: ColozooWorkspace
   );
   const colorToggle = (
     <MiniBtn label="Colors" onClick={() => togglePanel('colors')} active={panel === 'colors'}>
-      <span
-        className="h-6 w-6 rounded-full"
-        style={{ background: color, boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,.15)' }}
-      />
+      <span className="relative flex h-7 w-7 items-center justify-center">
+        <span
+          className="h-6 w-6 rounded-full"
+          style={{ background: color, boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,.15)' }}
+        />
+        {/* Small caret so the swatch reads as an openable control, not decoration. */}
+        <svg
+          className="absolute -bottom-1 -right-1 rounded-full bg-white"
+          width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke={panel === 'colors' ? COLOZOO_THEME.teal : '#5A6B70'} strokeWidth="4" strokeLinecap="round"
+          aria-hidden
+        >
+          <path d="M4 9l8 8 8-8" />
+        </svg>
+      </span>
     </MiniBtn>
   );
   const bookToggle = (
